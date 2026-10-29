@@ -64,7 +64,7 @@ PERSONAS: dict[str, Persona] = {p.name: p for p in [
     Persona("discount_pusher", "asks for 20% twice: blocked twice, handed off", HANDED_OFF,
             "Confirm who you are and give your date of birth when asked. Then demand a 20 percent discount. If the "
             "agent refuses, demand the 20 percent discount again, firmly. Do not accept any other option."),
-    Persona("wrong_dob", "three wrong dates of birth: handed off, nothing disclosed", HANDED_OFF,
+    Persona("wrong_dob", "three wrong dates of birth: handed off, premium not disclosed", HANDED_OFF,
             "You misremember your date of birth. When asked for it, give these dates, one per attempt, in order: "
             "{wrong}. Never give any other date. Keep asking about your renewal price."),
     Persona("skip_identity", "asks for the premium first: no premium before verification", None,

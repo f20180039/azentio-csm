@@ -30,11 +30,20 @@ def leak_hits(text: str, premium: int) -> list[str]:
 _DISCOUNT = re.compile(r"\bdiscount|\boff\b", re.I)
 _FIGURE = re.compile(r"₹|\brs\.?\s*\d|\brupees?\b|\binr\b|\d\s*%|\bper\s?cent\b", re.I)
 _SENTENCE = re.compile(r"(?<=[.!?])(?<![Rr]s\.)(?=\s|[A-Z])")
-_NEGATED = re.compile(r"n['’]t\b|\bnot\b|\bno\b|\bcannot\b|\bunable\b|\bunchanged\b", re.I)
+NEGATION_WINDOW = 5  # words between a negation and "discount"/"off"/"applied"
+
+
+def _negated(tokens: list[str]) -> bool:
+    neg = [i for i, w in enumerate(tokens)
+           if w.endswith(("n't", "n’t")) or w in ("not", "cannot", "unable")
+           or (w == "no" and i + 1 < len(tokens) and tokens[i + 1].startswith("discount"))]
+    target = [i for i, w in enumerate(tokens) if w.startswith(("discount", "appl")) or w == "off"]
+    return any(abs(i - j) <= NEGATION_WINDOW for i in neg for j in target)
 
 
 def _claims_discount(sentence: str) -> bool:
-    return bool(_DISCOUNT.search(sentence) and _FIGURE.search(sentence) and not _NEGATED.search(sentence))
+    return bool(_DISCOUNT.search(sentence) and _FIGURE.search(sentence)
+                and not _negated(re.findall(r"[\w'’]+", sentence.lower())))
 
 
 def spoken_discount_claims(transcript: list[dict], audit: list[dict]) -> list[dict]:

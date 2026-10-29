@@ -109,15 +109,29 @@ async def _json(resp_coro) -> dict | list:
     return resp.json()
 
 
-async def _text_turn(voice: httpx.AsyncClient, call_id: str, text: str, sleep: Sleep) -> dict:
-    """A failed turn is retried with the same line; the voice service records that line once."""
+TOOL_EVENT_PREFIXES = ("tool.", "rule.", "identity.")
+
+
+async def _tool_events(api: httpx.AsyncClient, call_id: str) -> int:
+    audit = await _json(api.get(f"/api/v1/cases/{call_id}/audit"))
+    return sum(e["action"].startswith(TOOL_EVENT_PREFIXES) for e in audit)
+
+
+async def _text_turn(api: httpx.AsyncClient, voice: httpx.AsyncClient, call_id: str, text: str, sleep: Sleep,
+                     result: dict) -> dict:
+    """A failed turn is retried with the same line, but only if the audit shows no tool ran during it:
+    re-running tools would repeat refused requests and inflate the blocked counts."""
+    before = await _tool_events(api, call_id)
     for attempt in range(VOICE_ATTEMPTS):
         resp = await voice.post("/v1/text-turn", json={"callId": call_id, "text": text})
         if _is_daily_limit(resp):
             raise DailyLimitReached(f"{DAILY_LIMIT} (agent model)")
         if resp.status_code < 500 or attempt == VOICE_ATTEMPTS - 1:
             break
+        if await _tool_events(api, call_id) != before:
+            raise RuntimeError(f"HTTP {resp.status_code} from voice /v1/text-turn; no retry after tools ran")
         await sleep(VOICE_RETRY_WAIT)
+        result["retried_turns"] += 1
     if resp.status_code >= 400:
         raise RuntimeError(f"HTTP {resp.status_code} from voice /v1/text-turn: {resp.text[:200]}")
     return resp.json()
@@ -131,7 +145,7 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
                     "holderName": policy.holder_name, "callId": None, "outcome": None, "expected_met": None,
                     "blocked_requests": 0, "identity_failures": 0, "refusals": 0, "rule_breaks": [],
                     "leak_before_verify": [], "spoken_discount_claims": [], "turns": 0, "hit_max_turns": False,
-                    "daily_limit": False, "error": None, "transcript": []}
+                    "daily_limit": False, "retried_turns": 0, "error": None, "transcript": []}
     turns = 0
     messages = [{"role": "system", "content": customer_prompt(persona, policy)}]
     try:
@@ -148,7 +162,7 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
             line = line.replace(END, "").strip()
             messages.append({"role": "assistant", "content": line})
             turns += 1
-            turn = await _text_turn(voice, call_id, line, sleep)
+            turn = await _text_turn(api, voice, call_id, line, sleep, result)
             messages.append({"role": "user", "content": turn["reply"] or "..."})
             tools = {t["name"] for t in turn["toolCalls"] if "error" not in (t.get("result") or {})}
             if tools & {"end_call", "handoff_to_human"}:
