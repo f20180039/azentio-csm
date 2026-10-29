@@ -150,9 +150,9 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public Verification verify(UUID callId, String dateOfBirth, String actor) {
-        CallEntity c = openCall(callId);
+        CallEntity c = openCall(callId, "verify", actor);
         if (c.getVerifyFailures() >= playbook.maxVerifyFailures()) {
-            throw ApiException.conflict("VERIFY_LOCKED");
+            throw refused(callId, actor, "verify", ApiException.conflict("VERIFY_LOCKED"));
         }
         LocalDate dob;
         try {
@@ -161,6 +161,7 @@ public class RenewalService {
             throw ApiException.badRequest("dateOfBirth must be YYYY-MM-DD");
         }
         if (c.isIdentityVerified()) {
+            audit.record(callId, actor, "tool.refused", Map.of("tool", "verify", "code", "ALREADY_VERIFIED"));
             return new Verification(true, playbook.maxVerifyFailures() - c.getVerifyFailures(), c.isMustHandoff());
         }
         if (policy(c).getDateOfBirth().equals(dob)) {
@@ -180,9 +181,9 @@ public class RenewalService {
     }
 
     @PreAuthorize(TOOLS_ROLE)
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public PolicyView policy(UUID callId, String actor) {
-        CallEntity c = verifiedCall(callId);
+        CallEntity c = verifiedCall(callId, "get_policy", actor);
         PolicyEntity p = policy(c);
         audit.record(callId, actor, "tool.get_policy", Map.of("policyId", p.getId()));
         return new PolicyView(p.getId(), p.getProduct(), p.getSumInsured().longValue(), p.getExpiresOn(),
@@ -191,9 +192,9 @@ public class RenewalService {
     }
 
     @PreAuthorize(TOOLS_ROLE)
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public Options options(UUID callId, String actor) {
-        CallEntity c = offerableCall(callId);
+        CallEntity c = offerableCall(callId, "list_allowed_options", actor);
         List<RemovableAddon> removable = new ArrayList<>();
         if (playbook.removableOptionalAddons()) {
             for (JsonNode a : readJson(policy(c).getAddons())) {
@@ -210,13 +211,13 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public Quote quote(UUID callId, QuoteRequest req, String actor) {
-        CallEntity c = offerableCall(callId);
+        CallEntity c = offerableCall(callId, "quote_renewal", actor);
         PolicyEntity p = policy(c);
         List<String> drop = req.dropAddons() == null ? List.of() : req.dropAddons().stream().distinct().toList();
         String plan = req.paymentPlan();
         int discount = req.discountPercent() == null ? 0 : req.discountPercent();
         if (plan == null || !playbook.paymentPlans().contains(plan) || discount < 0) {
-            throw ApiException.invalidOption("INVALID_OPTION");
+            throw refused(callId, actor, "quote_renewal", ApiException.invalidOption("INVALID_OPTION"));
         }
         long annual = p.getRenewalPremium().longValue();
         for (String code : drop) {
@@ -227,7 +228,7 @@ public class RenewalService {
                 }
             }
             if (addon == null || !addon.path("optional").asBoolean(false) || !playbook.removableOptionalAddons()) {
-                throw ApiException.invalidOption("INVALID_OPTION");
+                throw refused(callId, actor, "quote_renewal", ApiException.invalidOption("INVALID_OPTION"));
             }
             annual -= addon.path("premium").asLong();
         }
@@ -265,10 +266,10 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public PaymentLinkSent paymentLink(UUID callId, UUID quoteId, String actor) {
-        CallEntity c = offerableCall(callId);
+        CallEntity c = offerableCall(callId, "send_payment_link", actor);
         if (quoteId == null || c.getLastQuote() == null
                 || !quoteId.toString().equals(readJson(c.getLastQuote()).path("quoteId").asText())) {
-            throw ApiException.conflict("STALE_QUOTE");
+            throw refused(callId, actor, "send_payment_link", ApiException.conflict("STALE_QUOTE"));
         }
         c.setPaymentLinkSent(true);
         audit.record(callId, actor, "tool.send_payment_link", Map.of("quoteId", quoteId, "channel", "SMS",
@@ -280,11 +281,12 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public HandoffQueued handoff(UUID callId, HandoffRequest req, String actor) {
-        CallEntity c = openCall(callId);
+        CallEntity c = openCall(callId, "handoff_to_human", actor);
         if (req == null || req.reason() == null || req.reason().isBlank()) {
             throw ApiException.badRequest("reason is required");
         }
         c.setHandoffReason(req.reason());
+        c.setMustHandoff(true);
         c.setCallbackAt(req.callbackAt());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("reason", req.reason());
@@ -300,7 +302,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public void turn(UUID callId, TurnRequest req, String actor) {
-        CallEntity c = openCall(callId);
+        CallEntity c = openCall(callId, "turn", actor);
         if (req == null || !("agent".equals(req.role()) || "customer".equals(req.role()))) {
             throw ApiException.badRequest("role must be agent or customer");
         }
@@ -337,26 +339,32 @@ public class RenewalService {
         return new CallEnded(outcome, c.isMustHandoff());
     }
 
-    private CallEntity openCall(UUID callId) {
+    private CallEntity openCall(UUID callId, String tool, String actor) {
         CallEntity c = calls.findForUpdate(callId).orElseThrow(() -> callNotFound(callId));
         if (c.getEndedAt() != null) {
-            throw ApiException.conflict("CALL_ENDED");
+            throw refused(callId, actor, tool, ApiException.conflict("CALL_ENDED"));
         }
         return c;
     }
 
-    private CallEntity offerableCall(UUID callId) {
-        CallEntity c = verifiedCall(callId);
+    /** Records the refusal in the audit trail and returns the exception to throw (callers use noRollbackFor). */
+    private ApiException refused(UUID callId, String actor, String tool, ApiException e) {
+        audit.record(callId, actor, "tool.refused", Map.of("tool", tool, "code", e.getMessage()));
+        return e;
+    }
+
+    private CallEntity offerableCall(UUID callId, String tool, String actor) {
+        CallEntity c = verifiedCall(callId, tool, actor);
         if (c.isMustHandoff()) {
-            throw ApiException.conflict("MUST_HANDOFF");
+            throw refused(callId, actor, tool, ApiException.conflict("MUST_HANDOFF"));
         }
         return c;
     }
 
-    private CallEntity verifiedCall(UUID callId) {
-        CallEntity c = openCall(callId);
+    private CallEntity verifiedCall(UUID callId, String tool, String actor) {
+        CallEntity c = openCall(callId, tool, actor);
         if (!c.isIdentityVerified()) {
-            throw ApiException.forbidden("IDENTITY_NOT_VERIFIED");
+            throw refused(callId, actor, tool, ApiException.forbidden("IDENTITY_NOT_VERIFIED"));
         }
         return c;
     }

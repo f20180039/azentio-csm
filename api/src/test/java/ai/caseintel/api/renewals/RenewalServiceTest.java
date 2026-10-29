@@ -335,6 +335,66 @@ class RenewalServiceTest {
         assertThat(callRow.isPaymentLinkSent()).isFalse();
     }
 
+    private boolean refusedWith(String code) {
+        return events.stream().anyMatch(e -> e.action().equals("tool.refused")
+                && e.payload().path("code").asText().equals(code));
+    }
+
+    @Test
+    void policyBeforeVerifyIsAudited() {
+        RenewalService s = startedCall();
+        assertRefused(() -> s.policy(id(), "voice"), HttpStatus.FORBIDDEN, "IDENTITY_NOT_VERIFIED");
+        assertThat(refusedWith("IDENTITY_NOT_VERIFIED")).isTrue();
+        assertThat(events.get(events.size() - 1).payload().path("tool").asText()).isEqualTo("get_policy");
+    }
+
+    @Test
+    void refusedQuoteAfterForcedHandoffIsAudited() {
+        RenewalService s = verifiedCall();
+        for (int i = 0; i < 2; i++) {
+            assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 10), "voice"),
+                    HttpStatus.UNPROCESSABLE_ENTITY, "OUTSIDE_PLAYBOOK");
+        }
+        assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 0), "voice"),
+                HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertThat(refusedWith("MUST_HANDOFF")).isTrue();
+    }
+
+    @Test
+    void otherRefusalsAreAudited() {
+        RenewalService s = verifiedCall();
+        assertRefused(() -> s.quote(id(), new QuoteRequest(List.of("BASE"), "annual", 0), "voice"),
+                HttpStatus.UNPROCESSABLE_ENTITY, "INVALID_OPTION");
+        assertRefused(() -> s.paymentLink(id(), UUID.randomUUID(), "voice"), HttpStatus.CONFLICT, "STALE_QUOTE");
+        s.verify(id(), "1980-03-14", "voice");
+        assertThat(refusedWith("INVALID_OPTION") && refusedWith("STALE_QUOTE") && refusedWith("ALREADY_VERIFIED"))
+                .isTrue();
+        s.end(id(), "voice");
+        assertRefused(() -> s.policy(id(), "voice"), HttpStatus.CONFLICT, "CALL_ENDED");
+        assertThat(refusedWith("CALL_ENDED")).isTrue();
+    }
+
+    @Test
+    void lockedVerifyIsAudited() {
+        RenewalService s = startedCall();
+        for (int i = 0; i < 3; i++) {
+            s.verify(id(), "1999-01-0" + (i + 1), "voice");
+        }
+        assertRefused(() -> s.verify(id(), "1980-03-14", "voice"), HttpStatus.CONFLICT, "VERIFY_LOCKED");
+        assertThat(refusedWith("VERIFY_LOCKED")).isTrue();
+    }
+
+    @Test
+    void quoteAfterVoluntaryHandoffIsRefused() {
+        RenewalService s = verifiedCall();
+        s.handoff(id(), new HandoffRequest("Customer wants a person", null), "voice");
+        assertThat(callRow.isMustHandoff()).isTrue();
+        assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 0), "voice"),
+                HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertRefused(() -> s.paymentLink(id(), UUID.randomUUID(), "voice"), HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertThat(callRow.isPaymentLinkSent()).isFalse();
+    }
+
     @Test
     void paymentLinkNeedsLatestQuote() {
         RenewalService s = verifiedCall();
