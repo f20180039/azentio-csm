@@ -61,6 +61,12 @@ function modelLine(s: LlmStatus): string {
   return `Model in use: ${s.active ?? 'none yet'}${resting ? ` · ${resting} of ${s.links.length} resting` : ''}`;
 }
 
+function answeredBy(models: Record<string, number> | null | undefined): string {
+  if (!models) return 'not recorded by this run';
+  const parts = Object.entries(models).map(([name, n]) => `${name} ${n} turn${n === 1 ? '' : 's'}`);
+  return parts.join(', ') || 'no agent turns';
+}
+
 function SimulatedTest() {
   const [report, setReport] = useState<EvalReport | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
@@ -103,6 +109,7 @@ function SimulatedTest() {
             {report.meta.customer_model && ` · customer ${report.meta.customer_model}`}
             {report.meta.agent_model && ` · agent ${report.meta.agent_model}`}. Scored from the API's own audit trail.
           </span>
+          <span className="small muted mono">Answered by: {answeredBy(t.models)}</span>
           {report.meta.partial && (
             <span className="pill warn" style={{ justifySelf: 'start' }}>
               Partial: {report.meta.partial}. The run stopped early.
@@ -162,6 +169,7 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [failed, setFailed] = useState(false);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
+  const [includeSimulated, setIncludeSimulated] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
   const toastRef = useRef(toast);
@@ -172,7 +180,7 @@ export function Dashboard() {
     let wasFailing = false;
     const refresh = () => {
       if (document.hidden) return;
-      getDashboard().then(
+      getDashboard(includeSimulated).then(
         (d) => {
           if (!alive) return;
           wasFailing = false;
@@ -196,7 +204,7 @@ export function Dashboard() {
       clearInterval(t);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, []);
+  }, [includeSimulated]);
 
   const k = data?.kpis;
   const finished = k ? k.renewed + k.handedOff + k.noDecision : 0;
@@ -213,9 +221,15 @@ export function Dashboard() {
           </span>
           {llm && <span className="muted small mono">{modelLine(llm)}</span>}
         </div>
-        <span className="small muted" aria-live="polite">
-          {failed ? 'Connection lost. Showing the last figures.' : 'Live, refreshes every 3 seconds'}
-        </span>
+        <div style={{ display: 'grid', gap: 4, justifyItems: 'end' }}>
+          <span className="small muted" aria-live="polite">
+            {failed ? 'Connection lost. Showing the last figures.' : 'Live, refreshes every 3 seconds'}
+          </span>
+          <label className="small row" style={{ gap: 6 }}>
+            <input type="checkbox" checked={includeSimulated} onChange={(e) => setIncludeSimulated(e.target.checked)} />
+            Include simulated calls
+          </label>
+        </div>
       </div>
 
       {!data && !failed && <div className="panel empty">Loading the dashboard…</div>}

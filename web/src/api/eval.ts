@@ -17,6 +17,8 @@ export interface EvalTotals {
   /** absent in reports written before the metric existed */
   spoken_discount_claims?: number;
   median_turns: number | null;
+  /** agent turns per answering model; null or absent when the run did not record it */
+  models?: Record<string, number> | null;
 }
 
 export interface EvalPersona {

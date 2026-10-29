@@ -63,9 +63,10 @@ export interface Dashboard {
   riskBands: RiskBand[];
 }
 
-export async function getDashboard(): Promise<Dashboard> {
+/** Calls the evaluator's AI customer made are left out unless `includeSimulated`. */
+export async function getDashboard(includeSimulated = false): Promise<Dashboard> {
   if (MOCK_MODE) return sampleDashboard();
-  const d = await get<Dashboard>('/renewals/dashboard');
+  const d = await get<Dashboard>(`/renewals/dashboard${includeSimulated ? '?includeSimulated=true' : ''}`);
   return {
     ...d,
     outcomesByDay: d.outcomesByDay ?? [],

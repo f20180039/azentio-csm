@@ -56,6 +56,14 @@ curl -u analyst:analyst -F caseType=demo -F 'attributes={"policyNo":"POL-1"}' -F
 cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth.json --api http://localhost:8080 --samples ../samples --case-type demo --user analyst:analyst
 ```
 
+## Demo-day checklist
+
+- Do not run the simulated evaluation (`python -m eval.simulate`) within 24 hours of the demo: it uses the same Groq daily quota as the live agent.
+- After restarting `cloudflared`, restart the voice service too: the tunnel URL changes, and `PUBLIC_BASE_URL` in `.env` must name the new one (dialling answers 503 `TUNNEL_DOWN` otherwise).
+- Speech-to-text has no fallback: it is Groq Whisper only. If Groq is down, use the typed channel on the call page.
+- A Twilio trial account plays a trial preamble when the phone is answered and waits for a key press before the agent speaks.
+- The dashboard leaves out the evaluator's simulated calls; tick **Include simulated calls** to see them.
+
 ## Tests
 
 | Service | Command | Coverage |

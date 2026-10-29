@@ -7,10 +7,10 @@ import type { EvalReport } from '../api/eval';
 import type { LlmStatus } from '../api/llm';
 import { ToastProvider } from '../components/Toasts';
 
-const getDashboard = vi.fn<() => Promise<DashboardData>>();
+const getDashboard = vi.fn<(includeSimulated?: boolean) => Promise<DashboardData>>();
 let failing = false; // a plain flag: vitest's spy leaves a derived promise unhandled when it records a rejection
 vi.mock('../api/dashboard', () => ({
-  getDashboard: () => (failing ? Promise.reject(new Error('down')) : getDashboard()),
+  getDashboard: (includeSimulated?: boolean) => (failing ? Promise.reject(new Error('down')) : getDashboard(includeSimulated)),
 }));
 
 const getEvalLatest = vi.fn<() => Promise<EvalReport | null>>();
@@ -138,6 +138,19 @@ describe('Dashboard', () => {
     expect(getDashboard).toHaveBeenCalledTimes(2);
   });
 
+  it('leaves simulated calls out until the toggle is switched on', async () => {
+    getDashboard.mockResolvedValue(sampleDashboard());
+    mount();
+    const toggle = (await screen.findByLabelText('Include simulated calls')) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(getDashboard).toHaveBeenLastCalledWith(false);
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(toggle.checked).toBe(true);
+    expect(getDashboard).toHaveBeenLastCalledWith(true);
+  });
+
   it('keeps the last figures and does not reload on a failed poll', async () => {
     getDashboard.mockResolvedValue(sampleDashboard());
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -194,6 +207,22 @@ describe('Simulated test panel', () => {
     const row = within(panel).getByText('skip_identity').closest('tr') as HTMLElement;
     expect(row).toHaveTextContent('1 of 2');
     expect(row).toHaveTextContent('No decision 2');
+  });
+
+  it('names the models that answered the agent turns', async () => {
+    const r = evalReport();
+    r.totals.models = { 'groq:openai/gpt-oss-120b': 41, 'gemini:gemini-2.5-flash': 1 };
+    getDashboard.mockResolvedValue(sampleDashboard());
+    getEvalLatest.mockResolvedValue(r);
+    mount();
+    expect(await screen.findByText('Answered by: groq:openai/gpt-oss-120b 41 turns, gemini:gemini-2.5-flash 1 turn')).toBeInTheDocument();
+  });
+
+  it('says the answering model was not recorded by an older run', async () => {
+    getDashboard.mockResolvedValue(sampleDashboard());
+    getEvalLatest.mockResolvedValue(evalReport());
+    mount();
+    expect(await screen.findByText('Answered by: not recorded by this run')).toBeInTheDocument();
   });
 
   it('marks a run that stopped at the daily limit as partial and tolerates older reports', async () => {

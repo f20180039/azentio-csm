@@ -52,7 +52,7 @@ async function mount(callId = 'sample-call-x') {
 describe('Call page voice and typing edge cases', () => {
   it('disconnects a session that finishes connecting after unmount', async () => {
     const view = await mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect voice' }));
     await waitFor(() => expect(h.resolveConnect).not.toBeNull());
     view.unmount();
     const disconnect = vi.fn(() => Promise.resolve());
@@ -63,7 +63,7 @@ describe('Call page voice and typing edge cases', () => {
   it('disconnects the voice session when the call ends from the agent side', async () => {
     h.resolveConnect = null;
     await mount('sample-call-agent-ended');
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect voice' }));
     await waitFor(() => expect(h.resolveConnect).not.toBeNull());
     const disconnect = vi.fn(() => Promise.resolve());
     h.resolveConnect!({ disconnect });
