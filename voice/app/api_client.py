@@ -70,7 +70,8 @@ class RenewalsApi:
         return await self._send("POST", self._p(call_id, "/payment-link"), {"quoteId": quote_id})
 
     async def handoff(self, call_id: str, reason: str, callback_at: str | None = None) -> dict:
-        return await self._send("POST", self._p(call_id, "/handoff"), {"reason": reason, "callbackAt": callback_at})
+        body = {"reason": reason} if callback_at is None else {"reason": reason, "callbackAt": callback_at}
+        return await self._send("POST", self._p(call_id, "/handoff"), body)
 
     async def turn(self, call_id: str, role: str, text: str) -> dict:
         at = datetime.now(timezone.utc).isoformat()

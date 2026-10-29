@@ -106,6 +106,10 @@ async def text_turn(body: TextTurnIn) -> dict:
         turn = await brain.reply(body.text)
     except ApiUnavailable as e:
         raise HTTPException(502, "renewals API unavailable") from e
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429 and "per day" in e.response.text:
+            raise HTTPException(429, "GROQ_DAILY_LIMIT") from e
+        raise HTTPException(502, "language model unavailable") from e
     except httpx.HTTPError as e:
         raise HTTPException(502, "language model unavailable") from e
     return {

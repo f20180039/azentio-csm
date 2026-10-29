@@ -80,7 +80,7 @@ def test_tool_loop_limit_hands_off():
     turn = asyncio.run(brain.reply("hello"))
     assert turn.text == "Let me get a colleague to help you."
     handoffs = [b for _, p, b in calls if p.endswith("/handoff")]
-    assert handoffs == [{"reason": "TOOL_LOOP_LIMIT", "callbackAt": None}]
+    assert handoffs == [{"reason": "TOOL_LOOP_LIMIT"}]
     assert len(llm.seen) == 5
 
 
@@ -182,3 +182,43 @@ def test_concurrent_replies_do_not_interleave():
     asyncio.run(both())
     assert llm.seen[0] == ["system:SYSTEM", "user:one"]
     assert llm.seen[1] == ["system:SYSTEM", "user:one", "assistant:ok", "user:two"]
+
+
+def test_retried_turn_posts_the_customer_line_once():
+    class FlakyThenOk:
+        def __init__(self):
+            self.n = 0
+
+        async def complete(self, messages, tools):
+            self.n += 1
+            if self.n == 1:
+                raise httpx.HTTPStatusError("429", request=httpx.Request("POST", "x"), response=httpx.Response(429))
+            return text("Hello again.")
+
+    brain, calls = make(FlakyThenOk(), ok)
+    try:
+        asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    except httpx.HTTPError:
+        pass
+    asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    turns = [b["role"] for _, p, b in calls if p.endswith("/turns")]
+    assert turns == ["customer", "agent"]
+    asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    assert [b["role"] for _, p, b in calls if p.endswith("/turns")] == ["customer", "agent", "customer", "agent"]
+
+
+def test_brain_remembers_the_premium_for_a_refused_discount():
+    def handler(r):
+        if r.url.path.endswith("/policy"):
+            return httpx.Response(200, json={"renewalPremium": 2094})
+        if r.url.path.endswith("/quote"):
+            return httpx.Response(422, json={"detail": "OUTSIDE_PLAYBOOK"})
+        return httpx.Response(200, json={})
+
+    llm = Scripted(tool_call("get_policy", {}, "c1"), text("It is two thousand and ninety-four rupees."),
+                   tool_call("quote_renewal", {"discount_percent": 20}, "c2"), text("No discount, sorry."))
+    brain, _ = make(llm, handler)
+    asyncio.run(brain.reply("what is my premium"))
+    asyncio.run(brain.reply("20 percent off please"))
+    tool_msg = [m for m in llm.seen[-1] if m["role"] == "tool"][-1]
+    assert "unchanged at two thousand and ninety-four rupees" in tool_msg["content"]

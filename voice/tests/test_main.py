@@ -239,3 +239,17 @@ def test_eval_latest_serves_the_report(tmp_path, monkeypatch):
     c = client_with(lambda r: httpx.Response(200, json={}))
     resp = c.get("/v1/eval/latest")
     assert resp.status_code == 200 and resp.json() == {"totals": {"conversations": 18}}
+
+
+def test_groq_daily_limit_is_429_not_502():
+    class Daily:
+        async def complete(self, messages, tools):
+            resp = httpx.Response(429, text='{"error":{"message":"Rate limit reached on tokens per day (TPD)"}}',
+                                  request=httpx.Request("POST", "https://api.groq.com"))
+            raise httpx.HTTPStatusError("429", request=resp.request, response=resp)
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    from app.brain import CallBrain
+    main.state.brains[ABC] = CallBrain(Daily(), main.state.api, ABC, "SYS")
+    resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
+    assert resp.status_code == 429 and resp.json()["detail"] == "GROQ_DAILY_LIMIT"

@@ -110,9 +110,11 @@ async def build_pipeline(
         ),
     )
 
+    memory: dict = {}
+
     async def handle_tool(params: FunctionCallParams) -> None:
         try:
-            result = await run_tool(api, call_id, params.function_name, dict(params.arguments or {}))
+            result = await run_tool(api, call_id, params.function_name, dict(params.arguments or {}), memory)
         except ApiUnavailable:
             result = {"error": "API_UNAVAILABLE", "mustHandoff": True}
         if params.function_name != "end_call":

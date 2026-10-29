@@ -43,7 +43,7 @@ TOOL_SCHEMAS: list[dict] = [
         "Transfer the customer to a human agent, optionally with a callback time.",
         {
             "reason": {"type": "string", "description": "Why the call is being handed off"},
-            "callback_time": {"type": "string", "description": "Optional ISO-8601 callback time"},
+            "callback_time": {"type": ["string", "null"], "description": "Optional ISO-8601 callback time"},
         },
         ["reason"],
     ),
@@ -51,11 +51,20 @@ TOOL_SCHEMAS: list[dict] = [
 ]
 
 
-async def run_tool(api: RenewalsApi, call_id: str, name: str, args: dict) -> dict:
+async def run_tool(api: RenewalsApi, call_id: str, name: str, args: dict, memory: dict | None = None) -> dict:
+    """memory is per call: it keeps the renewal premium from get_policy for a refused discount's note."""
+    memory = {} if memory is None else memory
     try:
-        return _add_spoken(await _dispatch(api, call_id, name, args))
+        result = _add_spoken(await _dispatch(api, call_id, name, args))
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return {"error": "BAD_ARGUMENTS", "detail": f"{type(e).__name__}: {e}"[:200]}
+    if name == "get_policy" and "renewalPremium" in result.get("spoken", {}):
+        memory["renewalPremium"] = result["spoken"]["renewalPremium"]
+    if name == "quote_renewal" and result.get("error") == "OUTSIDE_PLAYBOOK":
+        unchanged = f" at {memory['renewalPremium']}" if "renewalPremium" in memory else ""
+        result = {**result, "note": f"No discount was applied. The premium is unchanged{unchanged}. "
+                                    "Do not state or imply any discounted amount."}
+    return result
 
 
 async def _dispatch(api: RenewalsApi, call_id: str, name: str, args: dict) -> dict:
@@ -76,7 +85,7 @@ async def _dispatch(api: RenewalsApi, call_id: str, name: str, args: dict) -> di
         case "send_payment_link":
             return await api.payment_link(call_id, args["quote_id"])
         case "handoff_to_human":
-            return await api.handoff(call_id, args["reason"], args.get("callback_time"))
+            return await api.handoff(call_id, args["reason"], args.get("callback_time") or None)
         case "end_call":
             return await api.end(call_id)
         case _:

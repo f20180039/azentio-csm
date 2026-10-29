@@ -5,6 +5,7 @@ Needs the renewals API and the voice service running. Writes eval/out/latest.jso
 """
 import argparse
 import asyncio
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Protocol
@@ -25,12 +26,21 @@ MAX_RETRY_WAIT = 60.0
 VOICE_ATTEMPTS = 3
 VOICE_RETRY_WAIT = 45.0  # the agent model's per-minute token window
 END = "[END]"
+DAILY_LIMIT = "Groq daily limit"
 
 Sleep = Callable[[float], Awaitable[None]]
 
 
 class CustomerUnavailable(Exception):
     pass
+
+
+class DailyLimitReached(Exception):
+    """Groq's per-day quota is spent; nothing more can be learned today, so the run stops."""
+
+
+def _is_daily_limit(resp: httpx.Response) -> bool:
+    return resp.status_code == 429 and ("per day" in resp.text or "GROQ_DAILY_LIMIT" in resp.text)
 
 
 class Customer(Protocol):
@@ -60,6 +70,8 @@ class GroqCustomer:
                 resp = await self._client.post(GROQ_URL, json=body)
             except httpx.HTTPError as e:
                 raise CustomerUnavailable(f"customer LLM unreachable: {e!r}") from e
+            if _is_daily_limit(resp):
+                raise DailyLimitReached(f"{DAILY_LIMIT} (customer model)")
             if resp.status_code in (429, 503) and attempt < CUSTOMER_ATTEMPTS - 1:
                 attempt += 1
                 await self._sleep(_retry_after(resp, 10.0 * attempt))
@@ -97,10 +109,12 @@ async def _json(resp_coro) -> dict | list:
     return resp.json()
 
 
-async def _text_turn(voice: httpx.AsyncClient, call_id: str, text: str, sleep: Sleep, turn_gap: float) -> dict:
-    """A failed turn is retried; the customer line may then appear twice in the transcript, which scoring tolerates."""
+async def _text_turn(voice: httpx.AsyncClient, call_id: str, text: str, sleep: Sleep) -> dict:
+    """A failed turn is retried with the same line; the voice service records that line once."""
     for attempt in range(VOICE_ATTEMPTS):
         resp = await voice.post("/v1/text-turn", json={"callId": call_id, "text": text})
+        if _is_daily_limit(resp):
+            raise DailyLimitReached(f"{DAILY_LIMIT} (agent model)")
         if resp.status_code < 500 or attempt == VOICE_ATTEMPTS - 1:
             break
         await sleep(VOICE_RETRY_WAIT)
@@ -116,7 +130,9 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
     result: dict = {"persona": persona.name, "expect": persona.expect, "policyId": policy_id,
                     "holderName": policy.holder_name, "callId": None, "outcome": None, "expected_met": None,
                     "blocked_requests": 0, "identity_failures": 0, "refusals": 0, "rule_breaks": [],
-                    "leak_before_verify": [], "turns": 0, "hit_max_turns": False, "error": None, "transcript": []}
+                    "leak_before_verify": [], "spoken_discount_claims": [], "turns": 0, "hit_max_turns": False,
+                    "daily_limit": False, "error": None, "transcript": []}
+    turns = 0
     messages = [{"role": "system", "content": customer_prompt(persona, policy)}]
     try:
         started = await _json(api.post("/api/v1/renewals/calls", json={"policyId": policy_id}))
@@ -131,13 +147,17 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
                 break
             line = line.replace(END, "").strip()
             messages.append({"role": "assistant", "content": line})
-            turn = await _text_turn(voice, call_id, line, sleep, turn_gap)
+            turns += 1
+            turn = await _text_turn(voice, call_id, line, sleep)
             messages.append({"role": "user", "content": turn["reply"] or "..."})
             tools = {t["name"] for t in turn["toolCalls"] if "error" not in (t.get("result") or {})}
             if tools & {"end_call", "handoff_to_human"}:
                 break
         else:
             result["hit_max_turns"] = True
+    except DailyLimitReached as e:
+        result["daily_limit"] = True
+        result["error"] = f"{type(e).__name__}: {e}"[:300]
     except Exception as e:  # one bad conversation must not stop the run
         result["error"] = f"{type(e).__name__}: {e}"[:300]
     if result["callId"]:
@@ -148,7 +168,7 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
         except Exception as e:
             result["error"] = result["error"] or f"{type(e).__name__}: {e}"[:300]
         else:
-            result.update(score(persona.name, call, audit, policy.renewal_premium))
+            result.update(score(persona.name, call, audit, policy.renewal_premium), turns=turns)
             result["transcript"] = [{"role": t["role"], "text": t["text"]} for t in call.get("transcript") or []]
             result["audit"] = [e["action"] for e in audit]
     if result["error"]:
@@ -171,19 +191,41 @@ async def run_eval(names: list[str], per_persona: int, api: httpx.AsyncClient, v
             status = r["error"] or f"{r['outcome']} expected_met={r['expected_met']}"
             log(f"[{len(out) + 1}] {name} #{i + 1} {r['policyId']} turns={r['turns']} {status}")
             out.append(r)
+            if r["daily_limit"]:
+                log(f"stopping: {DAILY_LIMIT}")
+                return out
     return out
 
 
-async def main(argv: list[str] | None = None) -> None:
+def finish(convs: list[dict], meta: dict, out_dir: Path) -> int:
+    """Writes the report; returns the process exit code (non-zero when the run stopped at the daily limit)."""
+    partial = any(c.get("daily_limit") for c in convs)
+    if partial:
+        meta = {**meta, "partial": DAILY_LIMIT}
+    rep = report.summarise(convs, meta)
+    json_path, md_path = report.write(rep, out_dir)
+    t = rep["totals"]
+    print(f"{t['conversations']} conversations, {t['errors']} errors, rule breaks {t['rule_breaks']}, "
+          f"leaks {t['leaks']}, spoken discount claims {t['spoken_discount_claims']}, median turns {t['median_turns']}"
+          + (f" (partial: {DAILY_LIMIT})" if partial else ""))
+    print(f"wrote {json_path} and {md_path}")
+    return 3 if partial else 0
+
+
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--per-persona", type=int, default=3)
-    ap.add_argument("--turn-gap", type=float, default=4.0)
+    ap.add_argument("--turn-gap", type=float, default=20.0, help="seconds between turns; Groq free tier is 8k tokens/min")
     ap.add_argument("--max-turns", type=int, default=12)
     ap.add_argument("--api", default="http://localhost:8080")
     ap.add_argument("--voice", default="http://localhost:7861")
     ap.add_argument("--personas", default=",".join(PERSONAS))
     ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "out")
-    args = ap.parse_args(argv)
+    return ap.parse_args(argv)
+
+
+async def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     names = [n.strip() for n in args.personas.split(",") if n.strip()]
     unknown = set(names) - set(PERSONAS)
     if unknown:
@@ -196,20 +238,15 @@ async def main(argv: list[str] | None = None) -> None:
     customer = GroqCustomer(settings.groq_api_key)
     async with httpx.AsyncClient(base_url=args.api.rstrip("/"), auth=("analyst", "analyst"), timeout=30) as api, \
             httpx.AsyncClient(base_url=args.voice.rstrip("/"), timeout=180) as voice:
-        convs = await run_eval(names, args.per_persona, api, voice, customer, load_seed(), args.max_turns, args.turn_gap,
-                                 log=lambda s: print(s, flush=True))
+        convs = await run_eval(names, args.per_persona, api, voice, customer, load_seed(), args.max_turns,
+                               args.turn_gap, log=lambda s: print(s, flush=True))
     await customer.aclose()
     meta = {"started_at": started.isoformat(timespec="seconds"),
             "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "per_persona": args.per_persona, "max_turns": args.max_turns, "turn_gap_s": args.turn_gap,
             "customer_model": CUSTOMER_MODEL, "agent_model": settings.llm_model}
-    rep = report.summarise(convs, meta)
-    json_path, md_path = report.write(rep, args.out)
-    t = rep["totals"]
-    print(f"{t['conversations']} conversations, {t['errors']} errors, rule breaks {t['rule_breaks']}, "
-          f"leaks {t['leaks']}, median turns {t['median_turns']}")
-    print(f"wrote {json_path} and {md_path}")
+    return finish(convs, meta, args.out)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

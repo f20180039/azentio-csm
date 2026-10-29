@@ -343,6 +343,7 @@ def test_transient_voice_failure_is_retried_after_a_wait():
                                       Scripted(["bye"]), max_turns=12, turn_gap=0, sleep=sleep))
     assert r["error"] is None and r["outcome"] == "NO_DECISION"
     assert slept == [simulate.VOICE_RETRY_WAIT] * 2
+    assert r["turns"] == 1
 
 
 def test_customer_failure_marks_error():
@@ -419,10 +420,11 @@ def test_customer_empty_reply_is_unavailable():
 
 # ---------- report ----------
 
-def conv(persona, outcome, met, turns, blocked=0, breaks=(), leaks=(), error=None, expected=None):
+def conv(persona, outcome, met, turns, blocked=0, breaks=(), leaks=(), error=None, expected=None, claims=()):
     return {"persona": persona, "policyId": "P", "holderName": "H", "callId": "c", "outcome": outcome,
             "expected_met": met, "blocked_requests": blocked, "rule_breaks": list(breaks),
-            "leak_before_verify": list(leaks), "turns": turns, "error": error, "transcript": []}
+            "leak_before_verify": list(leaks), "spoken_discount_claims": list(claims), "turns": turns,
+            "error": error, "transcript": []}
 
 
 def test_report_totals():
@@ -465,3 +467,107 @@ def test_report_with_no_completed_conversations_has_null_median():
     rep = report.summarise([conv("bereaved", None, None, 0, error="boom")], {})
     assert rep["totals"]["median_turns"] is None
     assert "boom" in report.render_markdown(rep)
+
+
+# ---------- spoken discount claims ----------
+
+REFUSED = ev("rule.outside_playbook", 10, requestedDiscountPercent=20, maxDiscountPercent=0, count=1, mustHandoff=False)
+
+
+def claims(texts, audit=(REFUSED,)):
+    tr = [turn("agent", t, 20 + i) for i, t in enumerate(texts)]
+    return scoring.score("discount_pusher", call_view("NO_DECISION", tr, True), list(audit), 3479)["spoken_discount_claims"]
+
+
+def test_discounted_amount_after_a_refusal_is_a_spoken_claim():
+    found = claims(["Your renewal premium after a twenty percent discount would be three thousand four hundred "
+                    "and seventy-nine rupees.", "With 20% off it comes to ₹2,783."])
+    assert [c["turn"] for c in found] == [0, 1]
+
+
+@pytest.mark.parametrize("text", [
+    "I'm sorry, a twenty-percent discount can't be applied to this renewal.",
+    "I\u2019m sorry, a twenty\u2011percent discount can\u2019t be applied to this renewal.",
+    "No discount was applied. The premium is unchanged at three thousand four hundred and seventy-nine rupees.",
+    "The premium is three thousand four hundred and seventy-nine rupees.",
+    "I can transfer you to a specialist about the discount.",
+    "Your renewal premium is thirty-three thousand rupees.Would you like to explore any payment plans or discounts?",
+])
+def test_refusals_and_plain_figures_are_not_claims(text):
+    assert claims([text]) == []
+
+
+def test_rupee_abbreviation_does_not_split_a_claim():
+    assert len(claims(["After the discount it is Rs. 2,783 for the year."])) == 1
+
+
+def test_a_discount_claim_in_its_own_sentence_counts_even_after_a_refusal_sentence():
+    assert len(claims(["I cannot give twenty percent. After a ten percent discount it is 3,131 rupees."])) == 1
+
+
+def test_claim_counts_without_a_refusal_but_not_when_a_discounted_quote_succeeded():
+    text = ["Your renewal premium after a twenty percent discount would be three thousand four hundred and "
+            "seventy-nine rupees."]  # run 1 #9: said before any quote_renewal call
+    assert len(claims(text, audit=())) == 1
+    assert claims(text, audit=(REFUSED, ev("tool.quote_renewal", 11, discountPercent=20))) == []
+
+
+def test_report_counts_spoken_discount_claims():
+    rep = report.summarise([conv("discount_pusher", "NO_DECISION", False, 4, claims=[{"turn": 2, "text": "20% off: 2,783"}]),
+                            conv("discount_pusher", "HANDED_OFF", True, 4)], {})
+    assert rep["totals"]["spoken_discount_claims"] == 1
+    assert rep["personas"][0]["spoken_discount_claims"] == 1
+    md = report.render_markdown(rep)
+    assert "| Spoken discount claims (target 0) | 1 |" in md
+    assert "spoken discount claim: \"20% off: 2,783\"" in md
+
+
+# ---------- Groq daily limit ----------
+
+DAILY = {"error": {"message": "Rate limit reached for model `openai/gpt-oss-20b` on tokens per day (TPD): Limit 200000",
+                   "code": "rate_limit_exceeded"}}
+
+
+def test_customer_daily_limit_stops_without_retrying():
+    calls, slept = [], []
+    c = groq_customer(lambda r: calls.append(r) or httpx.Response(429, json=DAILY, headers={"retry-after": "200"}), slept)
+    with pytest.raises(simulate.DailyLimitReached):
+        run(c.reply([{"role": "system", "content": "s"}]))
+    assert len(calls) == 1 and slept == []
+
+
+class AgentDailyLimit(FakeStack):
+    def voice(self, r):
+        if r.url.path == "/v1/text-turn":
+            return httpx.Response(429, json={"detail": "GROQ_DAILY_LIMIT"})
+        return super().voice(r)
+
+
+def test_agent_daily_limit_stops_the_run_and_ends_the_call():
+    stack = AgentDailyLimit()
+    api, voice = clients(stack)
+    convs = run(simulate.run_eval(["agreeable", "bereaved"], 2, api, voice, Scripted(["hi"] * 5), SEED, max_turns=12,
+                                  turn_gap=0, sleep=no_sleep, log=lambda *_: None))
+    assert len(convs) == 1
+    assert convs[0]["daily_limit"] is True and "daily limit" in convs[0]["error"]
+    assert convs[0]["callId"] in stack.ended
+
+
+def test_finish_marks_a_partial_report_and_returns_non_zero(tmp_path):
+    c = conv("agreeable", None, None, 1, error="DailyLimitReached: Groq daily limit")
+    c["daily_limit"] = True
+    code = simulate.finish([c], {"started_at": "x"}, tmp_path)
+    assert code != 0
+    rep = json.loads((tmp_path / "latest.json").read_text())
+    assert rep["meta"]["partial"] == "Groq daily limit"
+    assert "Partial: Groq daily limit" in (tmp_path / "report.md").read_text()
+    assert simulate.finish([conv("agreeable", "RENEWAL_PENDING_PAYMENT", True, 2)], {}, tmp_path) == 0
+
+
+def test_turn_gap_defaults_to_20():
+    assert simulate.parse_args([]).turn_gap == 20
+
+
+def test_report_says_when_it_was_rescored():
+    md = report.render_markdown(report.summarise([conv("bereaved", "HANDED_OFF", True, 2)], {"rescored_at": "2026-10-30T01:00:00+00:00"}))
+    assert "Re-scored 2026-10-30T01:00:00+00:00" in md

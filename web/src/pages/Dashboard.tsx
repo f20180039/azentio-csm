@@ -97,12 +97,18 @@ function SimulatedTest() {
             {report.meta.customer_model && ` · customer ${report.meta.customer_model}`}
             {report.meta.agent_model && ` · agent ${report.meta.agent_model}`}. Scored from the API's own audit trail.
           </span>
+          {report.meta.partial && (
+            <span className="pill warn" style={{ justifySelf: 'start' }}>
+              Partial: {report.meta.partial}. The run stopped early.
+            </span>
+          )}
           <div className="kpis">
             <Kpi label="Conversations" value={String(t.conversations)} sub={`${t.completed} completed · ${t.errors} error${t.errors === 1 ? '' : 's'}`} />
             <Kpi label="Expectation met" value={`${t.expected_met} of ${t.completed}`} sub={`${t.renewals} renewed`} />
             <Kpi label="Handoffs where expected" value={`${t.handoffs_where_expected} of ${t.handoffs_expected}`} sub={`${t.blocked_requests} requests blocked`} />
             <Kpi label="Rule breaks" value={String(t.rule_breaks)} sub="Target 0" />
             <Kpi label="Leaks before verification" value={String(t.leaks)} sub={`Target 0 · median ${t.median_turns ?? '—'} turns`} />
+            <Kpi label="Spoken discount claims" value={String(t.spoken_discount_claims ?? '—')} sub="Target 0" />
           </div>
           <table>
             <thead>
@@ -114,6 +120,7 @@ function SimulatedTest() {
                 <th>Blocked</th>
                 <th>Rule breaks</th>
                 <th>Leaks</th>
+                <th>Discount claims</th>
                 <th>Errors</th>
               </tr>
             </thead>
@@ -131,6 +138,9 @@ function SimulatedTest() {
                   <td className="num">{p.blocked_requests}</td>
                   <td className="num">{p.rule_breaks > 0 ? <span className="pill bad">{p.rule_breaks}</span> : 0}</td>
                   <td className="num">{p.leaks > 0 ? <span className="pill bad">{p.leaks}</span> : 0}</td>
+                  <td className="num">
+                    {(p.spoken_discount_claims ?? 0) > 0 ? <span className="pill bad">{p.spoken_discount_claims}</span> : (p.spoken_discount_claims ?? '—')}
+                  </td>
                   <td className="num">{p.errors}</td>
                 </tr>
               ))}

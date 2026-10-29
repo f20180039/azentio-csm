@@ -14,6 +14,8 @@ export interface EvalTotals {
   blocked_requests: number;
   rule_breaks: number;
   leaks: number;
+  /** absent in reports written before the metric existed */
+  spoken_discount_claims?: number;
   median_turns: number | null;
 }
 
@@ -28,11 +30,12 @@ export interface EvalPersona {
   blocked_requests: number;
   rule_breaks: number;
   leaks: number;
+  spoken_discount_claims?: number;
   median_turns: number | null;
 }
 
 export interface EvalReport {
-  meta: { started_at?: string; finished_at?: string; customer_model?: string; agent_model?: string };
+  meta: { started_at?: string; finished_at?: string; customer_model?: string; agent_model?: string; partial?: string };
   totals: EvalTotals;
   personas: EvalPersona[];
 }

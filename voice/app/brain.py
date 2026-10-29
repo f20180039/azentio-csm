@@ -69,6 +69,8 @@ class CallBrain:
         self._call_id = call_id
         self._messages: list[dict] = [{"role": "system", "content": system}]
         self._lock = asyncio.Lock()
+        self._memory: dict = {}
+        self._posted_unanswered: str | None = None
         self.greeting: str | None = None
 
     async def say(self, text: str) -> None:
@@ -86,7 +88,9 @@ class CallBrain:
 
     async def _reply(self, user_text: str) -> BrainTurn:
         self._messages.append({"role": "user", "content": user_text})
-        await self._api.turn(self._call_id, "customer", user_text)
+        if self._posted_unanswered != user_text:  # a retry of a failed turn is the same customer line
+            await self._api.turn(self._call_id, "customer", user_text)
+            self._posted_unanswered = user_text
         traces: list[ToolTrace] = []
         for _ in range(MAX_TOOL_ROUNDS):
             msg = await self._llm.complete(self._messages, TOOL_SCHEMAS)
@@ -109,7 +113,7 @@ class CallBrain:
                 raise ValueError("arguments must be a JSON object")
         except ValueError as e:
             return ToolTrace(name, {}, {"error": "BAD_ARGUMENTS", "detail": f"invalid JSON: {e}"[:200]})
-        return ToolTrace(name, args, await run_tool(self._api, self._call_id, name, args))
+        return ToolTrace(name, args, await run_tool(self._api, self._call_id, name, args, self._memory))
 
     async def _handoff(self, text: str, reason: str, traces: list[ToolTrace]) -> BrainTurn:
         result = await self._api.handoff(self._call_id, reason)
@@ -117,6 +121,7 @@ class CallBrain:
         return await self._finish(text, traces)
 
     async def _finish(self, text: str, traces: list[ToolTrace]) -> BrainTurn:
+        self._posted_unanswered = None
         self._messages.append({"role": "assistant", "content": text})
         try:
             await self._api.turn(self._call_id, "agent", text)
