@@ -24,6 +24,6 @@ export async function getPhoneAllowed(): Promise<PhoneAllowed> {
   }
 }
 
-export function placePhoneCall(callId: string, numberId: string): Promise<{ twilioCallSid: string }> {
+export function placePhoneCall(callId: string, numberId: string): Promise<{ status: string }> {
   return voicePost('/v1/phone-call', { callId, numberId });
 }

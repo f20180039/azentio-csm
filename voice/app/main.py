@@ -58,12 +58,37 @@ class State:
 state = State()
 EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
+TUNNEL_HEADERS = (b"cf-connecting-ip", b"cf-ray", b"x-forwarded-for", b"forwarded")
+PUBLIC_PATHS = ("/ws/twilio", "/health")
+
+
+class LocalOnly:
+    """A request that came through a proxy or tunnel may reach only the Twilio media stream and /health."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and scope["path"] not in PUBLIC_PATHS:
+            if any(name.lower() in TUNNEL_HEADERS for name, _ in scope.get("headers", [])):
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                body = b'{"detail":"LOCAL_ONLY"}'
+                await send({"type": "http.response.start", "status": 403,
+                            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+app.add_middleware(LocalOnly)
 
 
 class TextCallIn(BaseModel):
@@ -250,8 +275,12 @@ async def phone_call(body: PhoneCallIn) -> dict:
     s = state.settings()
     call_id = str(body.callId)
     allowed = s.twilio_allowed_to
+    if body.numberId is not None and not (body.numberId.isascii() and body.numberId.isdecimal()):
+        raise HTTPException(400, "numberId must be a number id from /v1/phone/allowed")
+    if not allowed:
+        raise HTTPException(503, "PHONE_NOT_CONFIGURED")
     if body.numberId is not None:
-        to = allowed[int(body.numberId)] if body.numberId.isdigit() and int(body.numberId) < len(allowed) else None
+        to = allowed[int(body.numberId)] if int(body.numberId) < len(allowed) else None
     else:
         to = (body.to or "").replace(" ", "")
         to = to if to in allowed else None
@@ -261,13 +290,22 @@ async def phone_call(body: PhoneCallIn) -> dict:
         raise HTTPException(503, "PHONE_NOT_CONFIGURED")
     if call_id in state.live_calls or _pending_sid(call_id) is not None:
         raise HTTPException(409, "CALL_IN_PROGRESS")
+    if any(_pending_sid(c) is not None for c in list(state.phone_pending)) or any(
+        str(v).startswith("twilio:") for v in state.live_calls.values()
+    ):
+        raise HTTPException(409, "PHONE_BUSY")
+    state.phone_pending[call_id] = ("", time.monotonic())
     try:
         call = await state.get_api().call(call_id)
     except ApiUnavailable as e:
+        state.phone_pending.pop(call_id, None)
         raise HTTPException(502, "renewals API unavailable") from e
     if call.get("error") or not call.get("greeting"):
+        state.phone_pending.pop(call_id, None)
         raise HTTPException(404, "unknown call")
-    state.phone_pending[call_id] = ("", time.monotonic())
+    if call.get("outcome"):
+        state.phone_pending.pop(call_id, None)
+        raise HTTPException(409, "CALL_ENDED")
     try:
         sid = await phone.dial(s, call_id, to, transport=state.twilio_transport)
     except phone.DialError as e:
@@ -276,7 +314,7 @@ async def phone_call(body: PhoneCallIn) -> dict:
         raise HTTPException(502, str(e)) from None
     state.phone_pending[call_id] = (sid, time.monotonic())
     logger.info(f"phone call {call_id} dialled as {sid} to {phone.mask(to)}")
-    return {"twilioCallSid": sid}
+    return {"status": "dialling"}
 
 
 @app.post("/twilio/twiml")

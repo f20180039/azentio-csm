@@ -11,7 +11,7 @@ vi.mock('../api/phone', () => ({
   getPhoneAllowed: vi.fn(async () => h.allowed),
   placePhoneCall: vi.fn(async (callId: string, numberId: string) => {
     h.placed.push([callId, numberId]);
-    return { twilioCallSid: 'CA1' };
+    return { status: 'dialling' };
   }),
 }));
 

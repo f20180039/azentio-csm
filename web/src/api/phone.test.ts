@@ -20,9 +20,9 @@ describe('getPhoneAllowed', () => {
 
 describe('placePhoneCall', () => {
   it('posts the call id and the number id, never a raw number', async () => {
-    const f = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{"twilioCallSid":"CA1"}', { status: 200 }));
+    const f = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{"status":"dialling"}', { status: 200 }));
     vi.stubGlobal('fetch', f);
-    expect(await placePhoneCall('c-1', '0')).toEqual({ twilioCallSid: 'CA1' });
+    expect(await placePhoneCall('c-1', '0')).toEqual({ status: 'dialling' });
     expect(String(f.mock.calls[0][0])).toMatch(/\/v1\/phone-call$/);
     expect(JSON.parse(String(f.mock.calls[0][1]?.body))).toEqual({ callId: 'c-1', numberId: '0' });
   });

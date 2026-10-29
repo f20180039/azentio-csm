@@ -43,6 +43,8 @@ Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 4. Start the voice service: `cd voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
 5. Start the web app: `cd web && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
 
+**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `voice/README.md`.
+
 ## Try it
 
 ```bash

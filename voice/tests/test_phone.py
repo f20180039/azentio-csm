@@ -16,6 +16,7 @@ from app.config import Settings, load_settings
 
 CALL = "55555555-5555-5555-5555-555555555555"
 OTHER = "66666666-6666-6666-6666-666666666666"
+OTHER2 = "88888888-8888-8888-8888-888888888888"
 SID = "AC" + "1" * 32
 TOKEN = "tok-very-secret-value"
 FROM = "+15005550006"
@@ -31,9 +32,16 @@ CONFIGURED = Settings(
 )
 
 
+ENDED = "77777777-7777-7777-7777-777777777777"
+
+
 def renewals(r: httpx.Request) -> httpx.Response:
     if r.method == "GET" and r.url.path.endswith(CALL):
-        return httpx.Response(200, json={"greeting": "Hello Meera"})
+        return httpx.Response(200, json={"greeting": "Hello Meera", "outcome": None})
+    if r.method == "GET" and r.url.path.endswith(ENDED):
+        return httpx.Response(200, json={"greeting": "Hello Meera", "outcome": "NO_DECISION"})
+    if r.method == "GET" and r.url.path.endswith(OTHER2):
+        return httpx.Response(200, json={"greeting": "Hello Ravi", "outcome": None})
     return httpx.Response(404, json={"detail": "NOT_FOUND"})
 
 
@@ -185,6 +193,38 @@ def test_phone_call_without_credentials_is_503(client):
     assert r.status_code == 503 and r.json()["detail"] == "PHONE_NOT_CONFIGURED"
 
 
+def test_phone_call_with_no_allow_list_is_503_not_403(client):
+    r = client(Settings()).post("/v1/phone-call", json={"callId": CALL, "to": "+919812344417"})
+    assert r.status_code == 503 and r.json()["detail"] == "PHONE_NOT_CONFIGURED"
+
+
+@pytest.mark.parametrize("junk", ["abc", "-1", "１", "0x1", ""])
+def test_phone_call_with_a_junk_number_id_is_400(client, junk):
+    r = client().post("/v1/phone-call", json={"callId": CALL, "numberId": junk})
+    assert r.status_code == 400
+
+
+def test_phone_call_for_an_ended_call_is_409_and_dials_nothing(client):
+    hits = []
+    c = client(twilio=lambda r: hits.append(r) or httpx.Response(201, json={"sid": "CA1"}))
+    r = c.post("/v1/phone-call", json={"callId": ENDED, "numberId": "0"})
+    assert r.status_code == 409 and r.json()["detail"] == "CALL_ENDED"
+    assert hits == []
+
+
+def test_only_one_phone_dial_at_a_time_across_calls(client):
+    c = client()
+    assert c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"}).status_code == 200
+    r = c.post("/v1/phone-call", json={"callId": OTHER2, "numberId": "1"})
+    assert r.status_code == 409 and r.json()["detail"] == "PHONE_BUSY"
+    main.state.phone_pending.clear()
+    main.state.live_calls[CALL] = "twilio:CA77"
+    r = c.post("/v1/phone-call", json={"callId": OTHER2, "numberId": "1"})
+    assert r.status_code == 409 and r.json()["detail"] == "PHONE_BUSY"
+    main.state.live_calls[CALL] = "pc-1"
+    assert c.post("/v1/phone-call", json={"callId": OTHER2, "numberId": "1"}).status_code == 200
+
+
 def test_phone_call_for_a_live_call_is_409(client):
     c = client()
     main.state.live_calls[CALL] = "pc-1"
@@ -203,7 +243,7 @@ def test_phone_call_dials_and_holds_the_slot_until_the_stream_arrives(client, lo
     seen = []
     c = client(twilio=lambda r: seen.append(r) or httpx.Response(201, json={"sid": "CA77"}))
     r = c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"})
-    assert r.status_code == 200 and r.json() == {"twilioCallSid": "CA77"}
+    assert r.status_code == 200 and r.json() == {"status": "dialling"}
     assert parse_qs(seen[0].content.decode())["To"] == ["+919812344417"]
     assert main.state.phone_pending[CALL][0] == "CA77"
     again = c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"})
@@ -321,3 +361,68 @@ def test_ws_runs_the_pipeline_at_8khz_over_the_twilio_serializer(client, fake_ru
     assert (ser._stream_sid, ser._call_sid, ser._account_sid, ser._auth_token) == ("MZ1", "CA1", SID, TOKEN)
     assert transport._params.allowed_origins == []
     assert main.state.live_calls == {} and main.state.phone_pending == {}
+
+
+# ---- tunnel guard ---------------------------------------------------------------
+
+TUNNEL_HEADERS = [
+    {"Cf-Connecting-Ip": "203.0.113.9"},
+    {"Cf-Ray": "8a1b2c3d4e5f-BOM"},
+    {"X-Forwarded-For": "203.0.113.9"},
+    {"Forwarded": "for=203.0.113.9;proto=https"},
+]
+LOCAL_ONLY = [
+    ("post", "/v1/phone-call", {"callId": CALL, "numberId": "0"}),
+    ("get", "/v1/phone/allowed", None),
+    ("post", "/api/offer", {"sdp": "v=0", "type": "offer", "requestData": {"callId": CALL}}),
+    ("patch", "/api/offer", {"pc_id": "pc-1", "candidates": []}),
+    ("post", "/v1/text-call", {"callId": CALL}),
+    ("post", "/v1/text-turn", {"callId": CALL, "text": "hi"}),
+    ("get", "/v1/eval/latest", None),
+    ("get", "/v1/llm/status", None),
+    ("post", f"/twilio/twiml?callId={CALL}", None),
+]
+
+
+@pytest.mark.parametrize("headers", TUNNEL_HEADERS)
+@pytest.mark.parametrize("method,path,body", LOCAL_ONLY)
+def test_tunnelled_requests_reach_only_the_twilio_stream(client, headers, method, path, body):
+    hits = []
+    c = client(twilio=lambda r: hits.append(r) or httpx.Response(201, json={"sid": "CA1"}))
+    kwargs = {"headers": headers} | ({"json": body} if body is not None else {})
+    r = getattr(c, method)(path, **kwargs)
+    assert r.status_code == 403 and r.json() == {"detail": "LOCAL_ONLY"}
+    assert hits == [] and main.state.phone_pending == {}
+
+
+@pytest.mark.parametrize("headers", TUNNEL_HEADERS)
+def test_tunnelled_health_is_allowed(client, headers):
+    assert client().get("/health", headers=headers).status_code == 200
+
+
+def test_a_tunnelled_websocket_to_another_path_is_refused(client):
+    @main.app.websocket("/ws/test-only-echo")
+    async def echo(ws: main.WebSocket):
+        await ws.accept()
+        await ws.send_text("reached")
+
+    c = client()
+    try:
+        with pytest.raises(WebSocketDisconnect) as e:
+            with c.websocket_connect("/ws/test-only-echo", headers=TUNNEL_HEADERS[0]) as ws:
+                ws.receive_text()
+        assert e.value.code == 1008
+        with c.websocket_connect("/ws/test-only-echo") as ws:
+            assert ws.receive_text() == "reached"
+    finally:
+        main.app.router.routes = [r for r in main.app.router.routes if getattr(r, "path", "") != "/ws/test-only-echo"]
+
+
+@pytest.mark.parametrize("headers", TUNNEL_HEADERS)
+def test_the_twilio_stream_still_works_through_the_tunnel(client, fake_runtime, headers):
+    c = client()
+    main.state.phone_pending[CALL] = ("CA1", time.monotonic())
+    with c.websocket_connect("/ws/twilio", headers=headers) as ws:
+        ws.send_json({"event": "connected"})
+        ws.send_json(start_msg())
+    assert [b[0] for b in fake_runtime] == [CALL]
