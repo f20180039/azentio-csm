@@ -93,42 +93,27 @@ def test_malformed_argument_json_is_reported_to_model():
     assert not any(p.endswith("/verify") for _, p, _ in calls)
 
 
-def groq(handler, sleeps):
-    from app.brain import GroqChatClient
+def test_brain_runs_tools_through_the_chain_and_fails_over():
+    from app.llm_chain import ChainChatClient, parse_chain
 
-    async def sleep(s):
-        sleeps.append(s)
-
-    return GroqChatClient(Settings(groq_api_key="k"), transport=httpx.MockTransport(handler), sleep=sleep)
-
-
-def test_groq_retries_once_after_retry_after_capped():
-    n, sleeps = [], []
+    models = []
 
     def handler(r):
-        n.append(1)
-        if len(n) == 1:
-            return httpx.Response(429, headers={"retry-after": "10"})
-        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "hi"}}]})
+        body = json.loads(r.content)
+        models.append(body["model"])
+        if body["model"] == "openai/gpt-oss-120b":
+            return httpx.Response(429, text="Rate limit reached on tokens per day (TPD)")
+        msg = (tool_call("verify_identity", {"date_of_birth": "1980-03-14"}, "fc_long-groq-id")
+               if not any(m["role"] == "tool" for m in body["messages"]) else text("Verified."))
+        return httpx.Response(200, json={"choices": [{"message": msg}]})
 
-    msg = asyncio.run(groq(handler, sleeps).complete([], []))
-    assert msg["content"] == "hi" and len(n) == 2 and sleeps == [3.0]
-
-
-def test_groq_fails_after_second_503_default_delay():
-    n, sleeps = [], []
-
-    def handler(r):
-        n.append(1)
-        return httpx.Response(503)
-
-    client = groq(handler, sleeps)
-    try:
-        asyncio.run(client.complete([], []))
-        raise AssertionError("expected failure")
-    except httpx.HTTPStatusError:
-        pass
-    assert len(n) == 2 and sleeps == [1.0]
+    chain = ChainChatClient(parse_chain("groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b", {"groq": "k"}),
+                            transport=httpx.MockTransport(handler))
+    brain, calls = make(chain, ok)
+    turn = asyncio.run(brain.reply("14 March 1980"))
+    assert turn.text == "Verified." and turn.tool_calls[0].name == "verify_identity"
+    assert models == ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "openai/gpt-oss-20b"]
+    assert chain.state.status()["active"] == "groq:openai/gpt-oss-20b"
 
 
 def assert_valid_history(messages):

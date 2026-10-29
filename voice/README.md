@@ -20,12 +20,21 @@ Read from the process env, then `../.env`:
 
 | Variable | Default |
 |---|---|
-| `GROQ_API_KEY` | required |
+| `GROQ_API_KEY` | required (speech to text, and the Groq links) |
+| `GEMINI_API_KEY` / `MISTRAL_API_KEY` | optional; a link without its key is skipped |
 | `RENEWALS_API_BASE` | `http://localhost:8080/api/v1` |
 | `RENEWALS_API_USER` / `RENEWALS_API_PASSWORD` | `voice` / `voice` |
 | `VOICE_STT_MODEL` | `whisper-large-v3-turbo` |
-| `VOICE_LLM_MODEL` | `openai/gpt-oss-120b` |
+| `VOICE_LLM_CHAIN` | `groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,gemini:${GEMINI_MODEL:-gemini-2.5-flash},mistral:${MISTRAL_MODEL:-mistral-small-latest}` |
 | `VOICE_TTS_VOICE` | `en-IN-NeerjaNeural` |
+
+## Model chain
+
+The agent's model is the first link in `VOICE_LLM_CHAIN` that is not resting. A daily-cap 429 rests a link until its `Retry-After` (1 h if absent), any other 429 for `Retry-After` capped at 60 s (20 s if absent), a 5xx or timeout for 30 s, a 401/403/404 for 1 h; a 400/422 about tool-call format just passes this request to the next link. With every link resting the text endpoint answers 429 `GROQ_DAILY_LIMIT` (all daily caps) or 502, and a live call speaks "Sorry, give me a moment."
+
+Text calls go through `ChainChatClient` (`app/llm_chain.py`). Live calls put one Pipecat LLM service per link behind Pipecat's `LLMSwitcher`, with a strategy that rests the link on those errors, switches, and re-runs the failed turn on the new link; each turn starts on the first rested link, so the chain returns to the primary once its cooldown ends. Both share one state, served without keys at `GET /v1/llm/status` (`{active, links: [{name, available, cooldownUntil, lastError}]}`) and shown on the dashboard as "Model in use".
+
+Per-provider shaping: `reasoning_effort: low` only for Groq gpt-oss models; Gemini needs a `thought_signature` on every tool call in the history (its own are kept, others get Google's documented skip value); Mistral rejects that field (422) and gets tool-call ids normalised to 9 alphanumerics, mapped back on the reply.
 
 ## Headless check
 

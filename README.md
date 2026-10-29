@@ -108,6 +108,6 @@ Both models run locally on CPU through onnxruntime 1.24.4 (MIT).
 
 **Models used at runtime (rule 4):**
 - Document pipeline (`agent/`): an ordered fallback chain set in `.env`: Groq-hosted `gpt-oss-120b`, Google Gemini, Mistral, local `llama3.2` through Ollama, and a deterministic mock. Prompts live in `agent/app/schemas/` and `agent/app/explain.py`.
-- Renewal voice agent (`voice/`): Groq `whisper-large-v3-turbo` (speech to text), Groq `openai/gpt-oss-120b` with reasoning effort low (the conversation and tool calls), edge-tts `en-IN-NeerjaNeural` (speech), and Silero VAD with Smart Turn (local turn detection). Prompts live in `voice/app/prompt.py`. No Anthropic models are used at runtime.
+- Renewal voice agent (`voice/`): Groq `whisper-large-v3-turbo` (speech to text), an ordered chain of free models for the conversation and tool calls (`VOICE_LLM_CHAIN`, default Groq `openai/gpt-oss-120b` then `openai/gpt-oss-20b` with reasoning effort low, then Gemini and Mistral; a link that hits a rate limit, outage or timeout rests and the next one answers, see `voice/README.md`), edge-tts `en-IN-NeerjaNeural` (speech), and Silero VAD with Smart Turn (local turn detection). Prompts live in `voice/app/prompt.py`. No Anthropic models are used at runtime.
 
 **Data (rule 5):** synthetic only. Nothing here comes from customers, production systems or any employer.

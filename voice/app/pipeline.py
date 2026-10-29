@@ -22,7 +22,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.base_transport import BaseTransport
@@ -30,6 +29,7 @@ from pipecat.transports.base_transport import BaseTransport
 from .api_client import ApiUnavailable, RenewalsApi
 from .config import Settings
 from .edge_tts_service import EdgeTTSService
+from .llm_chain import ChainConfigError, ChainState, build_live_switcher
 from .prompt import system_prompt
 from .tools import TOOL_SCHEMAS, run_tool
 
@@ -87,8 +87,13 @@ def _tools_schema() -> ToolsSchema:
 
 
 async def build_pipeline(
-    settings: Settings, call_id: str, transport: BaseTransport, api: RenewalsApi | None = None
+    settings: Settings,
+    call_id: str,
+    transport: BaseTransport,
+    api: RenewalsApi | None = None,
+    chain: ChainState | None = None,
 ) -> PipelineWorker:
+    chain = chain or ChainState(settings.llm_chain)
     api = api or RenewalsApi(settings)
     try:
         call = await api.call(call_id)
@@ -101,14 +106,11 @@ async def build_pipeline(
         raise LookupError(f"unknown call {call_id}")
 
     stt = GroqSTTService(api_key=settings.groq_api_key, settings=GroqSTTService.Settings(model=settings.stt_model))
-    llm = GroqLLMService(
-        api_key=settings.groq_api_key,
-        settings=GroqLLMService.Settings(
-            model=settings.llm_model,
-            system_instruction=system_prompt(greeting),
-            extra={"reasoning_effort": "low"},
-        ),
-    )
+    try:
+        llm = build_live_switcher(chain, system_prompt(greeting))
+    except ChainConfigError:
+        await api.aclose()
+        raise
 
     memory: dict = {}
 
@@ -121,8 +123,8 @@ async def build_pipeline(
             await params.result_callback(result)
             return
         await params.result_callback(result, properties=FunctionCallResultProperties(run_llm=False))
-        await llm.push_frame(TTSSpeakFrame(GOODBYE))
-        await llm.push_frame(EndWorkerFrame(reason="end_call"))
+        await llm.active_llm.push_frame(TTSSpeakFrame(GOODBYE))
+        await llm.active_llm.push_frame(EndWorkerFrame(reason="end_call"))
 
     for tool in TOOL_SCHEMAS:
         llm.register_function(tool["function"]["name"], handle_tool)
@@ -160,7 +162,7 @@ async def build_pipeline(
     @task.event_handler("on_pipeline_error")
     async def on_error(_task, frame: ErrorFrame):
         nonlocal last_fallback
-        if frame.processor is not llm:
+        if frame.processor is not llm and frame.processor not in llm.llms:
             return
         now = time.monotonic()
         if last_fallback is not None and now - last_fallback < LLM_FALLBACK_INTERVAL_SECS:

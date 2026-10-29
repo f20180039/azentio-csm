@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { getDashboard, type Dashboard as DashboardData, type GuardrailAction, type RecentCall } from '../api/dashboard';
 import { MOCK_MODE } from '../api/client';
 import { getEvalLatest, type EvalReport } from '../api/eval';
+import { getLlmStatus, type LlmStatus } from '../api/llm';
 import type { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
 import { Sparkline } from '../components/charts/Sparkline';
@@ -53,6 +54,11 @@ function OutcomePill({ call }: { call: RecentCall }) {
   }
   const o = OUTCOME[call.outcome] ?? { label: humanise(call.outcome), tone: 'dim' };
   return <span className={`pill ${o.tone}`}>{o.label}</span>;
+}
+
+function modelLine(s: LlmStatus): string {
+  const resting = s.links.filter((l) => !l.available).length;
+  return `Model in use: ${s.active ?? 'none yet'}${resting ? ` · ${resting} of ${s.links.length} resting` : ''}`;
 }
 
 function SimulatedTest() {
@@ -155,6 +161,7 @@ function SimulatedTest() {
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [failed, setFailed] = useState(false);
+  const [llm, setLlm] = useState<LlmStatus | null>(null);
   const navigate = useNavigate();
   const toast = useToast();
   const toastRef = useRef(toast);
@@ -179,6 +186,7 @@ export function Dashboard() {
           setFailed(true);
         },
       );
+      getLlmStatus().then((s) => alive && setLlm(s));
     };
     refresh();
     const t = setInterval(refresh, POLL_MS);
@@ -203,6 +211,7 @@ export function Dashboard() {
             Lotusleaf General Insurance. How the renewal agent is doing, and what the rules stopped.
             {MOCK_MODE && ' All figures are sample data.'}
           </span>
+          {llm && <span className="muted small mono">{modelLine(llm)}</span>}
         </div>
         <span className="small muted" aria-live="polite">
           {failed ? 'Connection lost. Showing the last figures.' : 'Live, refreshes every 3 seconds'}

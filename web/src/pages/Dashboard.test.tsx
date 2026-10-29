@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sampleDashboard } from '../api/mock';
 import type { Dashboard as DashboardData } from '../api/dashboard';
 import type { EvalReport } from '../api/eval';
+import type { LlmStatus } from '../api/llm';
 import { ToastProvider } from '../components/Toasts';
 
 const getDashboard = vi.fn<() => Promise<DashboardData>>();
@@ -14,6 +15,9 @@ vi.mock('../api/dashboard', () => ({
 
 const getEvalLatest = vi.fn<() => Promise<EvalReport | null>>();
 vi.mock('../api/eval', () => ({ getEvalLatest: () => getEvalLatest() }));
+
+const getLlmStatus = vi.fn<() => Promise<LlmStatus | null>>();
+vi.mock('../api/llm', () => ({ getLlmStatus: () => getLlmStatus() }));
 
 import { Dashboard } from './Dashboard';
 
@@ -45,11 +49,33 @@ beforeEach(() => {
   getDashboard.mockReset();
   getEvalLatest.mockReset();
   getEvalLatest.mockResolvedValue(null);
+  getLlmStatus.mockReset();
+  getLlmStatus.mockResolvedValue(null);
   failing = false;
 });
 afterEach(() => vi.useRealTimers());
 
 describe('Dashboard', () => {
+  it('shows which model is answering and how many are resting', async () => {
+    getDashboard.mockResolvedValue(sampleDashboard());
+    getLlmStatus.mockResolvedValue({
+      active: 'groq:openai/gpt-oss-20b',
+      links: [
+        { name: 'groq:openai/gpt-oss-120b', available: false, cooldownUntil: '2026-10-30T12:00:00Z', lastError: '429' },
+        { name: 'groq:openai/gpt-oss-20b', available: true, cooldownUntil: null, lastError: null },
+      ],
+    });
+    mount();
+    expect(await screen.findByText('Model in use: groq:openai/gpt-oss-20b · 1 of 2 resting')).toBeInTheDocument();
+  });
+
+  it('hides the model line when the voice service gives no status', async () => {
+    getDashboard.mockResolvedValue(sampleDashboard());
+    mount();
+    await screen.findByText('Calls today');
+    expect(screen.queryByText(/Model in use/)).not.toBeInTheDocument();
+  });
+
   it('shows an unexpected outcome as a neutral pill instead of crashing', async () => {
     const d = sampleDashboard();
     d.recentCalls[1] = { ...d.recentCalls[1], outcome: 'SOMETHING_NEW' as never };

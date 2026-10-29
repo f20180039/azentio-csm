@@ -12,12 +12,14 @@ from typing import Awaitable, Callable, Protocol
 
 import httpx
 
-from app.brain import GROQ_URL
 from app.config import load_settings
+from app.llm_chain import PROVIDERS
 
 from . import report
 from .personas import PERSONAS, Persona, SeedPolicy, customer_prompt, load_seed
 from .scoring import score
+
+GROQ_URL = f"{PROVIDERS['groq']}/chat/completions"
 
 CUSTOMER_MODEL = "openai/gpt-oss-20b"
 CUSTOMER_ATTEMPTS = 4
@@ -258,7 +260,7 @@ async def main(argv: list[str] | None = None) -> int:
     meta = {"started_at": started.isoformat(timespec="seconds"),
             "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "per_persona": args.per_persona, "max_turns": args.max_turns, "turn_gap_s": args.turn_gap,
-            "customer_model": CUSTOMER_MODEL, "agent_model": settings.llm_model}
+            "customer_model": CUSTOMER_MODEL, "agent_model": ", ".join(l.name for l in settings.llm_chain)}
     return finish(convs, meta, args.out)
 
 

@@ -12,8 +12,9 @@ from pydantic import BaseModel
 from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCPatchRequest
 
 from .api_client import ApiUnavailable, RenewalsApi
-from .brain import CallBrain, ChatClient, GroqChatClient
+from .brain import CallBrain, ChatClient
 from .config import Settings, load_settings
+from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
 
 
@@ -21,6 +22,7 @@ class State:
     def __init__(self) -> None:
         self.api: RenewalsApi | None = None
         self.llm: ChatClient | None = None
+        self.chain: ChainState | None = None
         self.brains: dict[str, CallBrain] = {}
         self.webrtc = None
         self.live_calls: dict[str, str | None] = {}
@@ -37,9 +39,14 @@ class State:
             self.api = RenewalsApi(self.settings())
         return self.api
 
+    def get_chain(self) -> ChainState:
+        if self.chain is None:
+            self.chain = ChainState(self.settings().llm_chain)
+        return self.chain
+
     def get_llm(self) -> ChatClient:
         if self.llm is None:
-            self.llm = GroqChatClient(self.settings())
+            self.llm = ChainChatClient(self.settings().llm_chain, state=self.get_chain())
         return self.llm
 
 
@@ -66,6 +73,11 @@ class TextTurnIn(BaseModel):
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/v1/llm/status")
+async def llm_status() -> dict:
+    return state.get_chain().status()
 
 
 @app.get("/v1/eval/latest")
@@ -106,6 +118,10 @@ async def text_turn(body: TextTurnIn) -> dict:
         turn = await brain.reply(body.text)
     except ApiUnavailable as e:
         raise HTTPException(502, "renewals API unavailable") from e
+    except LLMUnavailable as e:
+        if e.daily:
+            raise HTTPException(429, "GROQ_DAILY_LIMIT") from e
+        raise HTTPException(502, "language model unavailable") from e
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429 and "per day" in e.response.text:
             raise HTTPException(429, "GROQ_DAILY_LIMIT") from e
@@ -164,7 +180,7 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
             webrtc_connection=connection,
         )
         try:
-            task = await build_pipeline(state.settings(), call_id, transport)
+            task = await build_pipeline(state.settings(), call_id, transport, chain=state.get_chain())
         except Exception as e:
             failure.append(e)
             await connection.disconnect()
