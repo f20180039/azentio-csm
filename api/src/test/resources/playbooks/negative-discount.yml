@@ -1,0 +1,8 @@
+id: bad
+version: 1
+greeting: "Hi {holderName}"
+maxDiscountPercent: -1
+paymentPlans: [annual]
+removableOptionalAddons: true
+maxOutOfPlaybookRequests: 2
+maxVerifyFailures: 3
