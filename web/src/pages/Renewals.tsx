@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/errors';
 import { getQueue, startCall } from '../api/renewals';
@@ -32,15 +32,26 @@ export function Renewals() {
   const [starting, setStarting] = useState<string | null>(null);
   const navigate = useNavigate();
   const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
-  useEffect(() => {
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoadError(null);
+    setItems(null);
     getQueue()
       .then(setItems)
       .catch((e) => {
-        toast.error(e);
+        toastRef.current.error(e);
+        setLoadError(e instanceof Error ? e.message : 'The renewals queue could not be loaded.');
         setItems([]);
       });
-  }, [toast]);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function start(policyId: string) {
     setStarting(policyId);
@@ -116,7 +127,16 @@ export function Renewals() {
             ))}
           </tbody>
         </table>
-        {items?.length === 0 && (
+        {loadError && (
+          <div className="empty" role="alert">
+            <strong>The renewals queue could not be loaded</strong>
+            <span>{loadError}</span>
+            <button className="btn" onClick={load}>
+              Retry
+            </button>
+          </div>
+        )}
+        {items?.length === 0 && !loadError && (
           <div className="empty">
             <strong>No renewals due</strong>
             <span>Policies expiring soon appear here once the API has scored them.</span>

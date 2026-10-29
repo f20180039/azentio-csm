@@ -134,3 +134,21 @@ def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
     finally:
         main.state.webrtc = None
         main.state.live_calls.clear()
+
+
+def test_cors_preflight_allows_only_the_web_origin():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    ok = c.options(
+        "/api/offer",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert ok.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    other = c.options(
+        "/api/offer",
+        headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"},
+    )
+    assert "access-control-allow-origin" not in other.headers

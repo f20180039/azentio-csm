@@ -97,6 +97,7 @@ export function Call() {
   const endRef = useRef<HTMLDivElement>(null);
   const pollError = useRef(false);
   const loaded = useRef(false);
+  const unmounted = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -122,7 +123,9 @@ export function Call() {
   }, [refresh, ended]);
 
   useEffect(() => {
+    unmounted.current = false;
     return () => {
+      unmounted.current = true;
       void session.current?.disconnect();
     };
   }, []);
@@ -140,14 +143,20 @@ export function Call() {
   async function connect() {
     setVoice('connecting');
     try {
-      session.current = await connectVoice(callId, audio.current, {
+      const s = await connectVoice(callId, audio.current, {
         onUserText: (text) => setLive((l) => [...l, { role: 'user', text }]),
         onBotText: (text) => setLive((l) => [...l, { role: 'agent', text }]),
         onDisconnected: () => setVoice('off'),
         onError: (m) => toast.push('Voice connection problem', m, 'warn'),
       });
+      if (unmounted.current) {
+        void s.disconnect().catch(() => undefined);
+        return;
+      }
+      session.current = s;
       setVoice('on');
     } catch (e) {
+      if (unmounted.current) return;
       setVoice('off');
       toast.push('Could not connect the voice call', e instanceof Error ? e.message : 'Check the voice service and microphone permission.', 'bad');
     }
@@ -179,8 +188,8 @@ export function Call() {
         await textCall(callId);
         textStarted.current = true;
       }
-      setTyped('');
       await textTurn(callId, text);
+      setTyped('');
       await refresh();
     } catch (err) {
       toast.error(err);

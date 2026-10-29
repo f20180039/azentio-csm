@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
 
@@ -39,6 +41,12 @@ class State:
 
 state = State()
 app = FastAPI(title="Renewal Desk voice")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 
 class TextCallIn(BaseModel):
