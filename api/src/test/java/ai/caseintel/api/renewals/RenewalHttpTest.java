@@ -110,4 +110,16 @@ class RenewalHttpTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.detail").value("IDENTITY_NOT_VERIFIED"));
     }
+
+    @Test
+    void quoteAfterForcedHandoffIs409MustHandoff() throws Exception {
+        CallEntity c = openCall();
+        c.setIdentityVerified(true);
+        c.setMustHandoff(true);
+        mvc.perform(post("/api/v1/renewals/calls/{id}/quote", callId).with(httpBasic("voice", "voice"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"paymentPlan\":\"annual\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("MUST_HANDOFF"));
+    }
 }

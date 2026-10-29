@@ -193,7 +193,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional
     public Options options(UUID callId, String actor) {
-        CallEntity c = verifiedCall(callId);
+        CallEntity c = offerableCall(callId);
         List<RemovableAddon> removable = new ArrayList<>();
         if (playbook.removableOptionalAddons()) {
             for (JsonNode a : readJson(policy(c).getAddons())) {
@@ -210,7 +210,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public Quote quote(UUID callId, QuoteRequest req, String actor) {
-        CallEntity c = verifiedCall(callId);
+        CallEntity c = offerableCall(callId);
         PolicyEntity p = policy(c);
         List<String> drop = req.dropAddons() == null ? List.of() : req.dropAddons().stream().distinct().toList();
         String plan = req.paymentPlan();
@@ -265,7 +265,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(noRollbackFor = ApiException.class)
     public PaymentLinkSent paymentLink(UUID callId, UUID quoteId, String actor) {
-        CallEntity c = verifiedCall(callId);
+        CallEntity c = offerableCall(callId);
         if (quoteId == null || c.getLastQuote() == null
                 || !quoteId.toString().equals(readJson(c.getLastQuote()).path("quoteId").asText())) {
             throw ApiException.conflict("STALE_QUOTE");
@@ -341,6 +341,14 @@ public class RenewalService {
         CallEntity c = calls.findForUpdate(callId).orElseThrow(() -> callNotFound(callId));
         if (c.getEndedAt() != null) {
             throw ApiException.conflict("CALL_ENDED");
+        }
+        return c;
+    }
+
+    private CallEntity offerableCall(UUID callId) {
+        CallEntity c = verifiedCall(callId);
+        if (c.isMustHandoff()) {
+            throw ApiException.conflict("MUST_HANDOFF");
         }
         return c;
     }

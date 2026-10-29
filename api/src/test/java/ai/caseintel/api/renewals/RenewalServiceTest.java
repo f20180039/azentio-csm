@@ -306,6 +306,36 @@ class RenewalServiceTest {
     }
 
     @Test
+    void quoteRefusedAfterForcedHandoff() {
+        RenewalService s = verifiedCall();
+        for (int i = 0; i < 2; i++) {
+            assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 10), "voice"),
+                    HttpStatus.UNPROCESSABLE_ENTITY, "OUTSIDE_PLAYBOOK");
+        }
+        assertThat(callRow.isMustHandoff()).isTrue();
+        assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 0), "voice"),
+                HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertRefused(() -> s.options(id(), "voice"), HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertThat(callRow.getLastQuote()).isNull();
+        s.turn(id(), new TurnRequest("customer", "ok", "t"), "voice");
+        assertThat(s.handoff(id(), new HandoffRequest("limit reached", null), "voice").queued()).isTrue();
+        assertThat(s.end(id(), "voice").outcome()).isEqualTo("HANDED_OFF");
+        assertThat(s.getCall(id()).mustHandoff()).isTrue();
+    }
+
+    @Test
+    void paymentLinkRefusedAfterForcedHandoff() {
+        RenewalService s = verifiedCall();
+        Quote q = s.quote(id(), new QuoteRequest(List.of(), "annual", 0), "voice");
+        for (int i = 0; i < 2; i++) {
+            assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 10), "voice"),
+                    HttpStatus.UNPROCESSABLE_ENTITY, "OUTSIDE_PLAYBOOK");
+        }
+        assertRefused(() -> s.paymentLink(id(), q.quoteId(), "voice"), HttpStatus.CONFLICT, "MUST_HANDOFF");
+        assertThat(callRow.isPaymentLinkSent()).isFalse();
+    }
+
+    @Test
     void paymentLinkNeedsLatestQuote() {
         RenewalService s = verifiedCall();
         Quote first = s.quote(id(), new QuoteRequest(List.of("OPD"), "quarterly", 0), "voice");
