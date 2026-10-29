@@ -260,7 +260,7 @@ def test_llm_status_lists_links_without_secrets():
 
     c = client_with(lambda r: httpx.Response(200, json={}))
     chain = ChainState(parse_chain("groq:openai/gpt-oss-120b,mistral:m", {"groq": "gk-secret", "mistral": "mk-secret"}))
-    chain.fail(chain.links[0], 3600, "429 tokens per day for gk-secret", daily=True)
+    chain.fail(chain.links[0], 3600, "429 daily limit", daily=True)
     chain.answered(chain.links[1])
     main.state.chain = chain
     try:

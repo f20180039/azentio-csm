@@ -301,3 +301,56 @@ def test_gemini_stream_gets_tool_call_indexes_one_call_per_chunk():
 
     assert asyncio.run(collect()) == [[(0, "a")], [(1, "b")], [(2, "c")]]
     assert Stream.closed
+
+
+def test_mistral_expected_last_role_400_is_a_tool_format_error():
+    body = '{"message":"Expected last role User or Tool (or Assistant with prefix True) for serving but got assistant"}'
+    assert cooldown_for(400, body, {}) == 0
+
+
+def test_mistral_keeps_prefix_other_providers_drop_it():
+    msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": " ", "prefix": True}]
+    assert shape_messages("mistral", msgs)[0][1]["prefix"] is True
+    assert "prefix" not in shape_messages("groq", msgs)[0][1]
+    assert "prefix" not in shape_messages("gemini", msgs)[0][1]
+
+
+def test_a_failure_never_shortens_an_existing_cooldown():
+    clock = Clock()
+    state = ChainState(parse_chain("groq:a", KEYS), clock=clock)
+    link = state.links[0]
+    state.fail(link, 3600, "429 daily limit", daily=True)
+    state.fail(link, 20, "429 rate limit")
+    state.fail(link, 0, "400 tool-call format")
+    clock.t += 1000
+    assert state.available(link) is False
+    clock.t += 2601
+    assert state.available(link) is True
+
+
+def test_last_error_is_status_and_category_only():
+    cases = [
+        (429, "Rate limit reached on tokens per day (TPD) in organization org_123", {}, "429 daily limit"),
+        (429, "slow down org_123", {"retry-after": "3"}, "429 rate limit"),
+        (503, "overloaded org_123", {}, "503 server error"),
+        (404, "models/gemini-2.5-flash is no longer available", {}, "404 model not found"),
+        (401, "Invalid API Key", {}, "401 unauthorized"),
+        (403, "tier_not_allowed", {}, "403 forbidden"),
+        (400, '{"error":{"code":"tool_use_failed"}}', {}, "400 tool-call format"),
+    ]
+    for status, body, headers, expected in cases:
+        def handler(r, b, status=status, body=body, headers=headers):
+            return httpx.Response(status, text=body, headers=headers)
+
+        llm, state, _, _ = client(handler, spec="groq:a")
+        with pytest.raises(LLMUnavailable):
+            asyncio.run(llm.complete([], []))
+        assert state.status()["links"][0]["lastError"] == expected
+
+    def timeout(r, b):
+        raise httpx.ReadTimeout("slow", request=r)
+
+    llm, state, _, _ = client(timeout, spec="groq:a")
+    with pytest.raises(LLMUnavailable):
+        asyncio.run(llm.complete([], []))
+    assert state.status()["links"][0]["lastError"] == "timeout"

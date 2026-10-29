@@ -358,3 +358,41 @@ def test_a_post_tool_inference_counts_as_a_fresh_attempt():
 
     asyncio.run(run())
     assert switcher._answered is False and switcher.strategy.tried == set() and switcher._context is context
+
+
+def test_mistral_live_request_keeps_the_adapters_prefix_after_a_tool_result():
+    from pipecat.processors.aggregators.llm_context import LLMContext
+
+    mistral = _switcher(build()).llms[2]
+    sent = {}
+
+    class Completions:
+        async def create(self, **params):
+            sent.update(params)
+            return object()
+
+    class Chat:
+        completions = Completions()
+
+    class Client:
+        chat = Chat()
+
+    mistral._client = Client()
+    context = LLMContext([
+        {"role": "user", "content": "premium?"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "fc_long-groq-id", "type": "function", "function": {"name": "get_policy", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "fc_long-groq-id", "content": "{}"},
+    ])
+    asyncio.run(mistral.get_chat_completions(context))
+    last = sent["messages"][-1]
+    assert last["role"] == "assistant" and last["prefix"] is True
+    assert len(sent["messages"][-2]["tool_call_id"]) == 9
+
+
+def test_live_last_error_is_a_category_not_provider_text():
+    chain = ChainState(parse_chain(CHAIN, KEYS))
+    switcher = _switcher(build(chain=chain))
+    exc = _status_error(429, "Rate limit reached on tokens per day in organization org_123")
+    asyncio.run(switcher.strategy.handle_error(_error(switcher.llms[0], exc)))
+    assert chain.status()["links"][0]["lastError"] == "429 daily limit"

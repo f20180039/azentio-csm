@@ -37,7 +37,8 @@ SERVER_COOLDOWN = 30.0
 UNUSABLE_COOLDOWN = 3600.0
 
 _DAILY = re.compile(r"per ?day|\bTPD\b|\bRPD\b", re.I)
-_TOOL_FORMAT = re.compile(r"tool_use_failed|failed to call a function|tool[_ ]?call|function[_ ]?call|thought_signature", re.I)
+_TOOL_FORMAT = re.compile(
+    r"tool_use_failed|failed to call a function|tool[_ ]?call|function[_ ]?call|thought_signature|expected last role", re.I)
 _RETRY_DELAY = re.compile(r'"retryDelay":\s*"(\d+(?:\.\d+)?)s"')
 _MISTRAL_ID = re.compile(r"[A-Za-z0-9]{9}")
 _MESSAGE_KEYS = ("role", "content", "tool_calls", "tool_call_id", "name")
@@ -120,6 +121,20 @@ def cooldown_for(status: int | None, body: str, headers, timeout: bool = False) 
     return None
 
 
+def error_category(status: int | None, body: str, headers, cooldown: float | None = None) -> str:
+    """What /v1/llm/status says about a failure: the status and a category, never provider text."""
+    if status is None:
+        return "timeout"
+    if status == 429:
+        return f"429 {'daily limit' if is_daily_cap(status, body, headers) else 'rate limit'}"
+    if status >= 500:
+        return f"{status} server error"
+    named = {401: "unauthorized", 403: "forbidden", 404: "model not found"}
+    if status in named:
+        return f"{status} {named[status]}"
+    return f"{status} {'tool-call format' if cooldown == 0 else 'bad request'}"
+
+
 def is_daily_cap(status: int | None, body: str, headers) -> bool:
     return status == 429 and bool(_DAILY.search(body) or headers.get("x-ratelimit-limit-req-minute") == "0")
 
@@ -150,6 +165,8 @@ def shape_messages(provider: str, messages: list[dict]) -> tuple[list[dict], dic
 
     for m in messages:
         shaped = {k: m[k] for k in _MESSAGE_KEYS if k in m}
+        if provider == "mistral" and "prefix" in m:  # set by Pipecat's Mistral adapter on a trailing assistant
+            shaped["prefix"] = m["prefix"]
         if m.get("tool_calls"):
             shaped["tool_calls"] = [_shape_call(provider, c, tool_id) for c in m["tool_calls"]]
         if "tool_call_id" in m:
@@ -207,12 +224,13 @@ class ChainState:
     def candidates(self) -> list[Link]:
         return [l for l in self.links if self.available(l)]
 
-    def fail(self, link: Link, cooldown: float, error: str, daily: bool = False) -> None:
+    def fail(self, link: Link, cooldown: float, error: str, daily: bool = False, detail: str = "") -> None:
         h = self._health[link.name]
-        h.last_error = self._redact(error)[:200]
-        h.daily = daily
-        h.cooldown_until = self._clock() + cooldown if cooldown > 0 else h.cooldown_until
-        logger.warning(f"LLM chain: {link.name} failed ({h.last_error}); resting {cooldown:.0f}s")
+        h.last_error = self._redact(error)[:80]
+        h.daily = daily or h.daily and not self.available(link)
+        h.cooldown_until = max(h.cooldown_until or 0.0, self._clock() + cooldown) if cooldown > 0 else h.cooldown_until
+        logger.warning(f"LLM chain: {link.name} failed ({h.last_error}); resting {cooldown:.0f}s "
+                       f"{self._redact(detail)[:200]}".rstrip())
 
     def answered(self, link: Link) -> None:
         self._health[link.name].daily = False
@@ -265,14 +283,14 @@ class ChainChatClient:
                 self.state.fail(link, cooldown_for(None, "", {}, timeout=True), "timeout")
                 continue
             except httpx.TransportError as e:
-                self.state.fail(link, SERVER_COOLDOWN, f"connection error: {type(e).__name__}")
+                self.state.fail(link, SERVER_COOLDOWN, "connection error", detail=type(e).__name__)
                 continue
             if resp.status_code >= 400:
                 cooldown = cooldown_for(resp.status_code, resp.text, resp.headers)
                 if cooldown is None:
                     resp.raise_for_status()
-                self.state.fail(link, cooldown, f"{resp.status_code} {resp.text[:160]}",
-                                daily=is_daily_cap(resp.status_code, resp.text, resp.headers))
+                self.state.fail(link, cooldown, error_category(resp.status_code, resp.text, resp.headers, cooldown),
+                                daily=is_daily_cap(resp.status_code, resp.text, resp.headers), detail=resp.text)
                 continue
             self.state.answered(link)
             return _normalise_reply(resp.json()["choices"][0]["message"], back)
@@ -347,12 +365,12 @@ def build_live_llm(link: Link, system_instruction: str) -> LLMService:
     return llm
 
 
-def exception_cooldown(exc: BaseException | None) -> tuple[float | None, str, bool]:
-    """(cooldown, short error, daily cap) for an exception a live LLM service reported."""
+def exception_cooldown(exc: BaseException | None) -> tuple[float | None, str, bool, str]:
+    """(cooldown, status category, daily cap, provider detail) for an exception a live LLM service reported."""
     if isinstance(exc, (openai.APITimeoutError, TimeoutError, asyncio.TimeoutError, httpx.TimeoutException)):
-        return SERVER_COOLDOWN, "timeout", False
+        return SERVER_COOLDOWN, "timeout", False, ""
     if isinstance(exc, openai.APIConnectionError):
-        return SERVER_COOLDOWN, "connection error", False
+        return SERVER_COOLDOWN, "connection error", False, ""
     status = extract_http_status_code(exc) if exc is not None else None
     response = getattr(exc, "response", None)
     try:
@@ -360,7 +378,10 @@ def exception_cooldown(exc: BaseException | None) -> tuple[float | None, str, bo
     except Exception:
         body = str(exc)
     headers = getattr(response, "headers", None) or {}
-    return cooldown_for(status, body, headers), f"{status} {body[:160]}", is_daily_cap(status, body, headers)
+    if status is None:
+        return None, "error", False, body
+    cooldown = cooldown_for(status, body, headers)
+    return cooldown, error_category(status, body, headers, cooldown), is_daily_cap(status, body, headers), body
 
 
 class ChainFailoverStrategy(ServiceSwitcherStrategyManual):
@@ -387,10 +408,10 @@ class ChainFailoverStrategy(ServiceSwitcherStrategyManual):
             return None
         if not failed.is_usable:  # a 4xx costs a Pipecat service its usability for good; the chain decides instead
             await failed.set_usable(True)
-        cooldown, summary, daily = exception_cooldown(error.exception)
+        cooldown, category, daily, detail = exception_cooldown(error.exception)
         if cooldown is None:
             return None
-        self.chain.fail(self.link_of(failed), cooldown, summary, daily=daily)
+        self.chain.fail(self.link_of(failed), cooldown, category, daily=daily, detail=detail)
         self.tried.add(failed)
         nxt = self.preferred(exclude=self.tried)
         return await self.activate(nxt) if nxt is not None else None
