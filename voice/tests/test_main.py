@@ -152,3 +152,45 @@ def test_cors_preflight_allows_only_the_web_origin():
         headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "POST"},
     )
     assert "access-control-allow-origin" not in other.headers
+
+
+def test_cors_preflight_allows_patch_for_ice_trickle():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    r = c.options(
+        "/api/offer",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "PATCH",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert r.status_code == 200
+    assert "PATCH" in r.headers["access-control-allow-methods"]
+
+
+def test_patch_unknown_peer_connection_is_404():
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequestHandler
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.webrtc = None
+    body = {"pc_id": "nope", "candidates": [{"candidate": "", "sdp_mid": "0", "sdp_mline_index": 0}]}
+    assert c.patch("/api/offer", json=body).status_code == 404
+    main.state.webrtc = SmallWebRTCRequestHandler()
+    assert c.patch("/api/offer", json=body).status_code == 404
+    main.state.webrtc = None
+
+
+def test_patch_known_peer_connection_reaches_the_handler():
+    seen = []
+
+    class FakeHandler:
+        async def handle_patch_request(self, request):
+            seen.append(request)
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.webrtc = FakeHandler()
+    body = {"pc_id": "pc-1", "candidates": [{"candidate": "candidate:1 1 udp 1 1.2.3.4 5 typ host", "sdp_mid": "0", "sdp_mline_index": 0}]}
+    r = c.patch("/api/offer", json=body)
+    main.state.webrtc = None
+    assert r.status_code == 200
+    assert seen[0].pc_id == "pc-1" and seen[0].candidates[0].sdp_mline_index == 0

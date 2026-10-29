@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
 
+from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCPatchRequest
+
 from .api_client import ApiUnavailable, RenewalsApi
 from .brain import CallBrain, ChatClient, GroqChatClient
 from .config import Settings, load_settings
@@ -44,7 +46,7 @@ app = FastAPI(title="Renewal Desk voice")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -167,6 +169,15 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     if not renegotiation:
         state.live_calls[call_id] = answer["pc_id"]
     return answer
+
+
+@app.patch("/api/offer")
+async def ice_candidate(body: SmallWebRTCPatchRequest) -> dict:
+    """Trickled ICE candidates from the browser transport, forwarded to Pipecat's own handler."""
+    if state.webrtc is None:
+        raise HTTPException(404, "Peer connection not found")
+    await state.webrtc.handle_patch_request(body)
+    return {"status": "success"}
 
 
 @app.on_event("shutdown")
