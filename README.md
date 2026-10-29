@@ -24,6 +24,8 @@ docker compose up --build
 
 Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 
+**Browser voice calls need the voice service run natively.** Compose starts the voice container, which serves typed calls and `/health`, but WebRTC audio from a Docker Desktop container on macOS does not connect without host networking or a TURN server. For a spoken call, keep compose for the API, web app and database, stop the container (`docker compose stop voice`) and run the voice service natively on port 7861 as in step 4 below, with `RENEWALS_API_BASE=http://localhost:8080/api/v1`.
+
 **Renewal call:** open Renewals in the web app, pick a policy and start the call. The voice agent needs `GROQ_API_KEY` in `.env` (free key at https://console.groq.com/keys) and internet, because speech uses the Edge read-aloud service. The API refuses calls outside calling hours; set `ENFORCE_CALLING_HOURS=false` in `.env` to demo at any time. The voice service logs in to the API as `voice/voice` (`RENEWALS_API_USER`, `RENEWALS_API_PASSWORD`).
 
 **Models:** copy `.env.example` to `.env` and add whichever keys you have. The supported providers are Anthropic, Gemini, Groq, Mistral, local Ollama and a mock.

@@ -56,7 +56,7 @@ services:
     depends_on:
       - api
     ports:
-      - "7861:7861"
+      - "127.0.0.1:7861:7861"
 
   web:
     build:

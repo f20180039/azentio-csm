@@ -14,7 +14,7 @@ Declared as **pre-built, reusable scaffolding** under rule 3. The topic-specific
 | `web/` | React 18, TypeScript, Vite | 5173 | Reviewer queue, case workspace, upload, audit timeline, rule-pack view, Renewals queue and live call screen |
 | `postgres` | PostgreSQL 16 | 5432 | Everything persistent. Also the job queue (no Redis) |
 
-`docker-compose.yml` at the repo root runs all five. Each service also runs standalone for development.
+`docker-compose.yml` at the repo root runs all five. Each service also runs standalone for development. For browser voice calls, run `voice/` natively and keep compose for the API, web app and database: WebRTC from a Docker Desktop container on macOS does not connect without host networking or a TURN server.
 
 ## Request flow
 
@@ -174,7 +174,7 @@ The model sees seven tools. Each one is a thin call to a renewals endpoint:
 | `handoff_to_human` | `POST /handoff` |
 | `end_call` | `POST /end` |
 
-The voice service also posts every spoken line to `POST /turns`. The analyst views the call and its audit trail with `GET /calls/{callId}`, and the queue with `GET /renewals/queue`.
+The voice service also posts every spoken line to `POST /turns`. The analyst views the call with `GET /calls/{callId}` and the queue with `GET /renewals/queue`; the call's audit trail is at `GET /api/v1/cases/{id}/audit`. The transcript is stored on the call record and quoted by the summary, but it is not part of the audit hash chain.
 
 ### Limits live in the API
 
@@ -183,7 +183,7 @@ The model can ask for anything. The API decides, and the prompt is not a securit
 - **Identity before policy details.** `get_policy`, `list_allowed_options`, `quote_renewal` and `send_payment_link` return `403 IDENTITY_NOT_VERIFIED` until `verify` succeeds. Too many wrong answers lock verification (`409 VERIFY_LOCKED`) and force a handoff.
 - **Discount limit and out-of-playbook counter.** A quote with a discount above the playbook maximum returns `OUTSIDE_PLAYBOOK`, increments the call's out-of-playbook counter and writes a `rule.outside_playbook` audit event. Reaching the playbook's limit on that counter forces a handoff.
 - **Forced handoff blocks offers.** While a handoff is forced, `list_allowed_options`, `quote_renewal` and `send_payment_link` return `409 MUST_HANDOFF`. The agent can only hand off or end the call.
-- **Refusals are audited.** Every refused tool call writes a `tool.refused` event with the tool and code, so the audit trail shows what the agent tried, not only what it did.
+- **Refusals are audited.** A refusal of a checked action (identity, playbook, handoff and call-state checks) writes a `tool.refused` event with the tool and code, so the audit trail shows what the agent tried, not only what it did. Malformed requests rejected with `400` are not audited.
 - **One live session per call.** The voice service accepts one WebRTC session per `callId`; a second offer for the same call is rejected with `409 CALL_IN_PROGRESS`. A call that has ended returns `409 CALL_ENDED` for every tool.
 
 Calls to customers with an open complaint (`HUMAN_ONLY`), on the do-not-call list (`DO_NOT_CALL`), or outside calling hours (`OUTSIDE_CALLING_HOURS`, switchable with `ENFORCE_CALLING_HOURS=false`) cannot be started at all.
