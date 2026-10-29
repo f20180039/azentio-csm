@@ -12,6 +12,8 @@ describe('App in mock mode', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'reviewer' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
+    expect(await screen.findByText('Calls today')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('link', { name: 'Queue' }));
     expect(await screen.findByText('Review queue')).toBeInTheDocument();
     const row = await screen.findByText('Example: Rohan M. · personal loan ₹6,00,000');
     fireEvent.click(row);

@@ -427,3 +427,34 @@ export const mockApi: Api = {
     };
   },
 };
+
+/** SAMPLE dashboard for VITE_MOCK=1: every holder, policy and figure is invented. */
+export function sampleDashboard(): import('./dashboard').Dashboard {
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const dayKey = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const days: Array<[number, number, number]> = [[3, 1, 1], [5, 2, 0], [4, 1, 2], [6, 2, 1], [5, 3, 1], [7, 2, 1], [4, 2, 1]];
+  return {
+    kpis: {
+      callsToday: 7, callsTotal: 37, inProgress: 1, renewed: 4, handedOff: 2, noDecision: 0,
+      premiumRetained: 184500, premiumAtRisk: 61200, blockedRequests: 5, refusals: 1, identityFailures: 1, saveRate: 0.67,
+    },
+    outcomesByDay: days.map(([renewed, handedOff, noDecision], i) => ({ day: dayKey(6 - i), renewed, handedOff, noDecision })),
+    recentCalls: [
+      { callId: 'sample-1', holderName: 'Sample: Meera Iyer', policyId: 'LL-MOT-20418', product: 'Motor comprehensive', startedAt: ago(1), endedAt: null, outcome: null, mustHandoff: false, outOfPlaybookRequests: 0 },
+      { callId: 'sample-2', holderName: 'Sample: Arjun Nair', policyId: 'LL-HLT-11873', product: 'Health floater', startedAt: ago(14), endedAt: ago(10), outcome: 'RENEWAL_PENDING_PAYMENT', mustHandoff: false, outOfPlaybookRequests: 1 },
+      { callId: 'sample-3', holderName: 'Sample: Kavita Rao', policyId: 'LL-MOT-20977', product: 'Motor third party', startedAt: ago(38), endedAt: ago(33), outcome: 'HANDED_OFF', mustHandoff: true, outOfPlaybookRequests: 2 },
+      { callId: 'sample-4', holderName: 'Sample: Sunita Menon', policyId: 'LL-HLT-11990', product: 'Health individual', startedAt: ago(95), endedAt: ago(90), outcome: 'RENEWAL_PENDING_PAYMENT', mustHandoff: false, outOfPlaybookRequests: 0 },
+    ],
+    guardrailEvents: [
+      { at: ago(2), callId: 'sample-1', holderName: 'Sample: Meera Iyer', action: 'rule.outside_playbook', detail: 'Asked for a discount the playbook does not allow' },
+      { at: ago(34), callId: 'sample-3', holderName: 'Sample: Kavita Rao', action: 'tool.handoff_to_human', detail: 'Open claim on the policy: a person must continue' },
+      { at: ago(36), callId: 'sample-3', holderName: 'Sample: Kavita Rao', action: 'identity.failed', detail: 'Date of birth did not match' },
+      { at: ago(60), callId: 'sample-2', holderName: 'Sample: Arjun Nair', action: 'tool.refused', detail: 'Payment link requested before consent' },
+    ],
+    riskBands: [
+      { band: 'Low', count: 12, agentCall: 11, humanOnly: 0, reminderSms: 1 },
+      { band: 'Medium', count: 15, agentCall: 12, humanOnly: 1, reminderSms: 2 },
+      { band: 'High', count: 10, agentCall: 3, humanOnly: 6, reminderSms: 1 },
+    ],
+  };
+}

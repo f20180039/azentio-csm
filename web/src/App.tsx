@@ -3,6 +3,7 @@ import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-r
 import { MOCK_MODE } from './api/client';
 import { ToastProvider } from './components/Toasts';
 import { Call } from './pages/Call';
+import { Dashboard } from './pages/Dashboard';
 import { CaseWorkspace } from './pages/CaseWorkspace';
 import { Packs } from './pages/Packs';
 import { Queue } from './pages/Queue';
@@ -52,9 +53,8 @@ function Shell() {
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
-          <NavLink to="/" end>
-            Queue
-          </NavLink>
+          <NavLink to="/dashboard">Dashboard</NavLink>
+          <NavLink to="/queue">Queue</NavLink>
           <NavLink to="/renewals">Renewals</NavLink>
           <NavLink to="/packs">Rule packs</NavLink>
         </nav>
@@ -82,12 +82,14 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Shell />}>
-              <Route index element={<Queue />} />
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="queue" element={<Queue />} />
               <Route path="cases/:id" element={<CaseWorkspace />} />
               <Route path="renewals" element={<Renewals />} />
               <Route path="renewals/calls/:callId" element={<Call />} />
               <Route path="packs" element={<Packs />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Routes>
         </BrowserRouter>

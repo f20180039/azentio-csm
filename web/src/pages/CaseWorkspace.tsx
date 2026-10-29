@@ -105,7 +105,7 @@ export function CaseWorkspace() {
     return (
       <div className="empty">
         <strong>This case could not be loaded</strong>
-        <Link to="/">Back to the queue</Link>
+        <Link to="/queue">Back to the queue</Link>
       </div>
     );
   }
@@ -121,7 +121,7 @@ export function CaseWorkspace() {
   return (
     <>
       <div className="case-head">
-        <Link to="/" className="small">
+        <Link to="/queue" className="small">
           ← Queue
         </Link>
         <div className="page-head">
