@@ -71,11 +71,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<{ data:
   return { data: (text ? JSON.parse(text) : null) as T, res };
 }
 
-async function get<T>(path: string): Promise<T> {
+export async function get<T>(path: string): Promise<T> {
   return (await request<T>(path)).data;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (
     await request<T>(path, {
       method: 'POST',

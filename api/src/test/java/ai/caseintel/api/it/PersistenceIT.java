@@ -7,9 +7,13 @@ import ai.caseintel.api.audit.AuditService;
 import ai.caseintel.api.domain.CaseEntity;
 import ai.caseintel.api.jobs.JobQueue;
 import ai.caseintel.api.repo.CaseRepository;
+import ai.caseintel.api.renewals.PolicyEntity;
+import ai.caseintel.api.renewals.PolicyRepository;
 import ai.caseintel.api.repo.PeerQueries;
 import ai.caseintel.api.rules.Peers;
 import ai.caseintel.api.service.OpsService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -63,6 +67,10 @@ class PersistenceIT {
     PeerQueries peerQueries;
     @Autowired
     CaseRepository cases;
+    @Autowired
+    PolicyRepository policies;
+    @Autowired
+    ObjectMapper json;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -122,6 +130,16 @@ class PersistenceIT {
                     assertThat(p.extractions().get()).isEmpty();
                 });
         assertThat(peers.withAttribute("payerHash", "p1\" or 1=1", Duration.ofDays(90))).isEmpty();
+    }
+
+    @Test
+    void renewalSeedLoads() throws Exception {
+        assertThat(policies.count()).isEqualTo(40);
+
+        PolicyEntity meera = policies.findById("HF-2291-0457").orElseThrow();
+
+        assertThat(meera.getRenewalPremium()).isEqualByComparingTo(new BigDecimal("18450"));
+        assertThat(json.readTree(meera.getPremiumBreakdown())).hasSize(2);
     }
 
     private UUID insertCase(String type, String attributes, Instant createdAt) {

@@ -159,3 +159,74 @@ export interface Page<T> {
   items: T[];
   total: number;
 }
+
+/* ---------- renewals (Renewal Desk voice agent) ---------- */
+
+export type RenewalRoute = 'AGENT_CALL' | 'HUMAN_ONLY' | 'REMINDER_SMS';
+export type CallOutcome = 'HANDED_OFF' | 'RENEWAL_PENDING_PAYMENT' | 'NO_DECISION';
+
+export interface RenewalSignal {
+  code: string;
+  label: string;
+  severity: Severity;
+  weight: number;
+}
+
+export interface QueueItem {
+  policyId: string;
+  holderName: string;
+  product: string;
+  expiresOn: string;
+  daysToExpiry: number;
+  score: number;
+  signals: RenewalSignal[];
+  route: RenewalRoute;
+}
+
+export interface StartedCall {
+  callId: string;
+  caseId: string;
+  greeting: string;
+}
+
+export interface TranscriptTurn {
+  role: string;
+  text: string;
+  at?: string;
+}
+
+export interface SummaryItem {
+  statement: string;
+  quote: string;
+}
+
+export interface CallQuote {
+  quoteId?: string;
+  annualPremium?: number;
+  instalments?: number;
+  perInstalment?: number;
+}
+
+export interface CallView {
+  callId: string;
+  caseId: string;
+  policyId: string;
+  holderName: string;
+  greeting: string;
+  identityVerified: boolean;
+  verifyFailures: number;
+  outOfPlaybookRequests: number;
+  mustHandoff: boolean;
+  outcome: CallOutcome | null;
+  lastQuote: CallQuote | null;
+  paymentLinkSent: boolean;
+  handoffReason: string | null;
+  callbackAt: string | null;
+  transcript: TranscriptTurn[];
+  summary: SummaryItem[];
+}
+
+export interface TextTurnResult {
+  reply: string;
+  toolCalls: { name: string; args: unknown; result: unknown }[];
+}

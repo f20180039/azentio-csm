@@ -54,3 +54,6 @@ app:
     max-attempts: 3
     backoff-base-ms: 2000
     stuck-after: 5m
+  renewals:
+    enforce-calling-hours: ${ENFORCE_CALLING_HOURS:true}
+    playbook: playbooks/health-renewal.yml

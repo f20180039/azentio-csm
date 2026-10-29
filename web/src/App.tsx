@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { MOCK_MODE } from './api/client';
 import { ToastProvider } from './components/Toasts';
+import { Call } from './pages/Call';
 import { CaseWorkspace } from './pages/CaseWorkspace';
 import { Packs } from './pages/Packs';
 import { Queue } from './pages/Queue';
+import { Renewals } from './pages/Renewals';
 import { SignIn } from './pages/SignIn';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
@@ -53,6 +55,7 @@ function Shell() {
           <NavLink to="/" end>
             Queue
           </NavLink>
+          <NavLink to="/renewals">Renewals</NavLink>
           <NavLink to="/packs">Rule packs</NavLink>
         </nav>
         <div className="topbar-right">
@@ -81,6 +84,8 @@ export function App() {
             <Route element={<Shell />}>
               <Route index element={<Queue />} />
               <Route path="cases/:id" element={<CaseWorkspace />} />
+              <Route path="renewals" element={<Renewals />} />
+              <Route path="renewals/calls/:callId" element={<Call />} />
               <Route path="packs" element={<Packs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

@@ -66,7 +66,8 @@ public class SecurityConfig {
         return new InMemoryUserDetailsManager(
                 User.withUsername("analyst").password(encoder.encode("analyst")).roles("ANALYST").build(),
                 User.withUsername("reviewer").password(encoder.encode("reviewer")).roles("REVIEWER", "ANALYST").build(),
-                User.withUsername("admin").password(encoder.encode("admin")).roles("ADMIN", "REVIEWER", "ANALYST").build());
+                User.withUsername("admin").password(encoder.encode("admin")).roles("ADMIN", "REVIEWER", "ANALYST").build(),
+                User.withUsername("voice").password(encoder.encode("voice")).roles("VOICE").build());
     }
 
     @Bean

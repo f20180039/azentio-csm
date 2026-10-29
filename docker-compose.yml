@@ -39,18 +39,34 @@ services:
       AGENT_URL: http://agent:8000
       CORS_ORIGINS: http://localhost:5173
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      ENFORCE_CALLING_HOURS: ${ENFORCE_CALLING_HOURS:-true}
     volumes:
       - uploads:/data/uploads
     ports:
       - "8080:8080"
+
+  voice:
+    build: ./voice
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RENEWALS_API_BASE: http://api:8080/api/v1
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:7861:7861"
 
   web:
     build:
       context: ./web
       args:
         VITE_API_BASE: http://localhost:8080/api/v1
+        VITE_VOICE_BASE: http://localhost:7861
     depends_on:
       - api
+      - voice
     ports:
       - "5173:80"
 

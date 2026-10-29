@@ -12,7 +12,8 @@ public record AppProperties(
         RateLimit rateLimit,
         Cors cors,
         Agent agent,
-        Worker worker) {
+        Worker worker,
+        Renewals renewals) {
 
     public record Storage(String dir) {}
 
@@ -23,6 +24,8 @@ public record AppProperties(
     public record Cors(List<String> allowedOrigins) {}
 
     public record Agent(String baseUrl, Duration connectTimeout, Duration readTimeout, Duration healthTimeout) {}
+
+    public record Renewals(boolean enforceCallingHours, String playbook) {}
 
     public record Worker(
             boolean enabled,
