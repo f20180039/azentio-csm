@@ -47,16 +47,18 @@ def renewals(r: httpx.Request) -> httpx.Response:
 
 @pytest.fixture
 def client():
-    def make(settings: Settings = CONFIGURED, twilio=None) -> TestClient:
+    def make(settings: Settings = CONFIGURED, twilio=None, tunnel=None) -> TestClient:
         main.state._settings = settings
         main.state.api = RenewalsApi(Settings(), transport=httpx.MockTransport(renewals))
         main.state.twilio_transport = httpx.MockTransport(twilio or (lambda r: httpx.Response(201, json={"sid": "CA1"})))
+        main.state.tunnel_transport = httpx.MockTransport(tunnel or (lambda r: httpx.Response(200, json={"status": "ok"})))
         return TestClient(main.app)
 
     yield make
     main.state._settings = None
     main.state.api = None
     main.state.twilio_transport = None
+    main.state.tunnel_transport = None
     main.state.live_calls.clear()
     main.state.phone_pending.clear()
 
@@ -256,6 +258,60 @@ def test_phone_call_twilio_failure_is_502_and_frees_the_slot(client):
     r = c.post("/v1/phone-call", json={"callId": CALL, "to": "+919812344417"})
     assert r.status_code == 502 and "unverified" in r.json()["detail"] and TOKEN not in r.text
     assert CALL not in main.state.phone_pending
+
+
+def test_mask_numbers_masks_every_full_number_in_a_text():
+    text = "Twilio 400 21219: The number +919812344417 is unverified; From +15005550006."
+    out = phone.mask_numbers(text)
+    assert "9812344417" not in out and "5005550006" not in out
+    assert "+91 ••••• •4417" in out and "21219" in out
+
+
+def test_phone_call_twilio_error_never_carries_the_full_number(client, logs):
+    msg = "The number +919812344417 is unverified. Trial accounts may only make calls to verified numbers."
+    c = client(twilio=lambda r: httpx.Response(400, json={"code": 21219, "message": msg}))
+    r = c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"})
+    assert r.status_code == 502
+    assert "9812344417" not in r.text and "•4417" in r.json()["detail"] and "21219" in r.json()["detail"]
+    assert not any("9812344417" in line for line in logs)
+
+
+def test_phone_call_checks_the_tunnel_first_and_dials_nothing_when_it_is_down(client):
+    hits, probes = [], []
+
+    def tunnel(r):
+        probes.append(str(r.url))
+        raise httpx.ConnectTimeout("no route", request=r)
+
+    c = client(twilio=lambda r: hits.append(r) or httpx.Response(201, json={"sid": "CA1"}), tunnel=tunnel)
+    r = c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"})
+    assert r.status_code == 503 and r.json()["detail"] == "TUNNEL_DOWN"
+    assert probes == [BASE + "/health"] and hits == []
+    assert main.state.phone_pending == {}
+    main.state.tunnel_transport = httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok"}))
+    assert c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"}).status_code == 200
+
+
+@pytest.mark.parametrize("answer", [httpx.Response(502, text="Bad gateway"), httpx.Response(200, text="<html>tunnel</html>"),
+                                    httpx.Response(530, json={"status": "ok"})])
+def test_a_tunnel_that_does_not_reach_this_service_is_down(client, answer):
+    c = client(tunnel=lambda r: answer)
+    r = c.post("/v1/phone-call", json={"callId": CALL, "numberId": "0"})
+    assert r.status_code == 503 and r.json()["detail"] == "TUNNEL_DOWN"
+    assert main.state.phone_pending == {}
+
+
+def test_tunnel_check_uses_a_two_second_timeout(monkeypatch):
+    seen = {}
+    real = httpx.AsyncClient
+
+    def spy(*a, **kw):
+        seen["timeout"] = kw.get("timeout")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(phone.httpx, "AsyncClient", spy)
+    ok = asyncio.run(phone.tunnel_up(BASE, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok"}))))
+    assert ok and seen["timeout"] == 2.0
 
 
 def test_a_stale_pending_dial_does_not_block_a_new_one(client):

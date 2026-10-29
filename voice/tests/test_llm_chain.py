@@ -248,7 +248,7 @@ def test_reply_is_normalised_and_keeps_gemini_signature():
     msg = asyncio.run(llm.complete([], []))
     assert msg == {"role": "assistant", "content": None, "tool_calls": [
         {"id": "call_1", "type": "function", "function": {"name": "get_policy", "arguments": "{}"},
-         "extra_content": {"google": {"thought_signature": "sig"}}}]}
+         "extra_content": {"google": {"thought_signature": "sig"}}}], "model": "gemini:g"}
 
 
 def test_status_has_no_secrets():
@@ -354,3 +354,14 @@ def test_last_error_is_status_and_category_only():
     with pytest.raises(LLMUnavailable):
         asyncio.run(llm.complete([], []))
     assert state.status()["links"][0]["lastError"] == "timeout"
+
+
+def test_each_reply_names_the_link_that_answered_it():
+    def handler(r, body):
+        if body["model"] == "openai/gpt-oss-120b":
+            return httpx.Response(503)
+        return reply("ok")
+
+    llm, *_ = client(handler)
+    out = asyncio.run(llm.complete([], []))
+    assert out["model"] == "groq:openai/gpt-oss-20b" and out["content"] == "ok"

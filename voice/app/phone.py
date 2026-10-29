@@ -1,5 +1,6 @@
 """Outbound phone calls: Twilio dials the customer and streams the call audio to /ws/twilio."""
 
+import re
 from dataclasses import dataclass
 from uuid import UUID
 from xml.sax.saxutils import quoteattr
@@ -10,6 +11,8 @@ from .config import Settings
 
 TWILIO_API = "https://api.twilio.com"
 PENDING_TTL_SECS = 120.0
+TUNNEL_CHECK_SECS = 2.0
+_NUMBER = re.compile(r"\+\d{8,15}")
 
 
 class DialError(Exception):
@@ -31,6 +34,20 @@ def mask(number: str) -> str:
     digits = number.lstrip("+")
     country = digits[:-10] if len(digits) > 10 else ""
     return f"{'+' + country + ' ' if country else ''}••••• •{digits[-4:]}"
+
+
+def mask_numbers(text: str) -> str:
+    return _NUMBER.sub(lambda m: mask(m.group()), text)
+
+
+async def tunnel_up(public_base_url: str, transport: httpx.AsyncBaseTransport | None = None) -> bool:
+    """Twilio fetches nothing until the call connects, so a dead tunnel would only show as a silent call."""
+    try:
+        async with httpx.AsyncClient(timeout=TUNNEL_CHECK_SECS, transport=transport) as client:
+            r = await client.get(public_base_url.rstrip("/") + "/health")
+        return r.status_code == 200 and r.json().get("status") == "ok"
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return False
 
 
 def twiml(public_base_url: str, call_id: str) -> str:

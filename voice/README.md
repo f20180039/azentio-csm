@@ -31,7 +31,7 @@ Read from the process env, then `../.env`:
 
 ## Model chain
 
-The agent's model is the first link in `VOICE_LLM_CHAIN` that is not resting. A daily-cap 429 rests a link until its `Retry-After` (1 h if absent), any other 429 for `Retry-After` capped at 60 s (20 s if absent), a 5xx or timeout for 30 s, a 401/403/404 for 1 h; a 400/422 about tool-call format just passes this request to the next link. With every link resting the text endpoint answers 429 `GROQ_DAILY_LIMIT` (all daily caps) or 502, and a live call speaks "Sorry, give me a moment."
+The agent's model is the first link in `VOICE_LLM_CHAIN` that is not resting. A daily-cap 429 rests a link until its `Retry-After` (1 h if absent), any other 429 for `Retry-After` capped at 60 s (20 s if absent), a 5xx or timeout for 30 s, a 401/403/404 for 1 h; a 400/422 about tool-call format just passes this request to the next link. With every link resting the text endpoint answers 429 `LLM_DAILY_LIMIT` (all daily caps) or 502, and a live call speaks "Sorry, give me a moment."; after three such fallbacks with no reply in between it hands the call off (`LLM_UNAVAILABLE`), says "I'll ask a colleague to call you back shortly." and ends the call
 
 Text calls go through `ChainChatClient` (`app/llm_chain.py`). Live calls put one Pipecat LLM service per link behind Pipecat's `LLMSwitcher`, with a strategy that rests the link on those errors, switches, and re-runs the failed turn on the new link; each turn starts on the first rested link, so the chain returns to the primary once its cooldown ends. Both share one state, served without keys at `GET /v1/llm/status` (`{active, links: [{name, available, cooldownUntil, lastError}]}`) and shown on the dashboard as "Model in use".
 
@@ -46,9 +46,9 @@ The agent can also call a real phone: Twilio dials the number and streams the ca
 3. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (the Twilio number), `TWILIO_ALLOWED_TO` (comma-separated E.164) and `PUBLIC_BASE_URL` (the tunnel URL) in `../.env`, and restart this service.
 4. `GET /v1/phone/allowed` now reports `configured: true`; on a call page pick the masked number and click **Call a phone**.
 
-Only the Twilio stream is public. A request that arrives through the tunnel (it carries `Cf-Connecting-Ip`, `Cf-Ray`, `X-Forwarded-For` or `Forwarded`) may reach only `/ws/twilio` and `/health`; everything else answers 403 `LOCAL_ONLY`, so dialling, the browser call and the text endpoints work only from this machine. The stream itself is accepted only for a call this process dialled, with the matching Twilio call SID. One phone call runs at a time (409 `PHONE_BUSY`), and an ended call is not dialled again (409 `CALL_ENDED`).
+Only the Twilio stream is public. A request that arrives through the tunnel (it carries `Cf-Connecting-Ip`, `Cf-Ray`, `X-Forwarded-For` or `Forwarded`) may reach only `/ws/twilio` and `/health`; everything else answers 403 `LOCAL_ONLY`, so dialling, the browser call and the text endpoints work only from this machine. The stream itself is accepted only for a call this process dialled, with the matching Twilio call SID. One phone call runs at a time (409 `PHONE_BUSY`), and an ended call is not dialled again (409 `CALL_ENDED`). Before dialling, the service fetches `PUBLIC_BASE_URL/health` (2 s timeout) and answers 503 `TUNNEL_DOWN` if the tunnel does not reach it. A Twilio error is passed on with any phone number in it masked.
 
-**End call on the web does not hang up the phone.** The phone call ends when the agent calls `end_call` or the customer hangs up.
+**End call on the web does not hang up the phone**, so the call page disables it while a phone call rings or is live. The phone call ends when the agent calls `end_call` or the customer hangs up. **Cancel** only stops the page waiting (it also gives up by itself after 2 minutes of ringing); **Connect voice** stays available as the browser backup.
 
 ## Headless check
 

@@ -36,6 +36,8 @@ from .tools import TOOL_SCHEMAS, run_tool
 GOODBYE = "Thank you for your time. Goodbye."
 LLM_FALLBACK = "Sorry, give me a moment."
 LLM_FALLBACK_INTERVAL_SECS = 10.0
+LLM_GIVE_UP_AFTER = 3
+LLM_GIVE_UP = "I'll ask a colleague to call you back shortly."
 
 
 class TurnLog(BaseObserver):
@@ -163,17 +165,30 @@ async def build_pipeline(
         await task.cancel()
 
     last_fallback: float | None = None
+    fallbacks = 0
+    answers_at_fallback = -1
+    gave_up = False
 
     @task.event_handler("on_pipeline_error")
     async def on_error(_task, frame: ErrorFrame):
-        nonlocal last_fallback
-        if frame.processor is not llm and frame.processor not in llm.llms:
+        nonlocal last_fallback, fallbacks, answers_at_fallback, gave_up
+        if gave_up or (frame.processor is not llm and frame.processor not in llm.llms):
             return
         now = time.monotonic()
         if last_fallback is not None and now - last_fallback < LLM_FALLBACK_INTERVAL_SECS:
             return
         last_fallback = now
-        await task.queue_frames([TTSSpeakFrame(LLM_FALLBACK, append_to_context=False)])
+        fallbacks = fallbacks + 1 if llm.answers == answers_at_fallback else 1
+        answers_at_fallback = llm.answers
+        frames = [TTSSpeakFrame(LLM_FALLBACK, append_to_context=False)]
+        if fallbacks >= LLM_GIVE_UP_AFTER:
+            gave_up = True
+            try:
+                await api.handoff(call_id, "LLM_UNAVAILABLE")
+            except ApiUnavailable as e:
+                logger.warning(f"handoff not recorded: {e}")
+            frames += [TTSSpeakFrame(LLM_GIVE_UP, append_to_context=False), EndWorkerFrame(reason="llm_unavailable")]
+        await task.queue_frames(frames)
 
     closed = False
 

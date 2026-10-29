@@ -25,6 +25,7 @@ class ToolTrace:
 class BrainTurn:
     text: str
     tool_calls: list[ToolTrace] = field(default_factory=list)
+    model: str | None = None
 
 
 class CallBrain:
@@ -57,18 +58,20 @@ class CallBrain:
             await self._api.turn(self._call_id, "customer", user_text)
             self._posted_unanswered = user_text
         traces: list[ToolTrace] = []
+        model = None
         for _ in range(MAX_TOOL_ROUNDS):
             msg = await self._llm.complete(self._messages, TOOL_SCHEMAS)
+            model = msg.get("model", model)
             calls = msg.get("tool_calls") or []
             if not calls:
-                return await self._finish(msg.get("content") or "", traces)
+                return await self._finish(msg.get("content") or "", traces, model)
             self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
             for call in calls:
                 traces.append(await self._run(call))
                 self._messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(traces[-1].result)}
                 )
-        return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces)
+        return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces, model)
 
     async def _run(self, call: dict) -> ToolTrace:
         name = call["function"]["name"]
@@ -80,16 +83,16 @@ class CallBrain:
             return ToolTrace(name, {}, {"error": "BAD_ARGUMENTS", "detail": f"invalid JSON: {e}"[:200]})
         return ToolTrace(name, args, await run_tool(self._api, self._call_id, name, args, self._memory))
 
-    async def _handoff(self, text: str, reason: str, traces: list[ToolTrace]) -> BrainTurn:
+    async def _handoff(self, text: str, reason: str, traces: list[ToolTrace], model: str | None) -> BrainTurn:
         result = await self._api.handoff(self._call_id, reason)
         traces.append(ToolTrace("handoff_to_human", {"reason": reason}, result))
-        return await self._finish(text, traces)
+        return await self._finish(text, traces, model)
 
-    async def _finish(self, text: str, traces: list[ToolTrace]) -> BrainTurn:
+    async def _finish(self, text: str, traces: list[ToolTrace], model: str | None = None) -> BrainTurn:
         self._posted_unanswered = None
         self._messages.append({"role": "assistant", "content": text})
         try:
             await self._api.turn(self._call_id, "agent", text)
         except ApiUnavailable:
             pass
-        return BrainTurn(text, traces)
+        return BrainTurn(text, traces, model)

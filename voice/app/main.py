@@ -31,6 +31,7 @@ class State:
         self.live_calls: dict[str, str | None] = {}
         self.phone_pending: dict[str, tuple[str, float]] = {}
         self.twilio_transport: httpx.AsyncBaseTransport | None = None
+        self.tunnel_transport: httpx.AsyncBaseTransport | None = None
         self._settings: Settings | None = None
 
     def settings(self) -> Settings:
@@ -150,17 +151,18 @@ async def text_turn(body: TextTurnIn) -> dict:
         raise HTTPException(502, "renewals API unavailable") from e
     except LLMUnavailable as e:
         if e.daily:
-            raise HTTPException(429, "GROQ_DAILY_LIMIT") from e
+            raise HTTPException(429, "LLM_DAILY_LIMIT") from e
         raise HTTPException(502, "language model unavailable") from e
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429 and "per day" in e.response.text:
-            raise HTTPException(429, "GROQ_DAILY_LIMIT") from e
+            raise HTTPException(429, "LLM_DAILY_LIMIT") from e
         raise HTTPException(502, "language model unavailable") from e
     except httpx.HTTPError as e:
         raise HTTPException(502, "language model unavailable") from e
     return {
         "reply": turn.text,
         "toolCalls": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls],
+        "model": turn.model,
     }
 
 
@@ -306,12 +308,17 @@ async def phone_call(body: PhoneCallIn) -> dict:
     if call.get("outcome"):
         state.phone_pending.pop(call_id, None)
         raise HTTPException(409, "CALL_ENDED")
+    if not await phone.tunnel_up(s.public_base_url, transport=state.tunnel_transport):
+        state.phone_pending.pop(call_id, None)
+        logger.warning(f"phone call {call_id} not placed: PUBLIC_BASE_URL/health did not answer")
+        raise HTTPException(503, "TUNNEL_DOWN")
     try:
         sid = await phone.dial(s, call_id, to, transport=state.twilio_transport)
     except phone.DialError as e:
         state.phone_pending.pop(call_id, None)
-        logger.warning(f"phone call {call_id} not placed: {e}")
-        raise HTTPException(502, str(e)) from None
+        detail = phone.mask_numbers(str(e))
+        logger.warning(f"phone call {call_id} not placed: {detail}")
+        raise HTTPException(502, detail) from None
     state.phone_pending[call_id] = (sid, time.monotonic())
     logger.info(f"phone call {call_id} dialled as {sid} to {phone.mask(to)}")
     return {"status": "dialling"}

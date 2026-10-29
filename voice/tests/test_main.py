@@ -241,7 +241,7 @@ def test_eval_latest_serves_the_report(tmp_path, monkeypatch):
     assert resp.status_code == 200 and resp.json() == {"totals": {"conversations": 18}}
 
 
-def test_groq_daily_limit_is_429_not_502():
+def test_llm_daily_limit_is_429_not_502():
     class Daily:
         async def complete(self, messages, tools):
             resp = httpx.Response(429, text='{"error":{"message":"Rate limit reached on tokens per day (TPD)"}}',
@@ -252,7 +252,7 @@ def test_groq_daily_limit_is_429_not_502():
     from app.brain import CallBrain
     main.state.brains[ABC] = CallBrain(Daily(), main.state.api, ABC, "SYS")
     resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
-    assert resp.status_code == 429 and resp.json()["detail"] == "GROQ_DAILY_LIMIT"
+    assert resp.status_code == 429 and resp.json()["detail"] == "LLM_DAILY_LIMIT"
 
 
 def test_llm_status_lists_links_without_secrets():
@@ -287,7 +287,7 @@ def test_chain_exhausted_maps_daily_to_429_and_otherwise_502():
     c = client_with(lambda r: httpx.Response(200, json={}))
     main.state.brains[ABC] = CallBrain(Exhausted(True), main.state.api, ABC, "SYS")
     resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
-    assert resp.status_code == 429 and resp.json()["detail"] == "GROQ_DAILY_LIMIT"
+    assert resp.status_code == 429 and resp.json()["detail"] == "LLM_DAILY_LIMIT"
     main.state.brains[ABC] = CallBrain(Exhausted(False), main.state.api, ABC, "SYS")
     assert c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"}).status_code == 502
 
@@ -301,3 +301,17 @@ def test_text_brain_and_status_share_one_chain(monkeypatch):
     monkeypatch.setattr(main.state, "chain", None)
     monkeypatch.setattr(main.state, "llm", None)
     assert main.state.get_llm().state is main.state.get_chain()
+
+
+def test_text_turn_says_which_model_answered():
+    from app.brain import CallBrain
+
+    class Answers:
+        async def complete(self, messages, tools):
+            return {"role": "assistant", "content": "Hello.", "model": "groq:openai/gpt-oss-120b"}
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.brains[ABC] = CallBrain(Answers(), main.state.api, ABC, "SYS")
+    resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
+    assert resp.status_code == 200
+    assert resp.json() == {"reply": "Hello.", "toolCalls": [], "model": "groq:openai/gpt-oss-120b"}

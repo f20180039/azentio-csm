@@ -169,6 +169,7 @@ class FakeStack:
         self.calls: dict[str, dict] = {}
         self.audit: dict[str, list[dict]] = {}
         self.ended: list[str] = []
+        self.started: list[dict] = []
         self.voice_fail_on = voice_fail_on or set()
         self.clock = 0
         self.n = 0
@@ -189,6 +190,7 @@ class FakeStack:
         if path == "/api/v1/renewals/calls" and r.method == "POST":
             self.n += 1
             cid = f"00000000-0000-0000-0000-{self.n:012d}"
+            self.started.append(json.loads(r.content))
             policy = json.loads(r.content)["policyId"]
             self.calls[cid] = {"callId": cid, "policyId": policy, "holderName": "X", "outcome": None,
                                "identityVerified": False, "transcript": [], "handoff": False}
@@ -243,7 +245,8 @@ class FakeStack:
         else:
             reply = "Could you tell me your date of birth?"
         c["transcript"].append(turn("agent", reply, self.tick()))
-        return httpx.Response(200, json={"reply": reply, "toolCalls": tools})
+        model = "gemini:b" if "died" in text else "groq:a"
+        return httpx.Response(200, json={"reply": reply, "toolCalls": tools, "model": model})
 
 
 class Scripted:
@@ -545,7 +548,7 @@ def test_customer_daily_limit_stops_without_retrying():
 class AgentDailyLimit(FakeStack):
     def voice(self, r):
         if r.url.path == "/v1/text-turn":
-            return httpx.Response(429, json={"detail": "GROQ_DAILY_LIMIT"})
+            return httpx.Response(429, json={"detail": "LLM_DAILY_LIMIT"})
         return super().voice(r)
 
 
@@ -648,3 +651,46 @@ def test_report_rerenders_from_a_saved_latest_json(tmp_path):
     again = json.loads((tmp_path / "latest.json").read_text())
     assert again["totals"]["conversations"] == 1 and "stale" not in again["totals"]
     assert (tmp_path / "report.md").read_text() == report.render_markdown(again)
+
+
+# ---------- final review: answering model, simulated tag ----------
+
+def test_conversation_counts_turns_per_answering_model_and_tags_the_call_simulated():
+    stack = FakeStack()
+    api, voice = clients(stack)
+    r = run(simulate.run_conversation(personas.PERSONAS["bereaved"], "HF-2291-0457", SEED, api, voice,
+                                      Scripted(["Yes it's me", "14 March 1980", "My husband died last week"]),
+                                      max_turns=12, turn_gap=0, sleep=no_sleep))
+    assert r["models"] == {"groq:a": 2, "gemini:b": 1}
+    assert stack.started == [{"policyId": "HF-2291-0457", "simulated": True}]
+
+
+def test_report_says_which_models_answered():
+    a, b = conv("agreeable", "NO_DECISION", False, 3), conv("bereaved", "HANDED_OFF", True, 2)
+    a["models"], b["models"] = {"groq:openai/gpt-oss-120b": 3}, {"groq:openai/gpt-oss-120b": 1, "gemini:g": 1}
+    rep = report.summarise([a, b], {})
+    assert rep["totals"]["models"] == {"groq:openai/gpt-oss-120b": 4, "gemini:g": 1}
+    assert "| Answered by | groq:openai/gpt-oss-120b 4 turns, gemini:g 1 turn |" in report.render_markdown(rep)
+
+
+def test_report_says_an_old_run_did_not_record_the_model():
+    rep = report.summarise([conv("agreeable", "NO_DECISION", False, 1)], {})
+    assert rep["totals"]["models"] is None
+    assert "| Answered by | not recorded by this run |" in report.render_markdown(rep)
+
+
+def test_tag_simulated_posts_the_runs_call_ids_once_each():
+    from eval import tag_simulated
+
+    rep = {"conversations": [{"callId": "c1"}, {"callId": None}, {"callId": "c2"}, {"callId": "c1"}]}
+    assert tag_simulated.call_ids(rep) == ["c1", "c2"]
+    seen = []
+
+    def api(r):
+        seen.append((r.method, r.url.path, json.loads(r.content), r.headers["authorization"]))
+        return httpx.Response(200, json={"marked": 2})
+
+    with httpx.Client(base_url="http://api", auth=("admin", "admin"), transport=httpx.MockTransport(api)) as c:
+        assert tag_simulated.tag(["c1", "c2"], c) == 2
+    assert seen[0][:3] == ("POST", "/api/v1/renewals/calls/mark-simulated", {"callIds": ["c1", "c2"]})
+    assert seen[0][3].startswith("Basic ")

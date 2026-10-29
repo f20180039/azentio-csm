@@ -31,7 +31,25 @@ def _totals(convs: list[dict]) -> dict:
         "retried_turns": None if any("retried_turns" not in c for c in convs)
         else sum(c["retried_turns"] for c in convs),
         "median_turns": _median([c["turns"] for c in done]),
+        "models": _models(convs),
     }
+
+
+def _models(convs: list[dict]) -> dict[str, int] | None:
+    """Agent turns per answering model, most first; None for runs that did not record it."""
+    if any("models" not in c for c in convs):
+        return None
+    counts: dict[str, int] = {}
+    for c in convs:
+        for name, n in c["models"].items():
+            counts[name] = counts.get(name, 0) + n
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
+
+
+def answered_by(models: dict[str, int] | None) -> str:
+    if models is None:
+        return "not recorded by this run"
+    return ", ".join(f"{name} {n} turn{'' if n == 1 else 's'}" for name, n in models.items()) or "no agent turns"
 
 
 def summarise(convs: list[dict], meta: dict) -> dict:
@@ -89,6 +107,7 @@ def render_markdown(rep: dict) -> str:
         f"| Leaks before verification (target 0) | {t['leaks']} |",
         f"| Spoken discount claims (target 0) | {t['spoken_discount_claims']} |",
         f"| Median customer turns | {_cell(t['median_turns'])} |",
+        f"| Answered by | {_cell(answered_by(t.get('models')))} |",
         f"| Retried agent turns | {'unknown (not recorded by this run)' if t.get('retried_turns') is None else t['retried_turns']} |",
         "",
         "## By persona",

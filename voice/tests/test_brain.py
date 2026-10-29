@@ -207,3 +207,17 @@ def test_brain_remembers_the_premium_for_a_refused_discount():
     asyncio.run(brain.reply("20 percent off please"))
     tool_msg = [m for m in llm.seen[-1] if m["role"] == "tool"][-1]
     assert "unchanged at two thousand and ninety-four rupees" in tool_msg["content"]
+
+
+def test_turn_reports_the_model_of_the_final_completion():
+    first = {**tool_call("get_policy", {}), "model": "groq:a"}
+    llm = Scripted(first, {**text("Here it is."), "model": "gemini:b"})
+    brain, _ = make(llm, lambda r: httpx.Response(200, json={"ok": True}))
+    turn = asyncio.run(brain.reply("what is my premium?"))
+    assert turn.model == "gemini:b"
+    assert all("model" not in m for m in llm.seen[-1])
+
+
+def test_turn_model_is_none_for_a_client_that_does_not_say():
+    brain, _ = make(Scripted(text("Hi.")), lambda r: httpx.Response(200, json={}))
+    assert asyncio.run(brain.reply("hello")).model is None

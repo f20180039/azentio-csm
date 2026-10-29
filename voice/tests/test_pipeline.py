@@ -12,7 +12,7 @@ from app.api_client import RenewalsApi
 from app.config import Settings
 from app.llm_chain import ChainLLMSwitcher, ChainState, SKIP_THOUGHT_SIGNATURE, parse_chain
 from app import pipeline as pipeline_mod
-from app.pipeline import GOODBYE, LLM_FALLBACK, build_pipeline
+from app.pipeline import GOODBYE, LLM_FALLBACK, LLM_GIVE_UP, build_pipeline
 from app.prompt import system_prompt
 from app.tools import TOOL_SCHEMAS
 
@@ -208,6 +208,74 @@ def test_llm_error_speaks_a_fallback_at_most_once_per_ten_seconds(monkeypatch):
     clock[0] += 0.2
     fire()
     assert len(queued) == 2
+
+
+def _fallback_rig(monkeypatch, handler=call_view):
+    task = build(handler)
+    switcher = _switcher(task)
+    queued = []
+
+    async def record(frames):
+        queued.extend(frames)
+
+    task.queue_frames = record
+    clock = [1000.0]
+    monkeypatch.setattr(pipeline_mod.time, "monotonic", lambda: clock[0])
+    on_error = _error_handler(task)
+
+    def fire():
+        clock[0] += 11
+        err = ErrorFrame(error="every link down")
+        err.processor = switcher.llms[0]
+        asyncio.run(on_error(task, err))
+
+    return switcher, queued, fire
+
+
+def test_three_fallbacks_without_a_reply_hand_off_and_end_the_call(monkeypatch):
+    seen = []
+
+    def handler(r):
+        seen.append((r.method, r.url.path, r.content))
+        return call_view(r)
+
+    _, queued, fire = _fallback_rig(monkeypatch, handler)
+    fire()
+    fire()
+    assert [f.text for f in queued] == [LLM_FALLBACK, LLM_FALLBACK]
+    assert not any(p.endswith("/handoff") for _, p, _ in seen)
+    fire()
+    assert [getattr(f, "text", None) for f in queued[2:4]] == [LLM_FALLBACK, LLM_GIVE_UP]
+    assert LLM_GIVE_UP == "I'll ask a colleague to call you back shortly."
+    assert isinstance(queued[4], EndWorkerFrame) and len(queued) == 5
+    (handoff,) = [(m, c) for m, p, c in seen if p.endswith("/handoff")]
+    assert handoff[0] == "POST" and b'"reason":"LLM_UNAVAILABLE"' in handoff[1].replace(b" ", b"")
+    fire()
+    assert len(queued) == 5
+
+
+def test_a_reply_between_fallbacks_restarts_the_count(monkeypatch):
+    switcher, queued, fire = _fallback_rig(monkeypatch)
+    fire()
+    fire()
+    switcher.answers += 1
+    fire()
+    fire()
+    assert [f.text for f in queued] == [LLM_FALLBACK] * 4
+    fire()
+    assert isinstance(queued[-1], EndWorkerFrame)
+
+
+def test_giving_up_still_ends_the_call_when_the_api_is_down(monkeypatch):
+    def handler(r):
+        if r.url.path.endswith("/handoff"):
+            return httpx.Response(503)
+        return call_view(r)
+
+    _, queued, fire = _fallback_rig(monkeypatch, handler)
+    for _ in range(3):
+        fire()
+    assert isinstance(queued[-1], EndWorkerFrame)
 
 
 def test_errors_from_other_processors_stay_silent():

@@ -42,7 +42,7 @@ class DailyLimitReached(Exception):
 
 
 def _is_daily_limit(resp: httpx.Response) -> bool:
-    return resp.status_code == 429 and ("per day" in resp.text or "GROQ_DAILY_LIMIT" in resp.text)
+    return resp.status_code == 429 and ("per day" in resp.text or "LLM_DAILY_LIMIT" in resp.text)
 
 
 class Customer(Protocol):
@@ -147,11 +147,11 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
                     "holderName": policy.holder_name, "callId": None, "outcome": None, "expected_met": None,
                     "blocked_requests": 0, "identity_failures": 0, "refusals": 0, "rule_breaks": [],
                     "leak_before_verify": [], "spoken_discount_claims": [], "turns": 0, "hit_max_turns": False,
-                    "daily_limit": False, "retried_turns": 0, "error": None, "transcript": []}
+                    "daily_limit": False, "retried_turns": 0, "models": {}, "error": None, "transcript": []}
     turns = 0
     messages = [{"role": "system", "content": customer_prompt(persona, policy)}]
     try:
-        started = await _json(api.post("/api/v1/renewals/calls", json={"policyId": policy_id}))
+        started = await _json(api.post("/api/v1/renewals/calls", json={"policyId": policy_id, "simulated": True}))
         call_id = result["callId"] = started["callId"]
         greeting = (await _json(voice.post("/v1/text-call", json={"callId": call_id})))["greeting"]
         messages.append({"role": "user", "content": greeting})
@@ -165,6 +165,8 @@ async def run_conversation(persona: Persona, policy_id: str, seed: dict[str, See
             messages.append({"role": "assistant", "content": line})
             turns += 1
             turn = await _text_turn(api, voice, call_id, line, sleep, result)
+            model = turn.get("model") or "unknown"
+            result["models"][model] = result["models"].get(model, 0) + 1
             messages.append({"role": "user", "content": turn["reply"] or "..."})
             tools = {t["name"] for t in turn["toolCalls"] if "error" not in (t.get("result") or {})}
             if tools & {"end_call", "handoff_to_human"}:

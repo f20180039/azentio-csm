@@ -263,7 +263,8 @@ class ChainState:
 
 
 class ChainChatClient:
-    """ChatClient over the chain: on a rate limit, outage, timeout or tool-format refusal the next link answers."""
+    """ChatClient over the chain: on a rate limit, outage, timeout or tool-format refusal the next link answers.
+    Each reply carries `model`, the name of the link that answered it."""
 
     def __init__(self, links: tuple[Link, ...], transport: httpx.AsyncBaseTransport | None = None,
                  state: ChainState | None = None):
@@ -293,7 +294,7 @@ class ChainChatClient:
                                 daily=is_daily_cap(resp.status_code, resp.text, resp.headers), detail=resp.text)
                 continue
             self.state.answered(link)
-            return _normalise_reply(resp.json()["choices"][0]["message"], back)
+            return {**_normalise_reply(resp.json()["choices"][0]["message"], back), "model": link.name}
         raise LLMUnavailable("every model in the chain is unavailable", daily=self.state.all_daily())
 
     async def aclose(self) -> None:
@@ -426,6 +427,7 @@ class ChainLLMSwitcher(LLMSwitcher):
         self._chain = chain
         self._context = None
         self._answered = False
+        self.answers = 0
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         if isinstance(frame, LLMContextFrame):  # downstream for a new turn, upstream after a tool round
@@ -439,6 +441,7 @@ class ChainLLMSwitcher(LLMSwitcher):
         active = self.strategy.active_service
         if isinstance(frame, (LLMTextFrame, FunctionCallsStartedFrame)) and not self._answered:
             self._answered = True
+            self.answers += 1
             self._chain.answered(self.strategy.link_of(active))
         if isinstance(frame, ErrorFrame) and not frame.fatal and frame.processor is active:
             await super().push_frame(frame, direction)
