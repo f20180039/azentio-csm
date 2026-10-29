@@ -51,6 +51,13 @@ TOOL_SCHEMAS: list[dict] = [
 
 
 async def run_tool(api: RenewalsApi, call_id: str, name: str, args: dict) -> dict:
+    try:
+        return await _dispatch(api, call_id, name, args)
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        return {"error": "BAD_ARGUMENTS", "detail": f"{type(e).__name__}: {e}"[:200]}
+
+
+async def _dispatch(api: RenewalsApi, call_id: str, name: str, args: dict) -> dict:
     match name:
         case "verify_identity":
             return await api.verify(call_id, args["date_of_birth"])

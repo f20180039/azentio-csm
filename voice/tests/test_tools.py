@@ -100,3 +100,11 @@ def test_schemas_cover_all_tools():
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
     assert names == {"verify_identity", "get_policy", "list_allowed_options", "quote_renewal",
                      "send_payment_link", "handoff_to_human", "end_call"}
+
+
+def test_malformed_arguments_do_not_crash():
+    never = lambda r: httpx.Response(200, json={})
+    out = run(api_with(never), "quote_renewal", {"drop_addons": [], "payment_plan": "annual", "discount_percent": "ten"})
+    assert out["error"] == "BAD_ARGUMENTS" and out["detail"]
+    out = run(api_with(never), "quote_renewal", {"drop_addons": [], "discount_percent": 0})
+    assert out["error"] == "BAD_ARGUMENTS"
