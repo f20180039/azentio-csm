@@ -126,6 +126,38 @@ class RenewalHttpTest {
     }
 
     @Test
+    void markSimulatedIsAdminOnly() throws Exception {
+        String body = "{\"callIds\":[\"" + callId + "\"]}";
+        when(jdbc.update(any(String.class), any(Object[].class))).thenReturn(1);
+        mvc.perform(post("/api/v1/renewals/calls/mark-simulated").with(httpBasic("analyst", "analyst"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/renewals/calls/mark-simulated").with(httpBasic("voice", "voice"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/renewals/calls/mark-simulated").with(httpBasic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.marked").value(1));
+        mvc.perform(post("/api/v1/renewals/calls/mark-simulated").with(httpBasic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"callIds\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void startCallPassesTheSimulatedFlag() throws Exception {
+        when(policies.findById("HF-2291-0457")).thenReturn(Optional.of(PolicyFixtures.meera()));
+        mvc.perform(post("/api/v1/renewals/calls").with(httpBasic("analyst", "analyst"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"policyId\":\"HF-2291-0457\",\"simulated\":true}"))
+                .andExpect(status().isCreated());
+        org.mockito.ArgumentCaptor<ai.caseintel.api.domain.CaseEntity> cc =
+                org.mockito.ArgumentCaptor.forClass(ai.caseintel.api.domain.CaseEntity.class);
+        org.mockito.Mockito.verify(cases).save(cc.capture());
+        org.assertj.core.api.Assertions.assertThat(cc.getValue().getAttributes()).contains("\"simulated\":true");
+    }
+
+    @Test
     void dashboardIsForStaffNotVoice() throws Exception {
         mvc.perform(get("/api/v1/renewals/dashboard").with(httpBasic("voice", "voice")))
                 .andExpect(status().isForbidden());

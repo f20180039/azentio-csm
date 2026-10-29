@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import ai.caseintel.api.service.ApiException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,8 @@ public class DashboardService {
     private static final String RENEWED = "RENEWAL_PENDING_PAYMENT";
     private static final int DAYS = 7;
     private static final int BANDS = 5;
+    /** A bound flag: true lets simulated calls through, false keeps only real ones. */
+    private static final String REAL_OR_ALL = "(? OR NOT c.attributes @> '{\"simulated\": true}')";
 
     private static final String CALL_TOTALS = """
             SELECT count(*) AS total,
@@ -41,25 +44,28 @@ public class DashboardService {
                    count(*) FILTER (WHERE ended_at IS NOT NULL) AS ended,
                    COALESCE(sum((last_quote ->> 'annualPremium')::numeric)
                             FILTER (WHERE outcome = 'RENEWAL_PENDING_PAYMENT'), 0) AS retained
-            FROM calls""";
+            FROM calls k JOIN cases c ON c.id = k.id
+            WHERE """ + REAL_OR_ALL;
 
     private static final String AUDIT_COUNTS = """
             SELECT a.action, count(*) AS n
             FROM audit_events a JOIN cases c ON c.id = a.case_id
             WHERE c.case_type = 'renewal_call'
               AND a.action IN ('rule.outside_playbook', 'tool.refused', 'identity.failed')
+              AND """ + REAL_OR_ALL + """
             GROUP BY a.action""";
 
     private static final String BY_DAY = """
             SELECT (ended_at AT TIME ZONE ?)::date AS day, outcome, count(*) AS n
-            FROM calls
-            WHERE outcome IS NOT NULL AND ended_at >= ?
+            FROM calls k JOIN cases c ON c.id = k.id
+            WHERE outcome IS NOT NULL AND ended_at >= ? AND """ + REAL_OR_ALL + """
             GROUP BY 1, 2""";
 
     private static final String RECENT = """
             SELECT k.id, p.holder_name, k.policy_id, p.product, k.started_at, k.ended_at, k.outcome,
                    k.must_handoff, k.out_of_playbook_requests
-            FROM calls k JOIN policies p ON p.id = k.policy_id
+            FROM calls k JOIN policies p ON p.id = k.policy_id JOIN cases c ON c.id = k.id
+            WHERE """ + REAL_OR_ALL + """
             ORDER BY k.started_at DESC LIMIT 20""";
 
     private static final String GUARDRAILS = """
@@ -76,7 +82,12 @@ public class DashboardService {
             JOIN calls k ON k.id = a.case_id
             JOIN policies p ON p.id = k.policy_id
             WHERE a.action IN ('rule.outside_playbook', 'tool.refused', 'identity.failed', 'tool.handoff_to_human')
+              AND """ + REAL_OR_ALL + """
             ORDER BY a.created_at DESC, a.id DESC LIMIT 30""";
+
+    private static final String MARK_SIMULATED = """
+            UPDATE cases SET attributes = attributes || '{"simulated": true}'::jsonb
+            WHERE id = ? AND case_type = 'renewal_call'""";
 
     private final JdbcTemplate jdbc;
     private final PolicyRepository policies;
@@ -91,6 +102,12 @@ public class DashboardService {
     @PreAuthorize("hasRole('ANALYST')")
     @Transactional(readOnly = true)
     public Dashboard dashboard() {
+        return dashboard(false);
+    }
+
+    @PreAuthorize("hasRole('ANALYST')")
+    @Transactional(readOnly = true)
+    public Dashboard dashboard(boolean includeSimulated) {
         LocalDate today = LocalDate.now(clock);
         ZoneId zone = clock.getZone();
         Timestamp startOfToday = Timestamp.from(today.atStartOfDay(zone).toInstant());
@@ -98,12 +115,12 @@ public class DashboardService {
         long[] totals = jdbc.queryForObject(CALL_TOTALS, (rs, i) -> new long[] {
                 rs.getLong("total"), rs.getLong("today"), rs.getLong("in_progress"), rs.getLong("renewed"),
                 rs.getLong("handed_off"), rs.getLong("no_decision"), rs.getLong("ended"),
-                rs.getBigDecimal("retained").longValue()}, startOfToday);
+                rs.getBigDecimal("retained").longValue()}, startOfToday, includeSimulated);
 
         Map<String, Long> audit = new HashMap<>();
         jdbc.query(AUDIT_COUNTS, rs -> {
             audit.put(rs.getString("action"), rs.getLong("n"));
-        });
+        }, includeSimulated);
 
         long[][] tally = new long[BANDS][3];
         long atRisk = 0;
@@ -132,10 +149,25 @@ public class DashboardService {
                 audit.getOrDefault("rule.outside_playbook", 0L), audit.getOrDefault("tool.refused", 0L),
                 audit.getOrDefault("identity.failed", 0L), ended == 0 ? 0 : (double) totals[3] / ended);
 
-        return new Dashboard(kpis, outcomesByDay(today, zone), recentCalls(), guardrailEvents(), bands);
+        return new Dashboard(kpis, outcomesByDay(today, zone, includeSimulated), recentCalls(includeSimulated),
+                guardrailEvents(includeSimulated), bands);
     }
 
-    private List<DayOutcomes> outcomesByDay(LocalDate today, ZoneId zone) {
+    /** Tags existing renewal calls as simulated; returns how many were found. */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public int markSimulated(List<UUID> callIds) {
+        if (callIds == null || callIds.isEmpty()) {
+            throw ApiException.badRequest("callIds is required");
+        }
+        int marked = 0;
+        for (UUID id : callIds) {
+            marked += jdbc.update(MARK_SIMULATED, id);
+        }
+        return marked;
+    }
+
+    private List<DayOutcomes> outcomesByDay(LocalDate today, ZoneId zone, boolean includeSimulated) {
         LocalDate first = today.minusDays(DAYS - 1);
         Map<LocalDate, long[]> byDay = new HashMap<>();
         jdbc.query(BY_DAY, rs -> {
@@ -145,7 +177,7 @@ public class DashboardService {
                 case "HANDED_OFF" -> row[1] += rs.getLong("n");
                 default -> row[2] += rs.getLong("n");
             }
-        }, zone.getId(), Timestamp.from(first.atStartOfDay(zone).toInstant()));
+        }, zone.getId(), Timestamp.from(first.atStartOfDay(zone).toInstant()), includeSimulated);
         List<DayOutcomes> out = new ArrayList<>();
         for (int i = 0; i < DAYS; i++) {
             LocalDate d = first.plusDays(i);
@@ -155,17 +187,18 @@ public class DashboardService {
         return out;
     }
 
-    private List<RecentCall> recentCalls() {
+    private List<RecentCall> recentCalls(boolean includeSimulated) {
         return jdbc.query(RECENT, (rs, i) -> new RecentCall(rs.getObject("id", UUID.class),
                 rs.getString("holder_name"), rs.getString("policy_id"), rs.getString("product"),
                 instant(rs.getTimestamp("started_at")), instant(rs.getTimestamp("ended_at")),
-                rs.getString("outcome"), rs.getBoolean("must_handoff"), rs.getInt("out_of_playbook_requests")));
+                rs.getString("outcome"), rs.getBoolean("must_handoff"), rs.getInt("out_of_playbook_requests")),
+                includeSimulated);
     }
 
-    private List<GuardrailEvent> guardrailEvents() {
+    private List<GuardrailEvent> guardrailEvents(boolean includeSimulated) {
         return jdbc.query(GUARDRAILS, (rs, i) -> new GuardrailEvent(instant(rs.getTimestamp("created_at")),
                 rs.getObject("case_id", UUID.class), rs.getString("holder_name"), rs.getString("action"),
-                rs.getString("detail")));
+                rs.getString("detail")), includeSimulated);
     }
 
     private static Instant instant(Timestamp t) {

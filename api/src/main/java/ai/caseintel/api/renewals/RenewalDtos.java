@@ -21,7 +21,11 @@ public final class RenewalDtos {
     public record QueueItem(String policyId, String holderName, String product, LocalDate expiresOn,
                             int daysToExpiry, BigDecimal score, List<Signal> signals, Route route) {}
 
-    public record StartCallRequest(String policyId) {}
+    public record StartCallRequest(String policyId, Boolean simulated) {}
+
+    public record MarkSimulatedRequest(List<UUID> callIds) {}
+
+    public record MarkedSimulated(int marked) {}
 
     public record StartedCall(UUID callId, UUID caseId, String greeting) {}
 

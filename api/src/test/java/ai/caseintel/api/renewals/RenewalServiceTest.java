@@ -149,6 +149,16 @@ class RenewalServiceTest {
                 + "Lotusleaf General Insurance. Am I speaking with Meera Iyer?");
     }
 
+    @Test
+    void simulatedCallIsTaggedInCaseAttributes() {
+        when(policies.findById("HF-2291-0457")).thenReturn(Optional.of(meera()));
+        service("2026-10-29T11:00:00", true).startCall("HF-2291-0457", true, "analyst");
+
+        ArgumentCaptor<CaseEntity> cc = ArgumentCaptor.forClass(CaseEntity.class);
+        verify(cases).save(cc.capture());
+        assertThat(cc.getValue().getAttributes()).contains("\"simulated\":true").contains("\"policyId\":\"HF-2291-0457\"");
+    }
+
     // ---- tool endpoints ----
 
     private static final String WHEN = "2026-10-29T11:00:00";

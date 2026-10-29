@@ -232,6 +232,63 @@ class DashboardServiceTest {
         assertThat(events.get(0).detail()).isEqualTo("C34");
     }
 
+    private void simulated(UUID callId) {
+        jdbc.update("update cases set attributes = '{\"simulated\": true}'::jsonb where id = ?", callId);
+    }
+
+    @Test
+    void simulatedCallsAreLeftOutUnlessAskedFor() {
+        policy("P1", "Meera Iyer");
+        policy("P2", "Sim Customer");
+        UUID real = call("P1", "renewal_call", ist("2026-10-29T09:00:00"), ist("2026-10-29T09:05:00"),
+                "RENEWAL_PENDING_PAYMENT", "{\"annualPremium\":1000}", false);
+        UUID sim = call("P2", "renewal_call", ist("2026-10-29T09:10:00"), ist("2026-10-29T09:15:00"),
+                "RENEWAL_PENDING_PAYMENT", "{\"annualPremium\":5000}", false);
+        simulated(sim);
+        audit(real, "tool.refused", "{\"tool\":\"quote\",\"code\":\"REAL\"}", ist("2026-10-29T09:01:00"));
+        audit(sim, "tool.refused", "{\"tool\":\"quote\",\"code\":\"SIM\"}", ist("2026-10-29T09:11:00"));
+        audit(sim, "rule.outside_playbook",
+                "{\"requestedDiscountPercent\":25,\"maxDiscountPercent\":10,\"count\":1}", ist("2026-10-29T09:12:00"));
+
+        DashboardService service = new DashboardService(jdbc, policies, CLOCK);
+        Dashboard realOnly = service.dashboard(false);
+        Dashboard all = service.dashboard(true);
+
+        assertThat(realOnly.kpis().callsTotal()).isEqualTo(1);
+        assertThat(realOnly.kpis().renewed()).isEqualTo(1);
+        assertThat(realOnly.kpis().premiumRetained()).isEqualTo(1000);
+        assertThat(realOnly.kpis().refusals()).isEqualTo(1);
+        assertThat(realOnly.kpis().blockedRequests()).isZero();
+        assertThat(realOnly.recentCalls()).extracting(RenewalDtos.RecentCall::callId).containsExactly(real);
+        assertThat(realOnly.guardrailEvents()).extracting(RenewalDtos.GuardrailEvent::detail).containsExactly("REAL");
+        assertThat(realOnly.outcomesByDay().get(6).renewed()).isEqualTo(1);
+        assertThat(dashboard().kpis().callsTotal()).isEqualTo(1);
+
+        assertThat(all.kpis().callsTotal()).isEqualTo(2);
+        assertThat(all.kpis().premiumRetained()).isEqualTo(6000);
+        assertThat(all.kpis().blockedRequests()).isEqualTo(1);
+        assertThat(all.recentCalls()).hasSize(2);
+        assertThat(all.guardrailEvents()).hasSize(3);
+        assertThat(all.outcomesByDay().get(6).renewed()).isEqualTo(2);
+    }
+
+    @Test
+    void markSimulatedTagsRenewalCallsOnlyAndKeepsOtherAttributes() {
+        policy("P1", "Meera Iyer");
+        UUID a = call("P1", "renewal_call", ist("2026-10-29T09:00:00"), null, null, null, false);
+        UUID other = call("P1", "other_case", ist("2026-10-29T09:00:00"), null, null, null, false);
+        jdbc.update("update cases set attributes = '{\"policyId\": \"P1\"}'::jsonb where id = ?", a);
+
+        int marked = new DashboardService(jdbc, policies, CLOCK).markSimulated(List.of(a, other, UUID.randomUUID()));
+
+        assertThat(marked).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select attributes::text from cases where id = ?", String.class, a))
+                .contains("\"simulated\": true").contains("\"policyId\": \"P1\"");
+        assertThat(jdbc.queryForObject("select attributes::text from cases where id = ?", String.class, other))
+                .isEqualTo("{}");
+        assertThat(dashboard().recentCalls()).extracting(RenewalDtos.RecentCall::callId).containsExactly(other);
+    }
+
     @Test
     void riskBandsCoverQueue() {
         PolicyEntity hot = PolicyFixtures.with(PolicyFixtures.meera(), "doNotCall", false);
