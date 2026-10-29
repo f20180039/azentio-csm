@@ -40,4 +40,8 @@ public class ApiException extends RuntimeException {
     public static ApiException unprocessable(String detail) {
         return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Unprocessable document", detail);
     }
+
+    public static ApiException invalidOption(String code) {
+        return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "Request not allowed", code);
+    }
 }

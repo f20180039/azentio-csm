@@ -1,6 +1,7 @@
 package ai.caseintel.api.renewals;
 
 import ai.caseintel.api.domain.Severity;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,4 +23,41 @@ public final class RenewalDtos {
     public record StartCallRequest(String policyId) {}
 
     public record StartedCall(UUID callId, UUID caseId, String greeting) {}
+
+    public record VerifyRequest(String dateOfBirth) {}
+
+    public record Verification(boolean verified, int attemptsLeft, boolean mustHandoff) {}
+
+    public record PolicyView(String policyId, String product, long sumInsured, LocalDate expiresOn, long lastPremium,
+                             long renewalPremium, JsonNode breakdown, JsonNode addons, String mobileLast4,
+                             boolean mustHandoff) {}
+
+    public record RemovableAddon(String code, String name, long saving) {}
+
+    public record Options(List<String> paymentPlans, List<RemovableAddon> removableAddons, int maxDiscountPercent,
+                          boolean mustHandoff) {}
+
+    public record QuoteRequest(List<String> dropAddons, String paymentPlan, Integer discountPercent) {}
+
+    public record Quote(UUID quoteId, long annualPremium, int instalments, long perInstalment, boolean mustHandoff) {}
+
+    public record PaymentLinkRequest(UUID quoteId) {}
+
+    public record PaymentLinkSent(boolean sent, String channel, String mobileLast4, boolean mustHandoff) {}
+
+    public record HandoffRequest(String reason, String callbackAt) {}
+
+    public record HandoffQueued(boolean queued, boolean mustHandoff) {}
+
+    public record TurnRequest(String role, String text, String at) {}
+
+    public record CallEnded(String outcome, boolean mustHandoff) {}
+
+    public record SummaryItem(String statement, String quote) {}
+
+    public record CallView(UUID callId, UUID caseId, String policyId, String holderName, String greeting,
+                           boolean identityVerified, int verifyFailures, int outOfPlaybookRequests,
+                           boolean mustHandoff, String outcome, JsonNode lastQuote, boolean paymentLinkSent,
+                           String handoffReason, String callbackAt, JsonNode transcript,
+                           List<SummaryItem> summary) {}
 }
