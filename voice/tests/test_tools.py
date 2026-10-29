@@ -108,3 +108,19 @@ def test_malformed_arguments_do_not_crash():
     assert out["error"] == "BAD_ARGUMENTS" and out["detail"]
     out = run(api_with(never), "quote_renewal", {"drop_addons": [], "discount_percent": 0})
     assert out["error"] == "BAD_ARGUMENTS"
+
+
+def test_quote_result_gains_spoken_fields():
+    body = {"quoteId": "q", "annualPremium": 16350, "instalments": 4, "perInstalment": 4088, "mustHandoff": False}
+    out = run(api_with(lambda r: httpx.Response(200, json=body)), "quote_renewal",
+              {"drop_addons": [], "payment_plan": "quarterly", "discount_percent": 0})
+    assert out["spoken"] == {
+        "annualPremium": "sixteen thousand three hundred and fifty rupees",
+        "perInstalment": "four thousand and eighty-eight rupees",
+    }
+    opts = {"paymentPlans": ["annual"], "removableAddons": [{"code": "OPD", "name": "x", "saving": 1000}]}
+    out = run(api_with(lambda r: httpx.Response(200, json=opts)), "list_allowed_options", {})
+    assert out["spoken"]["addonSavings"] == {"OPD": "one thousand rupees"}
+    pol = {"lastPremium": 15000, "renewalPremium": 18450}
+    out = run(api_with(lambda r: httpx.Response(200, json=pol)), "get_policy", {})
+    assert out["spoken"]["renewalPremium"] == "eighteen thousand four hundred and fifty rupees"

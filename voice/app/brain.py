@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -14,27 +15,34 @@ LOOP_LIMIT_REPLY = "Let me get a colleague to help you."
 UNAVAILABLE_REPLY = "I am having trouble reaching our system. Let me get a colleague to help you."
 
 
+RETRY_STATUSES = {429, 503}
+
+
+def _retry_delay(resp: httpx.Response) -> float:
+    try:
+        return min(max(float(resp.headers["retry-after"]), 0.0), 3.0)
+    except (KeyError, ValueError):
+        return 1.0
+
+
 class ChatClient(Protocol):
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict: ...
 
 
 class GroqChatClient:
-    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None, sleep=asyncio.sleep):
+        self._sleep = sleep
         self._model = settings.llm_model
         self._client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {settings.groq_api_key}"}, timeout=30.0, transport=transport
         )
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
-        resp = await self._client.post(
-            GROQ_URL,
-            json={
-                "model": self._model,
-                "messages": messages,
-                "tools": tools,
-                "reasoning_effort": "low",
-            },
-        )
+        body = {"model": self._model, "messages": messages, "tools": tools, "reasoning_effort": "low"}
+        resp = await self._client.post(GROQ_URL, json=body)
+        if resp.status_code in RETRY_STATUSES:
+            await self._sleep(_retry_delay(resp))
+            resp = await self._client.post(GROQ_URL, json=body)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]
 

@@ -1,4 +1,5 @@
 from .api_client import RenewalsApi
+from .spoken import spoken_inr
 
 
 def _tool(name: str, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:
@@ -52,7 +53,7 @@ TOOL_SCHEMAS: list[dict] = [
 
 async def run_tool(api: RenewalsApi, call_id: str, name: str, args: dict) -> dict:
     try:
-        return await _dispatch(api, call_id, name, args)
+        return _add_spoken(await _dispatch(api, call_id, name, args))
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return {"error": "BAD_ARGUMENTS", "detail": f"{type(e).__name__}: {e}"[:200]}
 
@@ -80,3 +81,21 @@ async def _dispatch(api: RenewalsApi, call_id: str, name: str, args: dict) -> di
             return await api.end(call_id)
         case _:
             return {"error": "UNKNOWN_TOOL"}
+
+
+def _add_spoken(result: dict) -> dict:
+    if "error" in result:
+        return result
+    spoken = {
+        k: spoken_inr(result[k])
+        for k in ("renewalPremium", "lastPremium", "annualPremium", "perInstalment")
+        if isinstance(result.get(k), int) and not isinstance(result.get(k), bool)
+    }
+    savings = {
+        a["code"]: spoken_inr(a["saving"])
+        for a in result.get("removableAddons") or []
+        if isinstance(a.get("saving"), int)
+    }
+    if savings:
+        spoken["addonSavings"] = savings
+    return {**result, "spoken": spoken} if spoken else result

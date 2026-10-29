@@ -91,3 +91,41 @@ def test_malformed_argument_json_is_reported_to_model():
     tool_msg = [m for m in llm.seen[1] if m["role"] == "tool"][0]
     assert "BAD_ARGUMENTS" in tool_msg["content"]
     assert not any(p.endswith("/verify") for _, p, _ in calls)
+
+
+def groq(handler, sleeps):
+    from app.brain import GroqChatClient
+
+    async def sleep(s):
+        sleeps.append(s)
+
+    return GroqChatClient(Settings(groq_api_key="k"), transport=httpx.MockTransport(handler), sleep=sleep)
+
+
+def test_groq_retries_once_after_retry_after_capped():
+    n, sleeps = [], []
+
+    def handler(r):
+        n.append(1)
+        if len(n) == 1:
+            return httpx.Response(429, headers={"retry-after": "10"})
+        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "hi"}}]})
+
+    msg = asyncio.run(groq(handler, sleeps).complete([], []))
+    assert msg["content"] == "hi" and len(n) == 2 and sleeps == [3.0]
+
+
+def test_groq_fails_after_second_503_default_delay():
+    n, sleeps = [], []
+
+    def handler(r):
+        n.append(1)
+        return httpx.Response(503)
+
+    client = groq(handler, sleeps)
+    try:
+        asyncio.run(client.complete([], []))
+        raise AssertionError("expected failure")
+    except httpx.HTTPStatusError:
+        pass
+    assert len(n) == 2 and sleeps == [1.0]
