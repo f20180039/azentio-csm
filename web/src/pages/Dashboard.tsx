@@ -6,7 +6,7 @@ import type { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useToast } from '../components/Toasts';
-import { formatAge, formatInr } from '../format';
+import { formatAge, formatInr, humanise } from '../format';
 
 const POLL_MS = 3000;
 
@@ -50,7 +50,7 @@ function OutcomePill({ call }: { call: RecentCall }) {
       </span>
     );
   }
-  const o = OUTCOME[call.outcome];
+  const o = OUTCOME[call.outcome] ?? { label: humanise(call.outcome), tone: 'dim' };
   return <span className={`pill ${o.tone}`}>{o.label}</span>;
 }
 

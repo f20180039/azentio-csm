@@ -14,7 +14,7 @@ const W = 360;
 
 function niceMax(v: number): number {
   if (v <= 4) return 4;
-  const step = v <= 10 ? 2 : v <= 25 ? 5 : v <= 60 ? 10 : 20;
+  const step = v <= 10 ? 2 : v <= 30 ? 4 : v <= 60 ? 10 : 20; // even, so the midpoint tick is a whole number
   return Math.ceil(v / step) * step;
 }
 
@@ -37,8 +37,8 @@ export function BarChart({
     .join('; ')}.`;
 
   const left = horizontal ? 64 : 28;
-  const right = 8;
-  const top = 8;
+  const right = horizontal ? 26 : 8;
+  const top = 18;
   const bottom = horizontal ? 22 : 24;
   const H = horizontal ? top + bottom + rows.length * 34 : 170;
   const pw = W - left - right;

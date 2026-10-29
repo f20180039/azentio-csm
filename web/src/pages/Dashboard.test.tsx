@@ -44,6 +44,14 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('Dashboard', () => {
+  it('shows an unexpected outcome as a neutral pill instead of crashing', async () => {
+    const d = sampleDashboard();
+    d.recentCalls[1] = { ...d.recentCalls[1], outcome: 'SOMETHING_NEW' as never };
+    getDashboard.mockResolvedValue(d);
+    mount();
+    expect(await screen.findByText('Something new', { selector: '.pill.dim' })).toBeInTheDocument();
+  });
+
   it('renders the KPIs, outcome pills and feed from the sample data', async () => {
     getDashboard.mockResolvedValue(sampleDashboard());
     mount();
