@@ -49,6 +49,9 @@ class TextTurnIn(BaseModel):
 
 @app.post("/v1/text-call")
 async def text_call(body: TextCallIn) -> dict:
+    existing = state.brains.get(body.callId)
+    if existing is not None:
+        return {"greeting": existing.greeting}
     api = state.get_api()
     try:
         call = await api.call(body.callId)
@@ -58,6 +61,7 @@ async def text_call(body: TextCallIn) -> dict:
         raise HTTPException(404, "unknown call")
     brain = CallBrain(state.get_llm(), api, body.callId, system_prompt(call["greeting"]))
     await brain.say(call["greeting"])
+    brain.greeting = call["greeting"]
     state.brains[body.callId] = brain
     return {"greeting": call["greeting"]}
 
@@ -71,6 +75,8 @@ async def text_turn(body: TextTurnIn) -> dict:
         raise HTTPException(404, "unknown call")
     try:
         turn = await brain.reply(body.text)
+    except ApiUnavailable as e:
+        raise HTTPException(502, "renewals API unavailable") from e
     except httpx.HTTPError as e:
         raise HTTPException(502, "language model unavailable") from e
     return {

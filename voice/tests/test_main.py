@@ -53,3 +53,21 @@ def test_llm_failure_is_502():
     from app.brain import CallBrain
     main.state.brains["k"] = CallBrain(Down(), main.state.api, "k", "SYS")
     assert c.post("/v1/text-turn", json={"callId": "k", "text": "hi"}).status_code == 502
+
+
+def test_repeat_text_call_is_idempotent():
+    turns = []
+
+    def handler(r):
+        if r.method == "GET":
+            return httpx.Response(200, json={"greeting": "Hello Meera"})
+        turns.append(r.url.path)
+        return httpx.Response(200, json={})
+
+    c = client_with(handler)
+    first = c.post("/v1/text-call", json={"callId": "abc"}).json()
+    brain = main.state.brains["abc"]
+    second = c.post("/v1/text-call", json={"callId": "abc"}).json()
+    assert first == second == {"greeting": "Hello Meera"}
+    assert main.state.brains["abc"] is brain
+    assert len(turns) == 1

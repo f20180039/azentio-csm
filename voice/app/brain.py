@@ -12,7 +12,6 @@ from .tools import TOOL_SCHEMAS, run_tool
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MAX_TOOL_ROUNDS = 5
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you."
-UNAVAILABLE_REPLY = "I am having trouble reaching our system. Let me get a colleague to help you."
 
 
 RETRY_STATUSES = {429, 503}
@@ -69,30 +68,38 @@ class CallBrain:
         self._api = api
         self._call_id = call_id
         self._messages: list[dict] = [{"role": "system", "content": system}]
+        self._lock = asyncio.Lock()
+        self.greeting: str | None = None
 
     async def say(self, text: str) -> None:
         self._messages.append({"role": "assistant", "content": text})
         await self._api.turn(self._call_id, "agent", text)
 
     async def reply(self, user_text: str) -> BrainTurn:
+        async with self._lock:
+            mark = len(self._messages)
+            try:
+                return await self._reply(user_text)
+            except BaseException:
+                del self._messages[mark:]
+                raise
+
+    async def _reply(self, user_text: str) -> BrainTurn:
         self._messages.append({"role": "user", "content": user_text})
         await self._api.turn(self._call_id, "customer", user_text)
         traces: list[ToolTrace] = []
-        try:
-            for _ in range(MAX_TOOL_ROUNDS):
-                msg = await self._llm.complete(self._messages, TOOL_SCHEMAS)
-                calls = msg.get("tool_calls") or []
-                if not calls:
-                    return await self._finish(msg.get("content") or "", traces)
-                self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
-                for call in calls:
-                    traces.append(await self._run(call))
-                    self._messages.append(
-                        {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(traces[-1].result)}
-                    )
-            return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces)
-        except ApiUnavailable:
-            return await self._finish(UNAVAILABLE_REPLY, traces)
+        for _ in range(MAX_TOOL_ROUNDS):
+            msg = await self._llm.complete(self._messages, TOOL_SCHEMAS)
+            calls = msg.get("tool_calls") or []
+            if not calls:
+                return await self._finish(msg.get("content") or "", traces)
+            self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
+            for call in calls:
+                traces.append(await self._run(call))
+                self._messages.append(
+                    {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(traces[-1].result)}
+                )
+        return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces)
 
     async def _run(self, call: dict) -> ToolTrace:
         name = call["function"]["name"]

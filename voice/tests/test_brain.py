@@ -3,7 +3,7 @@ import json
 
 import httpx
 
-from app.api_client import RenewalsApi
+from app.api_client import ApiUnavailable, RenewalsApi
 from app.brain import CallBrain
 from app.config import Settings
 
@@ -129,3 +129,56 @@ def test_groq_fails_after_second_503_default_delay():
     except httpx.HTTPStatusError:
         pass
     assert len(n) == 2 and sleeps == [1.0]
+
+
+def assert_valid_history(messages):
+    for i, m in enumerate(messages):
+        if m["role"] == "assistant" and m.get("tool_calls"):
+            ids = [c["id"] for c in m["tool_calls"]]
+            replies = [x["tool_call_id"] for x in messages[i + 1:i + 1 + len(ids)] if x["role"] == "tool"]
+            assert replies == ids
+
+
+def test_failed_turn_leaves_no_dangling_tool_calls():
+    two = tool_call("get_policy", {}, "a")
+    two["tool_calls"].append(tool_call("list_allowed_options", {}, "b")["tool_calls"][0])
+    llm = Scripted(two, text("Hello again."))
+    state = {"fail": True}
+
+    def handler(r):
+        if state["fail"] and r.url.path.endswith("/policy"):
+            return httpx.Response(503)
+        return httpx.Response(200, json={})
+
+    brain, _ = make(llm, handler)
+    try:
+        asyncio.run(brain.reply("first"))
+        raise AssertionError("expected ApiUnavailable")
+    except ApiUnavailable:
+        pass
+    state["fail"] = False
+    llm.queue = [text("Fine.")]
+    asyncio.run(brain.reply("second"))
+    assert_valid_history(llm.seen[-1])
+    assert [m["content"] for m in llm.seen[-1] if m["role"] == "user"] == ["second"]
+
+
+def test_concurrent_replies_do_not_interleave():
+    class Slow:
+        def __init__(self):
+            self.seen = []
+
+        async def complete(self, messages, tools):
+            self.seen.append([m["role"] + ":" + str(m["content"]) for m in messages])
+            await asyncio.sleep(0.05)
+            return text("ok")
+
+    llm = Slow()
+    brain, _ = make(llm, ok)
+
+    async def both():
+        await asyncio.gather(brain.reply("one"), brain.reply("two"))
+
+    asyncio.run(both())
+    assert llm.seen[0] == ["system:SYSTEM", "user:one"]
+    assert llm.seen[1] == ["system:SYSTEM", "user:one", "assistant:ok", "user:two"]
