@@ -106,8 +106,6 @@ def test_malformed_arguments_do_not_crash():
     never = lambda r: httpx.Response(200, json={})
     out = run(api_with(never), "quote_renewal", {"drop_addons": [], "payment_plan": "annual", "discount_percent": "ten"})
     assert out["error"] == "BAD_ARGUMENTS" and out["detail"]
-    out = run(api_with(never), "quote_renewal", {"drop_addons": [], "discount_percent": 0})
-    assert out["error"] == "BAD_ARGUMENTS"
 
 
 def test_quote_result_gains_spoken_fields():
@@ -124,3 +122,16 @@ def test_quote_result_gains_spoken_fields():
     pol = {"lastPremium": 15000, "renewalPremium": 18450}
     out = run(api_with(lambda r: httpx.Response(200, json=pol)), "get_policy", {})
     assert out["spoken"]["renewalPremium"] == "eighteen thousand four hundred and fifty rupees"
+
+
+def test_quote_defaults_plan_and_addons_when_missing_or_empty():
+    bodies = []
+
+    def handler(r):
+        bodies.append(json.loads(r.content))
+        return httpx.Response(200, json={"quoteId": "q"})
+
+    api = api_with(handler)
+    run(api, "quote_renewal", {"discount_percent": 1})
+    run(api, "quote_renewal", {"payment_plan": "", "drop_addons": [], "discount_percent": 1})
+    assert bodies == [{"dropAddons": [], "paymentPlan": "annual", "discountPercent": 1}] * 2

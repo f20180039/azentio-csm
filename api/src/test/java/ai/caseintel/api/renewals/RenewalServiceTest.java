@@ -291,6 +291,15 @@ class RenewalServiceTest {
     }
 
     @Test
+    void discountIsCheckedBeforeOptions() {
+        RenewalService s = verifiedCall();
+        assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "", 1), "voice"),
+                HttpStatus.UNPROCESSABLE_ENTITY, "OUTSIDE_PLAYBOOK");
+        assertThat(callRow.getOutOfPlaybookRequests()).isEqualTo(1);
+        assertThat(actions()).contains("rule.outside_playbook");
+    }
+
+    @Test
     void secondOutOfPlaybookRequestForcesHandoff() {
         RenewalService s = verifiedCall();
         assertRefused(() -> s.quote(id(), new QuoteRequest(List.of(), "annual", 10), "voice"),

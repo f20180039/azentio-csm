@@ -26,11 +26,11 @@ TOOL_SCHEMAS: list[dict] = [
         "quote_renewal",
         "Price a renewal using only options returned by list_allowed_options.",
         {
-            "drop_addons": {"type": "array", "items": {"type": "string"}, "description": "Add-on codes to remove"},
-            "payment_plan": {"type": "string", "description": "A payment plan from the allowed options"},
+            "drop_addons": {"type": "array", "items": {"type": "string"}, "description": "Add-on codes to remove, default none"},
+            "payment_plan": {"type": "string", "description": "A payment plan from the allowed options, default annual"},
             "discount_percent": {"type": "integer", "description": "Discount percent, 0 if none"},
         },
-        ["drop_addons", "payment_plan", "discount_percent"],
+        ["discount_percent"],
     ),
     _tool(
         "send_payment_link",
@@ -70,7 +70,7 @@ async def _dispatch(api: RenewalsApi, call_id: str, name: str, args: dict) -> di
             return await api.quote(
                 call_id,
                 args.get("drop_addons") or [],
-                args["payment_plan"],
+                args.get("payment_plan") or "annual",
                 int(args.get("discount_percent") or 0),
             )
         case "send_payment_link":

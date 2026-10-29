@@ -216,6 +216,17 @@ public class RenewalService {
         List<String> drop = req.dropAddons() == null ? List.of() : req.dropAddons().stream().distinct().toList();
         String plan = req.paymentPlan();
         int discount = req.discountPercent() == null ? 0 : req.discountPercent();
+        if (discount > playbook.maxDiscountPercent()) {
+            c.setOutOfPlaybookRequests(c.getOutOfPlaybookRequests() + 1);
+            if (c.getOutOfPlaybookRequests() >= playbook.maxOutOfPlaybookRequests()) {
+                c.setMustHandoff(true);
+            }
+            audit.record(callId, actor, "rule.outside_playbook", Map.of("requestedDiscountPercent", discount,
+                    "maxDiscountPercent", playbook.maxDiscountPercent(), "count", c.getOutOfPlaybookRequests(),
+                    "mustHandoff", c.isMustHandoff(), "turnIndex", turnCount(c)));
+            calls.save(c);
+            throw ApiException.invalidOption("OUTSIDE_PLAYBOOK");
+        }
         if (plan == null || !playbook.paymentPlans().contains(plan) || discount < 0) {
             throw refused(callId, actor, "quote_renewal", ApiException.invalidOption("INVALID_OPTION"));
         }
@@ -231,17 +242,6 @@ public class RenewalService {
                 throw refused(callId, actor, "quote_renewal", ApiException.invalidOption("INVALID_OPTION"));
             }
             annual -= addon.path("premium").asLong();
-        }
-        if (discount > playbook.maxDiscountPercent()) {
-            c.setOutOfPlaybookRequests(c.getOutOfPlaybookRequests() + 1);
-            if (c.getOutOfPlaybookRequests() >= playbook.maxOutOfPlaybookRequests()) {
-                c.setMustHandoff(true);
-            }
-            audit.record(callId, actor, "rule.outside_playbook", Map.of("requestedDiscountPercent", discount,
-                    "maxDiscountPercent", playbook.maxDiscountPercent(), "count", c.getOutOfPlaybookRequests(),
-                    "mustHandoff", c.isMustHandoff(), "turnIndex", turnCount(c)));
-            calls.save(c);
-            throw ApiException.invalidOption("OUTSIDE_PLAYBOOK");
         }
         annual = BigDecimal.valueOf(annual).multiply(BigDecimal.valueOf(100 - discount))
                 .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP).longValue();
