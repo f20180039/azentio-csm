@@ -224,3 +224,18 @@ def test_offer_rejects_a_non_uuid_call_id():
         assert c.post("/api/offer", json=body).status_code == 400, bad
     assert main.state.webrtc is None
     assert main.state.live_calls == {}
+
+
+def test_eval_latest_is_404_without_a_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "EVAL_LATEST", tmp_path / "latest.json")
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    assert c.get("/v1/eval/latest").status_code == 404
+
+
+def test_eval_latest_serves_the_report(tmp_path, monkeypatch):
+    f = tmp_path / "latest.json"
+    f.write_text('{"totals": {"conversations": 18}}')
+    monkeypatch.setattr(main, "EVAL_LATEST", f)
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    resp = c.get("/v1/eval/latest")
+    assert resp.status_code == 200 and resp.json() == {"totals": {"conversations": 18}}

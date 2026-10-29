@@ -1,3 +1,4 @@
+import json
 import os
 from uuid import UUID
 from pathlib import Path
@@ -43,6 +44,7 @@ class State:
 
 
 state = State()
+EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +66,13 @@ class TextTurnIn(BaseModel):
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/v1/eval/latest")
+async def eval_latest() -> dict:
+    if not EVAL_LATEST.exists():
+        raise HTTPException(404, "no simulated test run yet")
+    return json.loads(EVAL_LATEST.read_text())
 
 
 @app.post("/v1/text-call")

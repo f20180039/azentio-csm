@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getDashboard, type Dashboard as DashboardData, type GuardrailAction, type RecentCall } from '../api/dashboard';
 import { MOCK_MODE } from '../api/client';
+import { getEvalLatest, type EvalReport } from '../api/eval';
 import type { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useToast } from '../components/Toasts';
-import { formatAge, formatInr, humanise } from '../format';
+import { formatAge, formatDateTime, formatInr, humanise } from '../format';
 
 const POLL_MS = 3000;
 
@@ -52,6 +53,93 @@ function OutcomePill({ call }: { call: RecentCall }) {
   }
   const o = OUTCOME[call.outcome] ?? { label: humanise(call.outcome), tone: 'dim' };
   return <span className={`pill ${o.tone}`}>{o.label}</span>;
+}
+
+function SimulatedTest() {
+  const [report, setReport] = useState<EvalReport | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getEvalLatest().then(
+      (r) => alive && setReport(r),
+      () => alive && setFailed(true),
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const t = report?.totals;
+  return (
+    <section className="panel table-wrap" aria-labelledby="sim-test-title">
+      <h2 className="panel-title" id="sim-test-title">
+        Simulated test
+      </h2>
+      {failed ? (
+        <div className="empty">
+          <strong>Simulated test results could not be loaded</strong>
+          <span>Check that the voice service is running.</span>
+        </div>
+      ) : report === undefined ? (
+        <div className="empty">Loading the latest simulated test…</div>
+      ) : report === null || !t ? (
+        <div className="empty">
+          <strong>No simulated test run yet</strong>
+          <span>
+            Run <code>python -m eval.simulate</code> from the voice folder; an AI customer plays each persona against the agent.
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12, padding: '4px 16px 16px' }}>
+          <span className="small muted">
+            {report.meta.finished_at ? `Run finished ${formatDateTime(report.meta.finished_at)}` : 'Latest run'}
+            {report.meta.customer_model && ` · customer ${report.meta.customer_model}`}
+            {report.meta.agent_model && ` · agent ${report.meta.agent_model}`}. Scored from the API's own audit trail.
+          </span>
+          <div className="kpis">
+            <Kpi label="Conversations" value={String(t.conversations)} sub={`${t.completed} completed · ${t.errors} error${t.errors === 1 ? '' : 's'}`} />
+            <Kpi label="Expectation met" value={`${t.expected_met} of ${t.completed}`} sub={`${t.renewals} renewed`} />
+            <Kpi label="Handoffs where expected" value={`${t.handoffs_where_expected} of ${t.handoffs_expected}`} sub={`${t.blocked_requests} requests blocked`} />
+            <Kpi label="Rule breaks" value={String(t.rule_breaks)} sub="Target 0" />
+            <Kpi label="Leaks before verification" value={String(t.leaks)} sub={`Target 0 · median ${t.median_turns ?? '—'} turns`} />
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Persona</th>
+                <th>Expected</th>
+                <th>Met</th>
+                <th>Outcomes</th>
+                <th>Blocked</th>
+                <th>Rule breaks</th>
+                <th>Leaks</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.personas.map((p) => (
+                <tr key={p.persona}>
+                  <td className="mono">{p.persona}</td>
+                  <td className="small">{p.expect}</td>
+                  <td className="num">{`${p.expected_met} of ${p.completed}`}</td>
+                  <td className="small">
+                    {Object.entries(p.outcomes)
+                      .map(([o, n]) => `${humanise(o)} ${n}`)
+                      .join(', ') || '—'}
+                  </td>
+                  <td className="num">{p.blocked_requests}</td>
+                  <td className="num">{p.rule_breaks > 0 ? <span className="pill bad">{p.rule_breaks}</span> : 0}</td>
+                  <td className="num">{p.leaks > 0 ? <span className="pill bad">{p.leaks}</span> : 0}</td>
+                  <td className="num">{p.errors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function Dashboard() {
@@ -260,6 +348,8 @@ export function Dashboard() {
           )}
         </>
       )}
+
+      <SimulatedTest />
     </>
   );
 }
