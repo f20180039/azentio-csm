@@ -34,7 +34,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /** Real security chain and real RenewalService (so its @PreAuthorize applies); only storage is mocked. */
 @WebMvcTest(RenewalController.class)
-@Import({SecurityConfig.class, ApiExceptionHandler.class, RenewalService.class, RenewalHttpTest.Beans.class})
+@Import({SecurityConfig.class, ApiExceptionHandler.class, RenewalService.class, DashboardService.class,
+        RenewalHttpTest.Beans.class})
 @EnableConfigurationProperties(AppProperties.class)
 @TestPropertySource(properties = {"app.cors.allowed-origins=http://localhost",
         "app.renewals.enforce-calling-hours=false", "app.renewals.playbook=playbooks/health-renewal.yml"})
@@ -62,6 +63,7 @@ class RenewalHttpTest {
     @MockBean CallRepository calls;
     @MockBean CaseRepository cases;
     @MockBean AuditService audit;
+    @MockBean org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
 
     private final UUID callId = UUID.randomUUID();
@@ -121,5 +123,12 @@ class RenewalHttpTest {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.detail").value("MUST_HANDOFF"));
+    }
+
+    @Test
+    void dashboardIsForStaffNotVoice() throws Exception {
+        mvc.perform(get("/api/v1/renewals/dashboard").with(httpBasic("voice", "voice")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/renewals/dashboard")).andExpect(status().isUnauthorized());
     }
 }

@@ -4,6 +4,7 @@ import ai.caseintel.api.renewals.RenewalDtos.CallEnded;
 import ai.caseintel.api.renewals.RenewalDtos.CallView;
 import ai.caseintel.api.renewals.RenewalDtos.HandoffQueued;
 import ai.caseintel.api.renewals.RenewalDtos.HandoffRequest;
+import ai.caseintel.api.renewals.RenewalDtos.Dashboard;
 import ai.caseintel.api.renewals.RenewalDtos.Options;
 import ai.caseintel.api.renewals.RenewalDtos.PaymentLinkRequest;
 import ai.caseintel.api.renewals.RenewalDtos.PaymentLinkSent;
@@ -33,9 +34,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class RenewalController {
 
     private final RenewalService renewals;
+    private final DashboardService dashboard;
 
-    public RenewalController(RenewalService renewals) {
+    public RenewalController(RenewalService renewals, DashboardService dashboard) {
         this.renewals = renewals;
+        this.dashboard = dashboard;
+    }
+
+    @GetMapping("/dashboard")
+    public Dashboard dashboard() {
+        return dashboard.dashboard();
     }
 
     @GetMapping("/queue")
