@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import UUID
 
 import httpx
 
@@ -8,6 +9,10 @@ MUST_HANDOFF_CODES = {"MUST_HANDOFF", "VERIFY_LOCKED"}
 
 
 class ApiUnavailable(Exception):
+    pass
+
+
+class InvalidCallId(ValueError):
     pass
 
 
@@ -40,7 +45,13 @@ class RenewalsApi:
 
     @staticmethod
     def _p(call_id: str, tail: str = "") -> str:
-        return f"/renewals/calls/{call_id}{tail}"
+        try:
+            canonical = str(UUID(str(call_id)))
+        except ValueError as e:
+            raise InvalidCallId(f"call id is not a UUID: {call_id!r}") from e
+        if canonical != str(call_id).lower():
+            raise InvalidCallId(f"call id is not a canonical UUID: {call_id!r}")
+        return f"/renewals/calls/{canonical}{tail}"
 
     async def verify(self, call_id: str, dob: str) -> dict:
         return await self._send("POST", self._p(call_id, "/verify"), {"dateOfBirth": dob})

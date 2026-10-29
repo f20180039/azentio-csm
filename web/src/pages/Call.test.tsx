@@ -72,6 +72,7 @@ describe('Call page in mock mode', () => {
     };
     const state = (c: import('../api/types').CallView, key: string) => guardrails(c).find((g) => g.key === key)!.state;
     expect(state(base, 'disclosure')).toBe('ok');
+    expect(guardrails(base).find((g) => g.key === 'disclosure')!.note).toBe('Opened with the recording disclosure.');
     expect(state({ ...base, verifyFailures: 1 }, 'identity')).toBe('warn');
     expect(state({ ...base, verifyFailures: 3, mustHandoff: true }, 'identity')).toBe('bad');
     expect(state({ ...base, outOfPlaybookRequests: 1 }, 'playbook')).toBe('warn');

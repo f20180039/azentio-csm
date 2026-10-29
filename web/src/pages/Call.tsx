@@ -5,7 +5,7 @@ import { endCall, getCall, textCall, textTurn } from '../api/renewals';
 import type { CallOutcome, CallView, CaseDetail, TranscriptTurn } from '../api/types';
 import { connectVoice, type VoiceSession } from '../api/voice';
 import { useToast } from '../components/Toasts';
-import { formatInr } from '../format';
+import { formatCallback, formatInr } from '../format';
 import { useSession } from '../session';
 import { AuditTab, CaseActions } from './CaseWorkspace';
 
@@ -42,7 +42,7 @@ export function guardrails(c: CallView | null): Guard[] {
       key: 'disclosure',
       label: 'Recording disclosed',
       state: disclosed ? 'ok' : 'idle',
-      note: disclosed ? 'The agent opened by saying it is an AI and the call is recorded.' : 'Waiting for the first agent turn.',
+      note: disclosed ? 'Opened with the recording disclosure.' : 'Waiting for the first agent turn.',
     },
     identity,
     c.outOfPlaybookRequests > 0
@@ -73,7 +73,7 @@ function Facts({ call }: { call: CallView }) {
       <dt>Payment link</dt>
       <dd data-testid="guard-links">{call.paymentLinkSent ? 'Sent to the mobile on file' : 'Not sent'}</dd>
       <dt>Callback</dt>
-      <dd>{call.callbackAt ?? '—'}</dd>
+      <dd>{call.callbackAt ? formatCallback(call.callbackAt) : '—'}</dd>
     </dl>
   );
 }
@@ -114,6 +114,16 @@ export function Call() {
   }, [callId, toast]);
 
   const ended = outcome !== null;
+  const endedRef = useRef(false);
+
+  useEffect(() => {
+    endedRef.current = ended;
+    if (!ended) return;
+    const s = session.current;
+    session.current = null;
+    setVoice('off');
+    void s?.disconnect().catch(() => undefined);
+  }, [ended]);
 
   useEffect(() => {
     void refresh();
@@ -149,8 +159,9 @@ export function Call() {
         onDisconnected: () => setVoice('off'),
         onError: (m) => toast.push('Voice connection problem', m, 'warn'),
       });
-      if (unmounted.current) {
+      if (unmounted.current || endedRef.current) {
         void s.disconnect().catch(() => undefined);
+        if (!unmounted.current) setVoice('off');
         return;
       }
       session.current = s;

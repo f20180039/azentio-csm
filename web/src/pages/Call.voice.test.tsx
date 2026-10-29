@@ -19,7 +19,7 @@ vi.mock('../api/renewals', async (orig) => {
   };
 });
 
-async function mount() {
+async function mount(callId = 'sample-call-x') {
   vi.stubEnv('VITE_MOCK', '1');
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
   const { MemoryRouter, Route, Routes } = await import('react-router-dom');
@@ -38,7 +38,7 @@ async function mount() {
     <ToastProvider>
       <SessionProvider>
         <SignedIn>
-          <MemoryRouter initialEntries={['/renewals/calls/sample-call-x']}>
+          <MemoryRouter initialEntries={[`/renewals/calls/${callId}`]}>
             <Routes>
               <Route path="/renewals/calls/:callId" element={<Call />} />
             </Routes>
@@ -58,6 +58,19 @@ describe('Call page voice and typing edge cases', () => {
     const disconnect = vi.fn(() => Promise.resolve());
     h.resolveConnect!({ disconnect });
     await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
+  });
+
+  it('disconnects the voice session when the call ends from the agent side', async () => {
+    h.resolveConnect = null;
+    await mount('sample-call-agent-ended');
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect' }));
+    await waitFor(() => expect(h.resolveConnect).not.toBeNull());
+    const disconnect = vi.fn(() => Promise.resolve());
+    h.resolveConnect!({ disconnect });
+    expect(await screen.findByRole('button', { name: 'Hang up' })).toBeInTheDocument();
+    await (await import('../api/renewals')).endCall('sample-call-agent-ended');
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(screen.queryByText('Voice live')).not.toBeInTheDocument();
   });
 
   it('keeps the typed message when sending fails', async () => {

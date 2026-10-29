@@ -5,6 +5,9 @@ from app import main
 from app.api_client import RenewalsApi
 from app.config import Settings
 
+ABC = "33333333-3333-3333-3333-333333333333"
+OTHER = "44444444-4444-4444-4444-444444444444"
+
 
 def client_with(handler) -> TestClient:
     main.state.api = RenewalsApi(Settings(), transport=httpx.MockTransport(handler))
@@ -15,12 +18,12 @@ def client_with(handler) -> TestClient:
 
 def test_blank_text_turn_is_rejected():
     c = client_with(lambda r: httpx.Response(200, json={}))
-    assert c.post("/v1/text-turn", json={"callId": "x", "text": "   "}).status_code == 400
+    assert c.post("/v1/text-turn", json={"callId": ABC, "text": "   "}).status_code == 400
 
 
 def test_unknown_call_is_404():
     c = client_with(lambda r: httpx.Response(200, json={}))
-    assert c.post("/v1/text-turn", json={"callId": "nope", "text": "hi"}).status_code == 404
+    assert c.post("/v1/text-turn", json={"callId": OTHER, "text": "hi"}).status_code == 404
 
 
 def test_text_call_returns_greeting_and_creates_brain():
@@ -33,15 +36,15 @@ def test_text_call_returns_greeting_and_creates_brain():
         return httpx.Response(200, json={})
 
     c = client_with(handler)
-    resp = c.post("/v1/text-call", json={"callId": "abc"})
+    resp = c.post("/v1/text-call", json={"callId": ABC})
     assert resp.json() == {"greeting": "Hello Meera"}
-    assert "abc" in main.state.brains
-    assert ("POST", "/api/v1/renewals/calls/abc/turns") in seen
+    assert ABC in main.state.brains
+    assert ("POST", f"/api/v1/renewals/calls/{ABC}/turns") in seen
 
 
 def test_text_call_unknown_call_is_404():
     c = client_with(lambda r: httpx.Response(404, json={"detail": "NOT_FOUND"}))
-    assert c.post("/v1/text-call", json={"callId": "zzz"}).status_code == 404
+    assert c.post("/v1/text-call", json={"callId": OTHER}).status_code == 404
 
 
 def test_llm_failure_is_502():
@@ -51,8 +54,8 @@ def test_llm_failure_is_502():
 
     c = client_with(lambda r: httpx.Response(200, json={}))
     from app.brain import CallBrain
-    main.state.brains["k"] = CallBrain(Down(), main.state.api, "k", "SYS")
-    assert c.post("/v1/text-turn", json={"callId": "k", "text": "hi"}).status_code == 502
+    main.state.brains[ABC] = CallBrain(Down(), main.state.api, ABC, "SYS")
+    assert c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"}).status_code == 502
 
 
 def test_repeat_text_call_is_idempotent():
@@ -65,11 +68,11 @@ def test_repeat_text_call_is_idempotent():
         return httpx.Response(200, json={})
 
     c = client_with(handler)
-    first = c.post("/v1/text-call", json={"callId": "abc"}).json()
-    brain = main.state.brains["abc"]
-    second = c.post("/v1/text-call", json={"callId": "abc"}).json()
+    first = c.post("/v1/text-call", json={"callId": ABC}).json()
+    brain = main.state.brains[ABC]
+    second = c.post("/v1/text-call", json={"callId": ABC}).json()
     assert first == second == {"greeting": "Hello Meera"}
-    assert main.state.brains["abc"] is brain
+    assert main.state.brains[ABC] is brain
     assert len(turns) == 1
 
 
@@ -86,9 +89,9 @@ def test_health():
 
 def test_second_offer_for_a_live_call_is_409():
     c = client_with(lambda r: httpx.Response(200, json={}))
-    main.state.live_calls["busy"] = "pc-1"
+    main.state.live_calls[ABC] = "pc-1"
     try:
-        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": "busy"}}
+        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": ABC}}
         resp = c.post("/api/offer", json=body)
         assert resp.status_code == 409
         assert resp.json()["detail"] == "CALL_IN_PROGRESS"
@@ -108,7 +111,7 @@ def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
                     pass
 
             await callback(Conn())
-            assert main.state.live_calls == {"c1": None}
+            assert main.state.live_calls == {ABC: None}
             return {"sdp": "answer", "type": "answer", "pc_id": "pc-1"}
 
     class FakeRunner:
@@ -116,7 +119,7 @@ def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
             pass
 
         async def run(self, task):
-            assert main.state.live_calls == {"c1": "pc-1"}
+            assert main.state.live_calls == {ABC: "pc-1"}
 
     async def fake_build(settings, call_id, transport):
         return object()
@@ -127,7 +130,7 @@ def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
     c = client_with(lambda r: httpx.Response(200, json={}))
     main.state.webrtc = FakeHandler()
     try:
-        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": "c1"}}
+        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": ABC}}
         assert c.post("/api/offer", json=body).status_code == 200
         assert main.state.live_calls == {}
         assert c.post("/api/offer", json=body).status_code == 200
@@ -194,3 +197,30 @@ def test_patch_known_peer_connection_reaches_the_handler():
     main.state.webrtc = None
     assert r.status_code == 200
     assert seen[0].pc_id == "pc-1" and seen[0].candidates[0].sdp_mline_index == 0
+
+
+BAD_CALL_IDS = [f"{ABC}#", "../x", f"{ABC}/../../calls/{ABC}", ""]
+
+
+def test_text_call_rejects_a_non_uuid_call_id_without_touching_the_api():
+    seen = []
+    c = client_with(lambda r: seen.append(r) or httpx.Response(200, json={"greeting": "Hello"}))
+    for bad in BAD_CALL_IDS:
+        assert c.post("/v1/text-call", json={"callId": bad}).status_code == 422, bad
+    assert seen == []
+
+
+def test_text_turn_rejects_a_non_uuid_call_id():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    for bad in BAD_CALL_IDS:
+        assert c.post("/v1/text-turn", json={"callId": bad, "text": "hi"}).status_code == 422, bad
+
+
+def test_offer_rejects_a_non_uuid_call_id():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.webrtc = None
+    for bad in BAD_CALL_IDS:
+        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": bad}}
+        assert c.post("/api/offer", json=body).status_code == 400, bad
+    assert main.state.webrtc is None
+    assert main.state.live_calls == {}

@@ -1,11 +1,19 @@
 import asyncio
+import time
 
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TranscriptionFrame, TTSSpeakFrame, TTSTextFrame
+from pipecat.frames.frames import (
+    EndWorkerFrame,
+    ErrorFrame,
+    FunctionCallResultProperties,
+    TranscriptionFrame,
+    TTSSpeakFrame,
+    TTSTextFrame,
+)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -24,6 +32,10 @@ from .config import Settings
 from .edge_tts_service import EdgeTTSService
 from .prompt import system_prompt
 from .tools import TOOL_SCHEMAS, run_tool
+
+GOODBYE = "Thank you for your time. Goodbye."
+LLM_FALLBACK = "Sorry, give me a moment."
+LLM_FALLBACK_INTERVAL_SECS = 10.0
 
 
 class TurnLog(BaseObserver):
@@ -103,7 +115,12 @@ async def build_pipeline(
             result = await run_tool(api, call_id, params.function_name, dict(params.arguments or {}))
         except ApiUnavailable:
             result = {"error": "API_UNAVAILABLE", "mustHandoff": True}
-        await params.result_callback(result)
+        if params.function_name != "end_call":
+            await params.result_callback(result)
+            return
+        await params.result_callback(result, properties=FunctionCallResultProperties(run_llm=False))
+        await llm.push_frame(TTSSpeakFrame(GOODBYE))
+        await llm.push_frame(EndWorkerFrame(reason="end_call"))
 
     for tool in TOOL_SCHEMAS:
         llm.register_function(tool["function"]["name"], handle_tool)
@@ -135,6 +152,19 @@ async def build_pipeline(
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(_transport, _client):
         await task.cancel()
+
+    last_fallback: float | None = None
+
+    @task.event_handler("on_pipeline_error")
+    async def on_error(_task, frame: ErrorFrame):
+        nonlocal last_fallback
+        if frame.processor is not llm:
+            return
+        now = time.monotonic()
+        if last_fallback is not None and now - last_fallback < LLM_FALLBACK_INTERVAL_SECS:
+            return
+        last_fallback = now
+        await task.queue_frames([TTSSpeakFrame(LLM_FALLBACK, append_to_context=False)])
 
     closed = False
 

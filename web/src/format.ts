@@ -27,3 +27,20 @@ export function formatDateTime(iso: string): string {
 export function humanise(s: string): string {
   return s.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
+
+/** A callback time in the operator's local time: "Today 17:00", "Tomorrow 09:30", or "2 Nov, 17:00". */
+export function formatCallback(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  const time = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(at) - day(now)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Tomorrow ${time}`;
+  const date = at.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    ...(at.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
+  return `${date}, ${time}`;
+}

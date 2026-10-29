@@ -1,4 +1,5 @@
 import os
+from uuid import UUID
 from pathlib import Path
 
 import httpx
@@ -52,11 +53,11 @@ app.add_middleware(
 
 
 class TextCallIn(BaseModel):
-    callId: str
+    callId: UUID
 
 
 class TextTurnIn(BaseModel):
-    callId: str
+    callId: UUID
     text: str
 
 
@@ -67,20 +68,21 @@ async def health() -> dict:
 
 @app.post("/v1/text-call")
 async def text_call(body: TextCallIn) -> dict:
-    existing = state.brains.get(body.callId)
+    call_id = str(body.callId)
+    existing = state.brains.get(call_id)
     if existing is not None:
         return {"greeting": existing.greeting}
     api = state.get_api()
     try:
-        call = await api.call(body.callId)
+        call = await api.call(call_id)
     except ApiUnavailable as e:
         raise HTTPException(502, "renewals API unavailable") from e
     if call.get("error") or not call.get("greeting"):
         raise HTTPException(404, "unknown call")
-    brain = CallBrain(state.get_llm(), api, body.callId, system_prompt(call["greeting"]))
+    brain = CallBrain(state.get_llm(), api, call_id, system_prompt(call["greeting"]))
     await brain.say(call["greeting"])
     brain.greeting = call["greeting"]
-    state.brains[body.callId] = brain
+    state.brains[call_id] = brain
     return {"greeting": call["greeting"]}
 
 
@@ -88,7 +90,7 @@ async def text_call(body: TextCallIn) -> dict:
 async def text_turn(body: TextTurnIn) -> dict:
     if not body.text.strip():
         raise HTTPException(400, "text must not be blank")
-    brain = state.brains.get(body.callId)
+    brain = state.brains.get(str(body.callId))
     if brain is None:
         raise HTTPException(404, "unknown call")
     try:
@@ -123,6 +125,11 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     call_id = (body.requestData or {}).get("callId")
     if not body.pc_id and not call_id:
         raise HTTPException(400, "requestData.callId is required")
+    if call_id is not None:
+        try:
+            call_id = str(UUID(str(call_id)))
+        except ValueError:
+            raise HTTPException(400, "requestData.callId must be a UUID") from None
     renegotiation = body.pc_id is not None and body.pc_id in state.live_calls.values()
     if not renegotiation:
         if call_id in state.live_calls:

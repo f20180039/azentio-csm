@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-from app.api_client import ApiUnavailable, RenewalsApi
+from app.api_client import ApiUnavailable, InvalidCallId, RenewalsApi
 from app.config import Settings
 from app.tools import TOOL_SCHEMAS, run_tool
 
@@ -135,3 +135,22 @@ def test_quote_defaults_plan_and_addons_when_missing_or_empty():
     run(api, "quote_renewal", {"discount_percent": 1})
     run(api, "quote_renewal", {"payment_plan": "", "drop_addons": [], "discount_percent": 1})
     assert bodies == [{"dropAddons": [], "paymentPlan": "annual", "discountPercent": 1}] * 2
+
+
+@pytest.mark.parametrize("bad", [f"{CALL}#", "../x", f"{CALL}/../{CALL}", f"{{{CALL}}}", CALL.replace("-", ""), ""])
+def test_api_refuses_a_non_uuid_call_id_before_any_request(bad):
+    seen = []
+    api = api_with(lambda r: seen.append(r) or httpx.Response(200, json={}))
+    with pytest.raises(InvalidCallId):
+        asyncio.run(api.policy(bad))
+    with pytest.raises(InvalidCallId):
+        asyncio.run(api.call(bad))
+    assert seen == []
+
+
+def test_tool_with_a_non_uuid_call_id_never_reaches_the_api():
+    seen = []
+    api = api_with(lambda r: seen.append(r) or httpx.Response(200, json={"holderName": "Meera"}))
+    result = asyncio.run(run_tool(api, f"{CALL}#", "get_policy", {}))
+    assert result["error"] == "BAD_ARGUMENTS"
+    assert seen == []
