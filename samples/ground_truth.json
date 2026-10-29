@@ -1,0 +1,12 @@
+{
+  "clean_1.pdf": [],
+  "clean_2.pdf": [
+    "DEMO-LARGE-AMOUNT"
+  ],
+  "clean_3.pdf": [],
+  "duplicate_of_clean_1.pdf": [],
+  "redteam_hidden_text.pdf": [
+    "CORE-HIDDEN-TEXT",
+    "CORE-INJECTION"
+  ]
+}

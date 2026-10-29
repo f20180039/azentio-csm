@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: case-intel-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/caseintel}
+    username: ${DB_USER:caseintel}
+    password: ${DB_PASSWORD:caseintel}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  pipeline-version: ${PIPELINE_VERSION:v1}
+  storage:
+    dir: ${STORAGE_DIR:./data/uploads}
+  limits:
+    max-pages: 50
+  rate-limit:
+    uploads-per-minute: ${UPLOADS_PER_MINUTE:30}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  agent:
+    base-url: ${AGENT_URL:http://localhost:8000}
+    connect-timeout: 2s
+    read-timeout: 90s
+    health-timeout: 2s
+  worker:
+    enabled: ${WORKER_ENABLED:true}
+    concurrency: ${WORKER_CONCURRENCY:4}
+    poll-interval-ms: 500
+    max-attempts: 3
+    backoff-base-ms: 2000
+    stuck-after: 5m

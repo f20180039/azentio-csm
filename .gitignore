@@ -1,0 +1,11 @@
+.env
+*.log
+api/target/
+api/data/
+agent/.venv/
+__pycache__/
+web/node_modules/
+web/dist/
+voice/.venv/
+.superpowers/
+.pytest_cache/
