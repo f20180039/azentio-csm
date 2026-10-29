@@ -112,7 +112,8 @@ async def build_pipeline(
     aggregators = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.8)),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            user_turn_stop_timeout=2.0,
             empty_user_turn=None,
         ),
     )

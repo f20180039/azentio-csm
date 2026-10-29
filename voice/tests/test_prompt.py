@@ -33,3 +33,13 @@ def test_discount_asked_again_still_goes_to_the_tool():
     assert ("Do this every time they ask, even if a discount was already refused, and never reuse an earlier result in its place. "
             "A repeated request is a new quote_renewal call with the same discount_percent; "
             "the system alone decides when to stop and hand off") in system_prompt(GREETING)
+
+
+def test_unnamed_discount_is_checked_with_the_tool():
+    assert ("If the customer asks for a discount without naming a figure, call quote_renewal with "
+            "discount_percent 1 to check whether any discount is allowed, then relay the result") in system_prompt(GREETING)
+
+
+def test_options_only_on_objection():
+    assert ("After verify_identity succeeds, call get_policy only; call list_allowed_options only when "
+            "the customer objects to the price or asks for options") in system_prompt(GREETING)

@@ -37,15 +37,15 @@ With the API (`ENFORCE_CALLING_HOURS=false`) and this service running:
 
 It starts a call, plays synthesised customer speech over WebRTC, prints the latency from the end of each customer line to the first agent audio, and the call's audit events.
 
-## Latency (2026-10-29, Pipecat default Smart Turn, VAD `stop_secs=0.8`)
+## Latency (2026-10-29, Smart Turn + VAD `stop_secs=0.2`, user-turn stop timeout 2 s)
 
-End of customer speech → first agent audio, measured at the client. Two calls on HF-2291-0457.
+End of customer speech → first agent audio, measured at the client, one call on HF-2291-0457.
 
-| Customer says | Call 1 | Call 2 |
-|---|---|---|
-| yes speaking | 2515 ms | 2017 ms |
-| fourteenth March nineteen eighty (verify + get_policy + list_allowed_options) | 11410 ms | 4109 ms |
-| can you give me a discount | 2601 ms | 1944 ms |
+| Customer says | Latency |
+|---|---|
+| yes speaking | 1030 ms |
+| fourteenth March nineteen eighty (verify + get_policy) | 2090 ms |
+| can you give me a discount (quote_renewal check) | 3233 ms |
 
-p50 over the six turns: **2558 ms**. The 11.4 s turn is Smart Turn judging the date incomplete and waiting for the 5 s user-turn stop timeout; the 4.1 s turn is three chained tool calls (about 0.5 s of LLM time each).
-Greeting audio arrives about 1.1 s after the WebRTC connection is up.
+p50: **2090 ms**. Greeting audio arrives about 0.9 s after the WebRTC connection is up.
+Before (Pipecat default stop timeout 5 s, VAD `stop_secs=0.8`, options fetched after every verify): p50 2558 ms over two calls, worst turn 11.4 s while Smart Turn waited on a spoken date.

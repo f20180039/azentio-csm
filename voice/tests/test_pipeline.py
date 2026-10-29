@@ -59,6 +59,8 @@ def test_pipeline_params():
     llm = next(p for p in procs if isinstance(p, LLMService))
 
     assert user._params.empty_user_turn is None
+    assert user._params.vad_analyzer.params.stop_secs == 0.2
+    assert user._params.user_turn_stop_timeout == 2.0
     assert set(llm._functions) == {t["function"]["name"] for t in TOOL_SCHEMAS}
     assert len(llm._functions) == 7
     assert user.context.get_messages()[0] == {"role": "assistant", "content": GREETING}

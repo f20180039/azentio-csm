@@ -17,6 +17,7 @@ class State:
         self.llm: ChatClient | None = None
         self.brains: dict[str, CallBrain] = {}
         self.webrtc = None
+        self.live_calls: dict[str, str | None] = {}
         self._settings: Settings | None = None
 
     def settings(self) -> Settings:
@@ -47,6 +48,11 @@ class TextCallIn(BaseModel):
 class TextTurnIn(BaseModel):
     callId: str
     text: str
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
 
 
 @app.post("/v1/text-call")
@@ -107,9 +113,20 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     call_id = (body.requestData or {}).get("callId")
     if not body.pc_id and not call_id:
         raise HTTPException(400, "requestData.callId is required")
+    renegotiation = body.pc_id is not None and body.pc_id in state.live_calls.values()
+    if not renegotiation:
+        if call_id in state.live_calls:
+            raise HTTPException(409, "CALL_IN_PROGRESS")
+        state.live_calls[call_id] = None
     if state.webrtc is None:
         state.webrtc = SmallWebRTCRequestHandler()
     failure: list[Exception] = []
+
+    async def run(task) -> None:
+        try:
+            await PipelineRunner(handle_sigint=False).run(task)
+        finally:
+            state.live_calls.pop(call_id, None)
 
     async def on_connection(connection) -> None:
         transport = SmallWebRTCTransport(
@@ -122,17 +139,25 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
             failure.append(e)
             await connection.disconnect()
             return
-        background_tasks.add_task(PipelineRunner(handle_sigint=False).run, task)
+        background_tasks.add_task(run, task)
 
     request = SmallWebRTCRequest(
         sdp=body.sdp, type=body.type, pc_id=body.pc_id, restart_pc=body.restart_pc, request_data=body.requestData
     )
-    answer = await state.webrtc.handle_web_request(request, on_connection)
+    try:
+        answer = await state.webrtc.handle_web_request(request, on_connection)
+    except Exception:
+        if not renegotiation:
+            state.live_calls.pop(call_id, None)
+        raise
     if failure:
+        state.live_calls.pop(call_id, None)
         logger.warning(f"voice call {call_id} not started: {failure[0]!r}")
         if isinstance(failure[0], LookupError):
             raise HTTPException(404, "unknown call")
         raise HTTPException(502, "voice call could not start")
+    if not renegotiation:
+        state.live_calls[call_id] = answer["pc_id"]
     return answer
 
 

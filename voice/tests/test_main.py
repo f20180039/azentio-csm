@@ -77,3 +77,60 @@ def test_offer_without_call_id_is_400():
     c = client_with(lambda r: httpx.Response(200, json={}))
     resp = c.post("/api/offer", json={"sdp": "v=0", "type": "offer", "requestData": {}})
     assert resp.status_code == 400
+
+
+def test_health():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    assert c.get("/health").json() == {"status": "ok"}
+
+
+def test_second_offer_for_a_live_call_is_409():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.live_calls["busy"] = "pc-1"
+    try:
+        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": "busy"}}
+        resp = c.post("/api/offer", json=body)
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "CALL_IN_PROGRESS"
+    finally:
+        main.state.live_calls.clear()
+
+
+def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
+    import pipecat.pipeline.runner as runner_mod
+
+    from app import pipeline
+
+    class FakeHandler:
+        async def handle_web_request(self, request, callback):
+            class Conn:
+                async def disconnect(self):
+                    pass
+
+            await callback(Conn())
+            assert main.state.live_calls == {"c1": None}
+            return {"sdp": "answer", "type": "answer", "pc_id": "pc-1"}
+
+    class FakeRunner:
+        def __init__(self, **_):
+            pass
+
+        async def run(self, task):
+            assert main.state.live_calls == {"c1": "pc-1"}
+
+    async def fake_build(settings, call_id, transport):
+        return object()
+
+    monkeypatch.setattr(pipeline, "build_pipeline", fake_build)
+    monkeypatch.setattr(runner_mod, "PipelineRunner", FakeRunner)
+    monkeypatch.setattr("pipecat.transports.smallwebrtc.transport.SmallWebRTCTransport", lambda **_: None)
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.webrtc = FakeHandler()
+    try:
+        body = {"sdp": "v=0", "type": "offer", "requestData": {"callId": "c1"}}
+        assert c.post("/api/offer", json=body).status_code == 200
+        assert main.state.live_calls == {}
+        assert c.post("/api/offer", json=body).status_code == 200
+    finally:
+        main.state.webrtc = None
+        main.state.live_calls.clear()
