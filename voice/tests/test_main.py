@@ -71,3 +71,9 @@ def test_repeat_text_call_is_idempotent():
     assert first == second == {"greeting": "Hello Meera"}
     assert main.state.brains["abc"] is brain
     assert len(turns) == 1
+
+
+def test_offer_without_call_id_is_400():
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    resp = c.post("/api/offer", json={"sdp": "v=0", "type": "offer", "requestData": {}})
+    assert resp.status_code == 400

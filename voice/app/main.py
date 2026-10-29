@@ -1,7 +1,8 @@
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from loguru import logger
 from pydantic import BaseModel
 
 from .api_client import ApiUnavailable, RenewalsApi
@@ -15,6 +16,7 @@ class State:
         self.api: RenewalsApi | None = None
         self.llm: ChatClient | None = None
         self.brains: dict[str, CallBrain] = {}
+        self.webrtc = None
         self._settings: Settings | None = None
 
     def settings(self) -> Settings:
@@ -83,3 +85,58 @@ async def text_turn(body: TextTurnIn) -> dict:
         "reply": turn.text,
         "toolCalls": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls],
     }
+
+
+class OfferIn(BaseModel):
+    sdp: str
+    type: str
+    pc_id: str | None = None
+    restart_pc: bool | None = None
+    requestData: dict | None = None
+
+
+@app.post("/api/offer")
+async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
+    from pipecat.pipeline.runner import PipelineRunner
+    from pipecat.transports.base_transport import TransportParams
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
+    from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+
+    from .pipeline import build_pipeline
+
+    call_id = (body.requestData or {}).get("callId")
+    if not body.pc_id and not call_id:
+        raise HTTPException(400, "requestData.callId is required")
+    if state.webrtc is None:
+        state.webrtc = SmallWebRTCRequestHandler()
+    failure: list[Exception] = []
+
+    async def on_connection(connection) -> None:
+        transport = SmallWebRTCTransport(
+            params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+            webrtc_connection=connection,
+        )
+        try:
+            task = await build_pipeline(state.settings(), call_id, transport)
+        except Exception as e:
+            failure.append(e)
+            await connection.disconnect()
+            return
+        background_tasks.add_task(PipelineRunner(handle_sigint=False).run, task)
+
+    request = SmallWebRTCRequest(
+        sdp=body.sdp, type=body.type, pc_id=body.pc_id, restart_pc=body.restart_pc, request_data=body.requestData
+    )
+    answer = await state.webrtc.handle_web_request(request, on_connection)
+    if failure:
+        logger.warning(f"voice call {call_id} not started: {failure[0]!r}")
+        if isinstance(failure[0], LookupError):
+            raise HTTPException(404, "unknown call")
+        raise HTTPException(502, "voice call could not start")
+    return answer
+
+
+@app.on_event("shutdown")
+async def close_webrtc() -> None:
+    if state.webrtc is not None:
+        await state.webrtc.close()
