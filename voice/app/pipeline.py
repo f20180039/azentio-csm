@@ -92,6 +92,7 @@ async def build_pipeline(
     transport: BaseTransport,
     api: RenewalsApi | None = None,
     chain: ChainState | None = None,
+    audio_sample_rate: int | None = None,
 ) -> PipelineWorker:
     chain = chain or ChainState(settings.llm_chain)
     api = api or RenewalsApi(settings)
@@ -145,7 +146,11 @@ async def build_pipeline(
         Pipeline(
             [transport.input(), stt, aggregators.user(), llm, tts, transport.output(), aggregators.assistant()]
         ),
-        params=PipelineParams(enable_metrics=True),
+        params=PipelineParams(
+            enable_metrics=True,
+            **({"audio_in_sample_rate": audio_sample_rate, "audio_out_sample_rate": audio_sample_rate}
+               if audio_sample_rate else {}),
+        ),
         observers=[turn_log],
     )
 

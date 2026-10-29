@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { endCall, getCall, textCall, textTurn } from '../api/renewals';
 import type { CallOutcome, CallView, CaseDetail, TranscriptTurn } from '../api/types';
+import { getPhoneAllowed, placePhoneCall, type PhoneAllowed } from '../api/phone';
 import { connectVoice, type VoiceSession } from '../api/voice';
 import { useToast } from '../components/Toasts';
 import { formatCallback, formatInr } from '../format';
@@ -91,6 +92,9 @@ export function Call() {
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [kase, setKase] = useState<CaseDetail | null>(null);
+  const [phoneAllowed, setPhoneAllowed] = useState<PhoneAllowed>({ configured: false, numbers: [] });
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phone, setPhone] = useState<'off' | 'dialling' | 'ringing'>('off');
   const session = useRef<VoiceSession | null>(null);
   const textStarted = useRef(false);
   const audio = useRef<HTMLAudioElement>(null);
@@ -149,6 +153,26 @@ export function Call() {
     if (!ended || !call) return;
     api.getCase(call.caseId).then(setKase).catch(() => setKase(null));
   }, [ended, call?.caseId]);
+
+  useEffect(() => {
+    void getPhoneAllowed().then((a) => {
+      if (unmounted.current) return;
+      setPhoneAllowed(a);
+      setPhoneNumber(a.numbers[0]?.id ?? '');
+    });
+  }, []);
+
+  async function callPhone() {
+    setPhone('dialling');
+    try {
+      await placePhoneCall(callId, phoneNumber);
+      if (!unmounted.current) setPhone('ringing');
+    } catch (e) {
+      if (unmounted.current) return;
+      setPhone('off');
+      toast.error(e);
+    }
+  }
 
   async function connect() {
     setVoice('connecting');
@@ -248,10 +272,41 @@ export function Call() {
           </div>
           {liveCall && (
             <div className="row">
-              {voice === 'off' && (
+              {voice === 'off' && phone === 'off' && (
                 <button className="btn primary" onClick={connect}>
                   Connect
                 </button>
+              )}
+              {voice === 'off' && phone === 'ringing' && (
+                <span className="pill info pulse">
+                  <span className="dot" aria-hidden="true" />
+                  Phone ringing
+                </span>
+              )}
+              {voice === 'off' && phone !== 'ringing' && (
+                <>
+                  <select
+                    aria-label="Phone number"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    disabled={!phoneAllowed.configured || phone !== 'off'}
+                  >
+                    {phoneAllowed.numbers.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.masked}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn"
+                    onClick={callPhone}
+                    disabled={!phoneAllowed.configured || !phoneNumber || phone !== 'off'}
+                    title={phoneAllowed.configured ? undefined : 'Phone calls are not set up on the voice service.'}
+                  >
+                    Call a phone
+                  </button>
+                  {!phoneAllowed.configured && <span className="small muted">Phone calls are not set up on the voice service.</span>}
+                </>
               )}
               {voice === 'connecting' && (
                 <button className="btn" disabled>

@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -16,6 +16,11 @@ class Settings:
     api_user: str = "voice"
     api_password: str = "voice"
     tts_voice: str = "en-IN-NeerjaNeural"
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = field(default="", repr=False)
+    twilio_from: str = ""
+    twilio_allowed_to: tuple[str, ...] = ()
+    public_base_url: str = ""
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
@@ -35,4 +40,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
         api_user=get("RENEWALS_API_USER", Settings.api_user),
         api_password=get("RENEWALS_API_PASSWORD", Settings.api_password),
         tts_voice=get("VOICE_TTS_VOICE", Settings.tts_voice),
+        twilio_account_sid=get("TWILIO_ACCOUNT_SID", ""),
+        twilio_auth_token=get("TWILIO_AUTH_TOKEN", ""),
+        twilio_from=get("TWILIO_FROM", "").replace(" ", ""),
+        twilio_allowed_to=tuple(n.replace(" ", "") for n in get("TWILIO_ALLOWED_TO", "").split(",") if n.strip()),
+        public_base_url=get("PUBLIC_BASE_URL", "").rstrip("/"),
     )

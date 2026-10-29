@@ -83,6 +83,14 @@ def test_pipeline_params():
     assert switcher.active_llm is groq
 
 
+def test_audio_rates_default_to_webrtc_and_follow_the_phone_transport():
+    assert (build().params.audio_in_sample_rate, build().params.audio_out_sample_rate) == (16000, 24000)
+    settings = Settings(groq_api_key="test-key", llm_chain=parse_chain(CHAIN, KEYS))
+    phone = asyncio.run(
+        build_pipeline(settings, CALL, FakeTransport(), api=api_with(call_view), audio_sample_rate=8000)
+    )
+    assert (phone.params.audio_in_sample_rate, phone.params.audio_out_sample_rate) == (8000, 8000)
+
 def test_tool_handler_calls_the_api_and_returns_its_result():
     seen = []
 
