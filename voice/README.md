@@ -47,5 +47,15 @@ End of customer speech → first agent audio, measured at the client, one call o
 | fourteenth March nineteen eighty (verify + get_policy) | 2090 ms |
 | can you give me a discount (quote_renewal check) | 3233 ms |
 
-p50: **2090 ms**. Greeting audio arrives about 0.9 s after the WebRTC connection is up.
+Second run, same settings and policy:
+
+| Customer says | Latency |
+|---|---|
+| yes speaking | 1490 ms |
+| fourteenth March nineteen eighty | 3214 ms |
+| can you give me a discount | 1732 ms |
+
+p50: **1732 ms**.
+
+First run p50: **2090 ms**. Greeting audio arrives about 0.9 s after the WebRTC connection is up.
 Before (Pipecat default stop timeout 5 s, VAD `stop_secs=0.8`, options fetched after every verify): p50 2558 ms over two calls, worst turn 11.4 s while Smart Turn waited on a spoken date.

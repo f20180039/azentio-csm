@@ -14,7 +14,7 @@ Declared as **pre-built, reusable scaffolding** under rule 3. The topic-specific
 | `web/` | React 18, TypeScript, Vite | 5173 | Reviewer queue, case workspace, upload, audit timeline, rule-pack view, Renewals queue and live call screen |
 | `postgres` | PostgreSQL 16 | 5432 | Everything persistent. Also the job queue (no Redis) |
 
-`docker-compose.yml` at the repo root runs all five (plus `agent`). Each service also runs standalone for development.
+`docker-compose.yml` at the repo root runs all five. Each service also runs standalone for development.
 
 ## Request flow
 

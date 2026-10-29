@@ -71,7 +71,7 @@ End of customer speech to first agent audio, measured at the client with `voice/
 | fourteenth March nineteen eighty (verify + get_policy) | 2090 ms |
 | can you give me a discount (quote_renewal check) | 3233 ms |
 
-p50 over those three turns: 2.1 s. A later run measured p50 1.73 s. Greeting audio starts about 0.9 s after the WebRTC connection is up.
+p50 over those three turns: 2.1 s. A second run with the same settings gave 1490, 3214 and 1732 ms, p50 1.73 s. Greeting audio starts about 0.9 s after the WebRTC connection is up.
 
 ## Declaration of reused components
 
@@ -88,6 +88,19 @@ Rule 3 of Azentio.ai Build Labs asks for this. The rows marked "Before the event
 | `voice/app/edge_tts_service.py` | Pipecat text-to-speech service around edge-tts, ported from a throwaway latency spike written during the event (29 Oct 2026). Event work, not pre-built | During the event (29 Oct 2026) |
 
 **Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `agent/app/pdf.py` and the test fixtures that build PDFs would change.
+
+**Third-party libraries in the voice stack** (licences read from the installed package metadata):
+
+| Library | Version | Licence | Used for |
+|---|---|---|---|
+| Pipecat (`pipecat-ai`) | 1.12.0 | BSD-2-Clause | Voice pipeline: WebRTC transport, Groq services, turn handling |
+| `@pipecat-ai/client-js` | 1.13.1 | BSD-2-Clause | Browser client for the voice call |
+| `@pipecat-ai/small-webrtc-transport` | 1.10.8 | BSD-2-Clause | Browser WebRTC transport |
+| edge-tts | 7.3.1 | LGPL-3.0 (one file, `srt_composer.py`, is MIT) | Speech synthesis, used as an unmodified dependency. It calls Microsoft's online Edge read-aloud service, so it needs internet |
+| Silero VAD (`silero_vad.onnx`) | bundled in the pipecat-ai 1.12.0 wheel | The package metadata gives no licence for the weights. Upstream (snakers4/silero-vad) publishes MIT; not verified from the install | Local voice activity detection, Pipecat default |
+| Smart Turn v3.2 (`smart-turn-v3.2-cpu.onnx`) | bundled in the pipecat-ai 1.12.0 wheel | The package metadata gives no licence for the weights. Upstream (pipecat-ai/smart-turn) publishes BSD-2-Clause; not verified from the install | Local end-of-turn detection, Pipecat default |
+
+Both models run locally on CPU through onnxruntime 1.24.4 (MIT).
 
 **AI tools used (rule 6):** Claude Code, used to scaffold and review code. Every design decision is documented in ARCHITECTURE.md and can be explained by the team.
 
