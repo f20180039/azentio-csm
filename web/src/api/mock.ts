@@ -241,6 +241,30 @@ for (const c of cases) {
   log(c.id, 'system', 'ROUTED', { status: c.status });
 }
 
+/** Used by the mock renewals backend so a scripted call has a case to audit and decide. */
+export function seedRenewalCase(caseId: string, title: string) {
+  if (cases.some((c) => c.id === caseId)) return;
+  cases.unshift({
+    id: caseId,
+    caseType: 'renewal_call',
+    title,
+    status: 'NEEDS_REVIEW',
+    riskScore: null,
+    amountAtRisk: null,
+    findingsCount: 0,
+    createdBy: current?.username ?? 'analyst',
+    createdAt: new Date().toISOString(),
+    pipelineVersion: 'p1',
+    documents: [],
+    findings: [],
+    extraction: null,
+  });
+  log(caseId, current?.username ?? 'analyst', 'CALL_STARTED', { channel: 'voice' });
+}
+export function logRenewalEvent(caseId: string, action: string, payload: unknown) {
+  log(caseId, 'renewal-agent', action, payload);
+}
+
 function requireSession(): Session {
   if (!current) throw new ApiError({ status: 401, title: 'Sign in again' });
   return current;

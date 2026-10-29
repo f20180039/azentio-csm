@@ -240,7 +240,7 @@ function sevRank(f: Finding) {
   return f.severity === 'HIGH' ? 3 : f.severity === 'MEDIUM' ? 2 : 1;
 }
 
-function CaseActions({ kase, canDecide, onDone }: { kase: CaseDetail; canDecide: boolean; onDone: () => void }) {
+export function CaseActions({ kase, canDecide, onDone }: { kase: CaseDetail; canDecide: boolean; onDone: () => void }) {
   const [action, setAction] = useState<CaseAction | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -300,7 +300,7 @@ function CaseActions({ kase, canDecide, onDone }: { kase: CaseDetail; canDecide:
   );
 }
 
-function AuditTab({ caseId, canVerify }: { caseId: string; canVerify: boolean }) {
+export function AuditTab({ caseId, canVerify }: { caseId: string; canVerify: boolean }) {
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const [verify, setVerify] = useState<AuditVerifyResult | null>(null);
   const [busy, setBusy] = useState(false);
