@@ -60,11 +60,11 @@ state = State()
 EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
 TUNNEL_HEADERS = (b"cf-connecting-ip", b"cf-ray", b"x-forwarded-for", b"forwarded")
-PUBLIC_PATHS = ("/ws/twilio", "/health")
+PUBLIC_PATHS = ("/ws/twilio", "/twilio/twiml", "/health")
 
 
 class LocalOnly:
-    """A request that came through a proxy or tunnel may reach only the Twilio media stream and /health."""
+    """A request that came through a proxy or tunnel may reach only Twilio's TwiML fetch, its media stream and /health."""
 
     def __init__(self, app):
         self.app = app

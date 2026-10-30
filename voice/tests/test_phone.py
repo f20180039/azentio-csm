@@ -128,7 +128,8 @@ def test_dial_posts_the_twilio_calls_request_with_basic_auth(logs):
     assert r.headers["authorization"] == "Basic " + base64.b64encode(f"{SID}:{TOKEN}".encode()).decode()
     form = {k: v[0] for k, v in parse_qs(r.content.decode()).items()}
     assert form["To"] == "+919812344417" and form["From"] == FROM
-    assert form["Twiml"] == phone.twiml(BASE, CALL)
+    assert "Twiml" not in form  # trial accounts refuse inline TwiML
+    assert form["Url"] == f"{BASE}/twilio/twiml?callId={CALL}" and form["Method"] == "POST"
     assert not any(TOKEN in line for line in logs)
 
 
@@ -436,7 +437,6 @@ LOCAL_ONLY = [
     ("post", "/v1/text-turn", {"callId": CALL, "text": "hi"}),
     ("get", "/v1/eval/latest", None),
     ("get", "/v1/llm/status", None),
-    ("post", f"/twilio/twiml?callId={CALL}", None),
 ]
 
 
@@ -454,6 +454,15 @@ def test_tunnelled_requests_reach_only_the_twilio_stream(client, headers, method
 @pytest.mark.parametrize("headers", TUNNEL_HEADERS)
 def test_tunnelled_health_is_allowed(client, headers):
     assert client().get("/health", headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize("headers", TUNNEL_HEADERS)
+def test_twilio_can_fetch_twiml_through_the_tunnel_for_a_pending_call_only(client, headers):
+    c = client()
+    assert c.post(f"/twilio/twiml?callId={CALL}", headers=headers).status_code == 404
+    main.state.phone_pending[CALL] = ("CA1", time.monotonic())
+    r = c.post(f"/twilio/twiml?callId={CALL}", headers=headers)
+    assert r.status_code == 200 and r.text == phone.twiml(BASE, CALL)
 
 
 def test_a_tunnelled_websocket_to_another_path_is_refused(client):

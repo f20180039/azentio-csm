@@ -77,7 +77,8 @@ async def dial(s: Settings, call_id: str, to: str, transport: httpx.AsyncBaseTra
         try:
             r = await client.post(
                 f"/2010-04-01/Accounts/{s.twilio_account_sid}/Calls.json",
-                data={"To": to, "From": s.twilio_from, "Twiml": twiml(s.public_base_url, call_id)},
+                data={"To": to, "From": s.twilio_from, "Method": "POST",
+                      "Url": f"{s.public_base_url.rstrip('/')}/twilio/twiml?callId={call_id}"},
             )
         except httpx.HTTPError as e:
             raise DialError(f"Twilio unreachable: {type(e).__name__}") from None
