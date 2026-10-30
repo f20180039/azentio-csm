@@ -80,7 +80,7 @@ def test_tool_loop_limit_hands_off():
     turn = asyncio.run(brain.reply("hello"))
     assert turn.text == "Let me get a colleague to help you."
     handoffs = [b for _, p, b in calls if p.endswith("/handoff")]
-    assert handoffs == [{"reason": "TOOL_LOOP_LIMIT", "callbackAt": None}]
+    assert handoffs == [{"reason": "TOOL_LOOP_LIMIT"}]
     assert len(llm.seen) == 5
 
 
@@ -93,42 +93,27 @@ def test_malformed_argument_json_is_reported_to_model():
     assert not any(p.endswith("/verify") for _, p, _ in calls)
 
 
-def groq(handler, sleeps):
-    from app.brain import GroqChatClient
+def test_brain_runs_tools_through_the_chain_and_fails_over():
+    from app.llm_chain import ChainChatClient, parse_chain
 
-    async def sleep(s):
-        sleeps.append(s)
-
-    return GroqChatClient(Settings(groq_api_key="k"), transport=httpx.MockTransport(handler), sleep=sleep)
-
-
-def test_groq_retries_once_after_retry_after_capped():
-    n, sleeps = [], []
+    models = []
 
     def handler(r):
-        n.append(1)
-        if len(n) == 1:
-            return httpx.Response(429, headers={"retry-after": "10"})
-        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "hi"}}]})
+        body = json.loads(r.content)
+        models.append(body["model"])
+        if body["model"] == "openai/gpt-oss-120b":
+            return httpx.Response(429, text="Rate limit reached on tokens per day (TPD)")
+        msg = (tool_call("verify_identity", {"date_of_birth": "1980-03-14"}, "fc_long-groq-id")
+               if not any(m["role"] == "tool" for m in body["messages"]) else text("Verified."))
+        return httpx.Response(200, json={"choices": [{"message": msg}]})
 
-    msg = asyncio.run(groq(handler, sleeps).complete([], []))
-    assert msg["content"] == "hi" and len(n) == 2 and sleeps == [3.0]
-
-
-def test_groq_fails_after_second_503_default_delay():
-    n, sleeps = [], []
-
-    def handler(r):
-        n.append(1)
-        return httpx.Response(503)
-
-    client = groq(handler, sleeps)
-    try:
-        asyncio.run(client.complete([], []))
-        raise AssertionError("expected failure")
-    except httpx.HTTPStatusError:
-        pass
-    assert len(n) == 2 and sleeps == [1.0]
+    chain = ChainChatClient(parse_chain("groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b", {"groq": "k"}),
+                            transport=httpx.MockTransport(handler))
+    brain, calls = make(chain, ok)
+    turn = asyncio.run(brain.reply("14 March 1980"))
+    assert turn.text == "Verified." and turn.tool_calls[0].name == "verify_identity"
+    assert models == ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "openai/gpt-oss-20b"]
+    assert chain.state.status()["active"] == "groq:openai/gpt-oss-20b"
 
 
 def assert_valid_history(messages):
@@ -182,3 +167,57 @@ def test_concurrent_replies_do_not_interleave():
     asyncio.run(both())
     assert llm.seen[0] == ["system:SYSTEM", "user:one"]
     assert llm.seen[1] == ["system:SYSTEM", "user:one", "assistant:ok", "user:two"]
+
+
+def test_retried_turn_posts_the_customer_line_once():
+    class FlakyThenOk:
+        def __init__(self):
+            self.n = 0
+
+        async def complete(self, messages, tools):
+            self.n += 1
+            if self.n == 1:
+                raise httpx.HTTPStatusError("429", request=httpx.Request("POST", "x"), response=httpx.Response(429))
+            return text("Hello again.")
+
+    brain, calls = make(FlakyThenOk(), ok)
+    try:
+        asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    except httpx.HTTPError:
+        pass
+    asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    turns = [b["role"] for _, p, b in calls if p.endswith("/turns")]
+    assert turns == ["customer", "agent"]
+    asyncio.run(brain.reply("my date of birth is 14 March 1980"))
+    assert [b["role"] for _, p, b in calls if p.endswith("/turns")] == ["customer", "agent", "customer", "agent"]
+
+
+def test_brain_remembers_the_premium_for_a_refused_discount():
+    def handler(r):
+        if r.url.path.endswith("/policy"):
+            return httpx.Response(200, json={"renewalPremium": 2094})
+        if r.url.path.endswith("/quote"):
+            return httpx.Response(422, json={"detail": "OUTSIDE_PLAYBOOK"})
+        return httpx.Response(200, json={})
+
+    llm = Scripted(tool_call("get_policy", {}, "c1"), text("It is two thousand and ninety-four rupees."),
+                   tool_call("quote_renewal", {"discount_percent": 20}, "c2"), text("No discount, sorry."))
+    brain, _ = make(llm, handler)
+    asyncio.run(brain.reply("what is my premium"))
+    asyncio.run(brain.reply("20 percent off please"))
+    tool_msg = [m for m in llm.seen[-1] if m["role"] == "tool"][-1]
+    assert "unchanged at two thousand and ninety-four rupees" in tool_msg["content"]
+
+
+def test_turn_reports_the_model_of_the_final_completion():
+    first = {**tool_call("get_policy", {}), "model": "groq:a"}
+    llm = Scripted(first, {**text("Here it is."), "model": "gemini:b"})
+    brain, _ = make(llm, lambda r: httpx.Response(200, json={"ok": True}))
+    turn = asyncio.run(brain.reply("what is my premium?"))
+    assert turn.model == "gemini:b"
+    assert all("model" not in m for m in llm.seen[-1])
+
+
+def test_turn_model_is_none_for_a_client_that_does_not_say():
+    brain, _ = make(Scripted(text("Hi.")), lambda r: httpx.Response(200, json={}))
+    assert asyncio.run(brain.reply("hello")).model is None

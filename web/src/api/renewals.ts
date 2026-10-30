@@ -6,7 +6,7 @@ import type { CallOutcome, CallView, QueueItem, StartedCall, TextTurnResult } fr
 export const VOICE_BASE: string =
   (import.meta.env.VITE_VOICE_BASE as string | undefined) ?? 'http://localhost:7861';
 
-async function voicePost<T>(path: string, body: unknown): Promise<T> {
+export async function voicePost<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${VOICE_BASE}${path}`, {

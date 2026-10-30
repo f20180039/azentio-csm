@@ -22,7 +22,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.base_transport import BaseTransport
@@ -30,12 +29,15 @@ from pipecat.transports.base_transport import BaseTransport
 from .api_client import ApiUnavailable, RenewalsApi
 from .config import Settings
 from .edge_tts_service import EdgeTTSService
+from .llm_chain import ChainConfigError, ChainState, build_live_switcher
 from .prompt import system_prompt
 from .tools import TOOL_SCHEMAS, run_tool
 
 GOODBYE = "Thank you for your time. Goodbye."
 LLM_FALLBACK = "Sorry, give me a moment."
 LLM_FALLBACK_INTERVAL_SECS = 10.0
+LLM_GIVE_UP_AFTER = 3
+LLM_GIVE_UP = "I'll ask a colleague to call you back shortly."
 
 
 class TurnLog(BaseObserver):
@@ -87,8 +89,14 @@ def _tools_schema() -> ToolsSchema:
 
 
 async def build_pipeline(
-    settings: Settings, call_id: str, transport: BaseTransport, api: RenewalsApi | None = None
+    settings: Settings,
+    call_id: str,
+    transport: BaseTransport,
+    api: RenewalsApi | None = None,
+    chain: ChainState | None = None,
+    audio_sample_rate: int | None = None,
 ) -> PipelineWorker:
+    chain = chain or ChainState(settings.llm_chain)
     api = api or RenewalsApi(settings)
     try:
         call = await api.call(call_id)
@@ -101,26 +109,25 @@ async def build_pipeline(
         raise LookupError(f"unknown call {call_id}")
 
     stt = GroqSTTService(api_key=settings.groq_api_key, settings=GroqSTTService.Settings(model=settings.stt_model))
-    llm = GroqLLMService(
-        api_key=settings.groq_api_key,
-        settings=GroqLLMService.Settings(
-            model=settings.llm_model,
-            system_instruction=system_prompt(greeting),
-            extra={"reasoning_effort": "low"},
-        ),
-    )
+    try:
+        llm = build_live_switcher(chain, system_prompt(greeting))
+    except ChainConfigError:
+        await api.aclose()
+        raise
+
+    memory: dict = {}
 
     async def handle_tool(params: FunctionCallParams) -> None:
         try:
-            result = await run_tool(api, call_id, params.function_name, dict(params.arguments or {}))
+            result = await run_tool(api, call_id, params.function_name, dict(params.arguments or {}), memory)
         except ApiUnavailable:
             result = {"error": "API_UNAVAILABLE", "mustHandoff": True}
         if params.function_name != "end_call":
             await params.result_callback(result)
             return
         await params.result_callback(result, properties=FunctionCallResultProperties(run_llm=False))
-        await llm.push_frame(TTSSpeakFrame(GOODBYE))
-        await llm.push_frame(EndWorkerFrame(reason="end_call"))
+        await llm.active_llm.push_frame(TTSSpeakFrame(GOODBYE))
+        await llm.active_llm.push_frame(EndWorkerFrame(reason="end_call"))
 
     for tool in TOOL_SCHEMAS:
         llm.register_function(tool["function"]["name"], handle_tool)
@@ -141,7 +148,11 @@ async def build_pipeline(
         Pipeline(
             [transport.input(), stt, aggregators.user(), llm, tts, transport.output(), aggregators.assistant()]
         ),
-        params=PipelineParams(enable_metrics=True),
+        params=PipelineParams(
+            enable_metrics=True,
+            **({"audio_in_sample_rate": audio_sample_rate, "audio_out_sample_rate": audio_sample_rate}
+               if audio_sample_rate else {}),
+        ),
         observers=[turn_log],
     )
 
@@ -154,17 +165,30 @@ async def build_pipeline(
         await task.cancel()
 
     last_fallback: float | None = None
+    fallbacks = 0
+    answers_at_fallback = -1
+    gave_up = False
 
     @task.event_handler("on_pipeline_error")
     async def on_error(_task, frame: ErrorFrame):
-        nonlocal last_fallback
-        if frame.processor is not llm:
+        nonlocal last_fallback, fallbacks, answers_at_fallback, gave_up
+        if gave_up or (frame.processor is not llm and frame.processor not in llm.llms):
             return
         now = time.monotonic()
         if last_fallback is not None and now - last_fallback < LLM_FALLBACK_INTERVAL_SECS:
             return
         last_fallback = now
-        await task.queue_frames([TTSSpeakFrame(LLM_FALLBACK, append_to_context=False)])
+        fallbacks = fallbacks + 1 if llm.answers == answers_at_fallback else 1
+        answers_at_fallback = llm.answers
+        frames = [TTSSpeakFrame(LLM_FALLBACK, append_to_context=False)]
+        if fallbacks >= LLM_GIVE_UP_AFTER:
+            gave_up = True
+            try:
+                await api.handoff(call_id, "LLM_UNAVAILABLE")
+            except ApiUnavailable as e:
+                logger.warning(f"handoff not recorded: {e}")
+            frames += [TTSSpeakFrame(LLM_GIVE_UP, append_to_context=False), EndWorkerFrame(reason="llm_unavailable")]
+        await task.queue_frames(frames)
 
     closed = False
 

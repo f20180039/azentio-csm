@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { endCall, getCall, textCall, textTurn } from '../api/renewals';
 import type { CallOutcome, CallView, CaseDetail, TranscriptTurn } from '../api/types';
+import { getPhoneAllowed, placePhoneCall, type PhoneAllowed } from '../api/phone';
 import { connectVoice, type VoiceSession } from '../api/voice';
 import { useToast } from '../components/Toasts';
 import { formatCallback, formatInr } from '../format';
@@ -10,6 +11,9 @@ import { useSession } from '../session';
 import { AuditTab, CaseActions } from './CaseWorkspace';
 
 const POLL_MS = 1000;
+/** The voice service forgets an unanswered dial after this long, so the page does too. */
+export const PHONE_RING_TIMEOUT_MS = 120_000;
+export const PHONE_END_HINT = 'Hang up on the phone (or let the agent end the call)';
 
 export const OUTCOME_LABEL: Record<CallOutcome, string> = {
   HANDED_OFF: 'Handed to a person',
@@ -91,6 +95,10 @@ export function Call() {
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [kase, setKase] = useState<CaseDetail | null>(null);
+  const [phoneAllowed, setPhoneAllowed] = useState<PhoneAllowed>({ configured: false, numbers: [] });
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phone, setPhone] = useState<'off' | 'dialling' | 'ringing' | 'live'>('off');
+  const turnsAtDial = useRef(0);
   const session = useRef<VoiceSession | null>(null);
   const textStarted = useRef(false);
   const audio = useRef<HTMLAudioElement>(null);
@@ -122,6 +130,7 @@ export function Call() {
     const s = session.current;
     session.current = null;
     setVoice('off');
+    setPhone('off');
     void s?.disconnect().catch(() => undefined);
   }, [ended]);
 
@@ -149,6 +158,38 @@ export function Call() {
     if (!ended || !call) return;
     api.getCase(call.caseId).then(setKase).catch(() => setKase(null));
   }, [ended, call?.caseId]);
+
+  useEffect(() => {
+    void getPhoneAllowed().then((a) => {
+      if (unmounted.current) return;
+      setPhoneAllowed(a);
+      setPhoneNumber(a.numbers[0]?.id ?? '');
+    });
+  }, []);
+
+  const turnCount = call?.transcript.length ?? 0;
+  useEffect(() => {
+    if (phone === 'ringing' && turnCount > turnsAtDial.current) setPhone('live');
+  }, [phone, turnCount]);
+
+  useEffect(() => {
+    if (phone !== 'ringing') return;
+    const t = setTimeout(() => setPhone('off'), PHONE_RING_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [phone]);
+
+  async function callPhone() {
+    setPhone('dialling');
+    turnsAtDial.current = turnCount;
+    try {
+      await placePhoneCall(callId, phoneNumber);
+      if (!unmounted.current && !endedRef.current) setPhone('ringing');
+    } catch (e) {
+      if (unmounted.current) return;
+      setPhone('off');
+      toast.error(e);
+    }
+  }
 
   async function connect() {
     setVoice('connecting');
@@ -221,6 +262,7 @@ export function Call() {
 
   const guards = guardrails(call);
   const liveCall = !ended;
+  const phoneBusy = phone === 'ringing' || phone === 'live';
 
   return (
     <>
@@ -249,18 +291,65 @@ export function Call() {
           {liveCall && (
             <div className="row">
               {voice === 'off' && (
-                <button className="btn primary" onClick={connect}>
-                  Connect
+                <button className={`btn${phone === 'off' ? ' primary' : ''}`} onClick={connect}>
+                  Connect voice
                 </button>
+              )}
+              {phoneBusy && (
+                <>
+                  <span className="pill info pulse">
+                    <span className="dot" aria-hidden="true" />
+                    {phone === 'live' ? 'Phone live' : 'Phone ringing'}
+                  </span>
+                  <button className="btn" onClick={() => setPhone('off')} title="Stops waiting here; it does not hang up the phone.">
+                    Cancel
+                  </button>
+                </>
+              )}
+              {voice === 'off' && !phoneBusy && (
+                <>
+                  <select
+                    aria-label="Phone number"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    disabled={!phoneAllowed.configured || phone !== 'off'}
+                  >
+                    {phoneAllowed.numbers.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.masked}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn"
+                    onClick={callPhone}
+                    disabled={!phoneAllowed.configured || !phoneNumber || phone !== 'off'}
+                    title={phoneAllowed.configured ? undefined : 'Phone calls are not set up on the voice service.'}
+                  >
+                    Call a phone
+                  </button>
+                  {!phoneAllowed.configured && <span className="small muted">Phone calls are not set up on the voice service.</span>}
+                </>
               )}
               {voice === 'connecting' && (
                 <button className="btn" disabled>
                   Connecting…
                 </button>
               )}
-              <button className="btn danger" onClick={finish} disabled={ending}>
+              <button
+                className="btn danger"
+                onClick={finish}
+                disabled={ending || phoneBusy}
+                title={phoneBusy ? PHONE_END_HINT : undefined}
+                aria-describedby={phoneBusy ? 'phone-end-hint' : undefined}
+              >
                 {voice === 'on' ? 'Hang up' : 'End call'}
               </button>
+              {phoneBusy && (
+                <span id="phone-end-hint" className="small muted">
+                  {PHONE_END_HINT}
+                </span>
+              )}
             </div>
           )}
         </div>

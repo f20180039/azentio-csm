@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, setCredentials, setFetcher } from './client';
+import { getDashboard } from './dashboard';
 import { endCall, getQueue, startCall } from './renewals';
 
 afterEach(() => {
@@ -21,6 +22,18 @@ describe('renewals api', () => {
     expect(seen!.init.method).toBe('POST');
     expect(JSON.parse(String(seen!.init.body))).toEqual({ policyId: 'POL-1' });
     expect((seen!.init.headers as Record<string, string>).Authorization).toBe('Basic ' + btoa('analyst:pw'));
+  });
+
+  it('getDashboard asks for simulated calls only when told to', async () => {
+    const urls: string[] = [];
+    setFetcher(async (url) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ kpis: {} }), { status: 200 });
+    });
+    await getDashboard();
+    await getDashboard(true);
+    expect(urls[0]).toMatch(/\/renewals\/dashboard$/);
+    expect(urls[1]).toMatch(/\/renewals\/dashboard\?includeSimulated=true$/);
   });
 
   it('a 409 problem surfaces its detail', async () => {

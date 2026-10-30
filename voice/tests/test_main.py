@@ -121,7 +121,7 @@ def test_call_slot_is_freed_when_the_session_ends(monkeypatch):
         async def run(self, task):
             assert main.state.live_calls == {ABC: "pc-1"}
 
-    async def fake_build(settings, call_id, transport):
+    async def fake_build(settings, call_id, transport, chain=None):
         return object()
 
     monkeypatch.setattr(pipeline, "build_pipeline", fake_build)
@@ -224,3 +224,94 @@ def test_offer_rejects_a_non_uuid_call_id():
         assert c.post("/api/offer", json=body).status_code == 400, bad
     assert main.state.webrtc is None
     assert main.state.live_calls == {}
+
+
+def test_eval_latest_is_404_without_a_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "EVAL_LATEST", tmp_path / "latest.json")
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    assert c.get("/v1/eval/latest").status_code == 404
+
+
+def test_eval_latest_serves_the_report(tmp_path, monkeypatch):
+    f = tmp_path / "latest.json"
+    f.write_text('{"totals": {"conversations": 18}}')
+    monkeypatch.setattr(main, "EVAL_LATEST", f)
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    resp = c.get("/v1/eval/latest")
+    assert resp.status_code == 200 and resp.json() == {"totals": {"conversations": 18}}
+
+
+def test_llm_daily_limit_is_429_not_502():
+    class Daily:
+        async def complete(self, messages, tools):
+            resp = httpx.Response(429, text='{"error":{"message":"Rate limit reached on tokens per day (TPD)"}}',
+                                  request=httpx.Request("POST", "https://api.groq.com"))
+            raise httpx.HTTPStatusError("429", request=resp.request, response=resp)
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    from app.brain import CallBrain
+    main.state.brains[ABC] = CallBrain(Daily(), main.state.api, ABC, "SYS")
+    resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
+    assert resp.status_code == 429 and resp.json()["detail"] == "LLM_DAILY_LIMIT"
+
+
+def test_llm_status_lists_links_without_secrets():
+    from app.llm_chain import ChainState, parse_chain
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    chain = ChainState(parse_chain("groq:openai/gpt-oss-120b,mistral:m", {"groq": "gk-secret", "mistral": "mk-secret"}))
+    chain.fail(chain.links[0], 3600, "429 daily limit", daily=True)
+    chain.answered(chain.links[1])
+    main.state.chain = chain
+    try:
+        resp = c.get("/v1/llm/status")
+    finally:
+        main.state.chain = None
+    body = resp.json()
+    assert resp.status_code == 200 and "secret" not in resp.text
+    assert body["active"] == "mistral:m"
+    assert [(l["name"], l["available"]) for l in body["links"]] == [("groq:openai/gpt-oss-120b", False), ("mistral:m", True)]
+
+
+def test_chain_exhausted_maps_daily_to_429_and_otherwise_502():
+    from app.brain import CallBrain
+    from app.llm_chain import LLMUnavailable
+
+    class Exhausted:
+        def __init__(self, daily):
+            self.daily = daily
+
+        async def complete(self, messages, tools):
+            raise LLMUnavailable("all resting", daily=self.daily)
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.brains[ABC] = CallBrain(Exhausted(True), main.state.api, ABC, "SYS")
+    resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
+    assert resp.status_code == 429 and resp.json()["detail"] == "LLM_DAILY_LIMIT"
+    main.state.brains[ABC] = CallBrain(Exhausted(False), main.state.api, ABC, "SYS")
+    assert c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"}).status_code == 502
+
+
+def test_text_brain_and_status_share_one_chain(monkeypatch):
+    from app.config import Settings as S
+    from app.llm_chain import parse_chain
+
+    settings = S(llm_chain=parse_chain("groq:openai/gpt-oss-20b", {"groq": "k"}))
+    monkeypatch.setattr(main.state, "_settings", settings)
+    monkeypatch.setattr(main.state, "chain", None)
+    monkeypatch.setattr(main.state, "llm", None)
+    assert main.state.get_llm().state is main.state.get_chain()
+
+
+def test_text_turn_says_which_model_answered():
+    from app.brain import CallBrain
+
+    class Answers:
+        async def complete(self, messages, tools):
+            return {"role": "assistant", "content": "Hello.", "model": "groq:openai/gpt-oss-120b"}
+
+    c = client_with(lambda r: httpx.Response(200, json={}))
+    main.state.brains[ABC] = CallBrain(Answers(), main.state.api, ABC, "SYS")
+    resp = c.post("/v1/text-turn", json={"callId": ABC, "text": "hi"})
+    assert resp.status_code == 200
+    assert resp.json() == {"reply": "Hello.", "toolCalls": [], "model": "groq:openai/gpt-oss-120b"}

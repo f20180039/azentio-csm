@@ -4,6 +4,9 @@ import ai.caseintel.api.renewals.RenewalDtos.CallEnded;
 import ai.caseintel.api.renewals.RenewalDtos.CallView;
 import ai.caseintel.api.renewals.RenewalDtos.HandoffQueued;
 import ai.caseintel.api.renewals.RenewalDtos.HandoffRequest;
+import ai.caseintel.api.renewals.RenewalDtos.Dashboard;
+import ai.caseintel.api.renewals.RenewalDtos.MarkSimulatedRequest;
+import ai.caseintel.api.renewals.RenewalDtos.MarkedSimulated;
 import ai.caseintel.api.renewals.RenewalDtos.Options;
 import ai.caseintel.api.renewals.RenewalDtos.PaymentLinkRequest;
 import ai.caseintel.api.renewals.RenewalDtos.PaymentLinkSent;
@@ -25,6 +28,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,9 +37,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class RenewalController {
 
     private final RenewalService renewals;
+    private final DashboardService dashboard;
 
-    public RenewalController(RenewalService renewals) {
+    public RenewalController(RenewalService renewals, DashboardService dashboard) {
         this.renewals = renewals;
+        this.dashboard = dashboard;
+    }
+
+    @GetMapping("/dashboard")
+    public Dashboard dashboard(@RequestParam(defaultValue = "false") boolean includeSimulated) {
+        return dashboard.dashboard(includeSimulated);
     }
 
     @GetMapping("/queue")
@@ -46,7 +57,13 @@ public class RenewalController {
     @PostMapping("/calls")
     @ResponseStatus(HttpStatus.CREATED)
     public StartedCall startCall(@RequestBody StartCallRequest body, Principal principal) {
-        return renewals.startCall(body.policyId(), principal.getName());
+        return renewals.startCall(body.policyId(), Boolean.TRUE.equals(body.simulated()), principal.getName());
+    }
+
+    /** One-off backfill: tags calls the evaluator made before calls carried the simulated flag. */
+    @PostMapping("/calls/mark-simulated")
+    public MarkedSimulated markSimulated(@RequestBody MarkSimulatedRequest body) {
+        return new MarkedSimulated(dashboard.markSimulated(body.callIds()));
     }
 
     @GetMapping("/calls/{callId}")

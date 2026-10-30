@@ -93,6 +93,13 @@ public class RenewalService {
     @PreAuthorize("hasRole('ANALYST')")
     @Transactional
     public StartedCall startCall(String policyId, String actor) {
+        return startCall(policyId, false, actor);
+    }
+
+    /** A simulated call (the evaluator's AI customer) is tagged so the dashboard can leave it out. */
+    @PreAuthorize("hasRole('ANALYST')")
+    @Transactional
+    public StartedCall startCall(String policyId, boolean simulated, String actor) {
         if (policyId == null || policyId.isBlank()) {
             throw ApiException.badRequest("policyId is required");
         }
@@ -113,7 +120,8 @@ public class RenewalService {
         Instant now = clock.instant();
         UUID id = UUID.randomUUID();
         CaseEntity c = new CaseEntity(id, CASE_TYPE, "Renewal call · " + p.getHolderName(),
-                json(Map.of("policyId", p.getId())), props.pipelineVersion(), actor, now);
+                json(simulated ? Map.of("policyId", p.getId(), "simulated", true) : Map.of("policyId", p.getId())),
+                props.pipelineVersion(), actor, now);
         c.setStatus(CaseStatus.PROCESSING);
         cases.save(c);
         calls.save(new CallEntity(id, p.getId(), now));

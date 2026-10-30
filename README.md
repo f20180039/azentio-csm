@@ -43,6 +43,8 @@ Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 4. Start the voice service: `cd voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
 5. Start the web app: `cd web && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
 
+**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `voice/README.md`.
+
 ## Try it
 
 ```bash
@@ -53,6 +55,14 @@ curl -u analyst:analyst -F caseType=demo -F files=@redteam_hidden_text.pdf -i ht
 curl -u analyst:analyst -F caseType=demo -F 'attributes={"policyNo":"POL-1"}' -F files=@clean_1.pdf -i http://localhost:8080/api/v1/cases   # 201: same file, new attributes
 cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth.json --api http://localhost:8080 --samples ../samples --case-type demo --user analyst:analyst
 ```
+
+## Demo-day checklist
+
+- Do not run the simulated evaluation (`python -m eval.simulate`) within 24 hours of the demo: it uses the same Groq daily quota as the live agent.
+- After restarting `cloudflared`, restart the voice service too: the tunnel URL changes, and `PUBLIC_BASE_URL` in `.env` must name the new one (dialling answers 503 `TUNNEL_DOWN` otherwise).
+- Speech-to-text has no fallback: it is Groq Whisper only. If Groq is down, use the typed channel on the call page.
+- A Twilio trial account plays a trial preamble when the phone is answered and waits for a key press before the agent speaks.
+- The dashboard leaves out the evaluator's simulated calls; tick **Include simulated calls** to see them.
 
 ## Tests
 
@@ -108,6 +118,6 @@ Both models run locally on CPU through onnxruntime 1.24.4 (MIT).
 
 **Models used at runtime (rule 4):**
 - Document pipeline (`agent/`): an ordered fallback chain set in `.env`: Groq-hosted `gpt-oss-120b`, Google Gemini, Mistral, local `llama3.2` through Ollama, and a deterministic mock. Prompts live in `agent/app/schemas/` and `agent/app/explain.py`.
-- Renewal voice agent (`voice/`): Groq `whisper-large-v3-turbo` (speech to text), Groq `openai/gpt-oss-120b` with reasoning effort low (the conversation and tool calls), edge-tts `en-IN-NeerjaNeural` (speech), and Silero VAD with Smart Turn (local turn detection). Prompts live in `voice/app/prompt.py`. No Anthropic models are used at runtime.
+- Renewal voice agent (`voice/`): Groq `whisper-large-v3-turbo` (speech to text), an ordered chain of free models for the conversation and tool calls (`VOICE_LLM_CHAIN`, default Groq `openai/gpt-oss-120b` then `openai/gpt-oss-20b` with reasoning effort low, then Gemini and Mistral; a link that hits a rate limit, outage or timeout rests and the next one answers, see `voice/README.md`), edge-tts `en-IN-NeerjaNeural` (speech), and Silero VAD with Smart Turn (local turn detection). Prompts live in `voice/app/prompt.py`. No Anthropic models are used at runtime.
 
 **Data (rule 5):** synthetic only. Nothing here comes from customers, production systems or any employer.

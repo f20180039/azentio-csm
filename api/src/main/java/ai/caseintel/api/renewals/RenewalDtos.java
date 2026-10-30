@@ -3,6 +3,7 @@ package ai.caseintel.api.renewals;
 import ai.caseintel.api.domain.Severity;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -20,7 +21,11 @@ public final class RenewalDtos {
     public record QueueItem(String policyId, String holderName, String product, LocalDate expiresOn,
                             int daysToExpiry, BigDecimal score, List<Signal> signals, Route route) {}
 
-    public record StartCallRequest(String policyId) {}
+    public record StartCallRequest(String policyId, Boolean simulated) {}
+
+    public record MarkSimulatedRequest(List<UUID> callIds) {}
+
+    public record MarkedSimulated(int marked) {}
 
     public record StartedCall(UUID callId, UUID caseId, String greeting) {}
 
@@ -60,4 +65,20 @@ public final class RenewalDtos {
                            boolean mustHandoff, String outcome, JsonNode lastQuote, boolean paymentLinkSent,
                            String handoffReason, String callbackAt, JsonNode transcript,
                            List<SummaryItem> summary) {}
+
+    public record Kpis(long callsToday, long callsTotal, long inProgress, long renewed, long handedOff,
+                       long noDecision, long premiumRetained, long premiumAtRisk, long blockedRequests,
+                       long refusals, long identityFailures, double saveRate) {}
+
+    public record DayOutcomes(LocalDate day, long renewed, long handedOff, long noDecision) {}
+
+    public record RecentCall(UUID callId, String holderName, String policyId, String product, Instant startedAt,
+                             Instant endedAt, String outcome, boolean mustHandoff, int outOfPlaybookRequests) {}
+
+    public record GuardrailEvent(Instant at, UUID callId, String holderName, String action, String detail) {}
+
+    public record RiskBand(String band, long count, long agentCall, long humanOnly, long reminderSms) {}
+
+    public record Dashboard(Kpis kpis, List<DayOutcomes> outcomesByDay, List<RecentCall> recentCalls,
+                            List<GuardrailEvent> guardrailEvents, List<RiskBand> riskBands) {}
 }

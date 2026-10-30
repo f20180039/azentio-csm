@@ -154,3 +154,39 @@ def test_tool_with_a_non_uuid_call_id_never_reaches_the_api():
     result = asyncio.run(run_tool(api, f"{CALL}#", "get_policy", {}))
     assert result["error"] == "BAD_ARGUMENTS"
     assert seen == []
+
+
+def test_handoff_callback_time_is_optional_and_nullable():
+    schema = next(s for s in TOOL_SCHEMAS if s["function"]["name"] == "handoff_to_human")["function"]["parameters"]
+    assert schema["properties"]["callback_time"]["type"] == ["string", "null"]
+    assert "callback_time" not in schema["required"]
+
+
+@pytest.mark.parametrize("args", [{"reason": "death", "callback_time": None}, {"reason": "death"}])
+def test_handoff_without_callback_time_omits_callback_at(args):
+    seen = []
+    api = api_with(lambda r: seen.append(json.loads(r.content)) or httpx.Response(200, json={"queued": True}))
+    run(api, "handoff_to_human", args)
+    assert seen == [{"reason": "death"}]
+
+
+def test_refused_discount_says_premium_is_unchanged_with_the_policy_figure():
+    def handler(r):
+        if r.url.path.endswith("/policy"):
+            return httpx.Response(200, json={"renewalPremium": 18450, "lastPremium": 15120})
+        return problem(422, "OUTSIDE_PLAYBOOK")
+
+    api, memory = api_with(handler), {}
+    asyncio.run(run_tool(api, CALL, "get_policy", {}, memory))
+    out = asyncio.run(run_tool(api, CALL, "quote_renewal", {"discount_percent": 20}, memory))
+    assert out["error"] == "OUTSIDE_PLAYBOOK"
+    assert out["note"] == ("No discount was applied. The premium is unchanged at eighteen thousand four hundred and "
+                           "fifty rupees. Do not state or imply any discounted amount.")
+
+
+def test_refused_discount_without_a_known_premium_omits_the_figure():
+    out = run(api_with(lambda r: problem(422, "OUTSIDE_PLAYBOOK")), "quote_renewal", {"discount_percent": 20})
+    assert out["note"] == ("No discount was applied. The premium is unchanged. "
+                           "Do not state or imply any discounted amount.")
+    other = run(api_with(lambda r: problem(422, "INVALID_OPTION")), "quote_renewal", {"discount_percent": 0})
+    assert "note" not in other

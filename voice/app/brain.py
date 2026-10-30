@@ -3,50 +3,15 @@ import json
 from dataclasses import dataclass, field
 from typing import Protocol
 
-import httpx
-
 from .api_client import ApiUnavailable, RenewalsApi
-from .config import Settings
 from .tools import TOOL_SCHEMAS, run_tool
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MAX_TOOL_ROUNDS = 5
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you."
 
 
-RETRY_STATUSES = {429, 503}
-
-
-def _retry_delay(resp: httpx.Response) -> float:
-    try:
-        return min(max(float(resp.headers["retry-after"]), 0.0), 3.0)
-    except (KeyError, ValueError):
-        return 1.0
-
-
 class ChatClient(Protocol):
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict: ...
-
-
-class GroqChatClient:
-    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None, sleep=asyncio.sleep):
-        self._sleep = sleep
-        self._model = settings.llm_model
-        self._client = httpx.AsyncClient(
-            headers={"Authorization": f"Bearer {settings.groq_api_key}"}, timeout=30.0, transport=transport
-        )
-
-    async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
-        body = {"model": self._model, "messages": messages, "tools": tools, "reasoning_effort": "low"}
-        resp = await self._client.post(GROQ_URL, json=body)
-        if resp.status_code in RETRY_STATUSES:
-            await self._sleep(_retry_delay(resp))
-            resp = await self._client.post(GROQ_URL, json=body)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]
-
-    async def aclose(self) -> None:
-        await self._client.aclose()
 
 
 @dataclass
@@ -60,6 +25,7 @@ class ToolTrace:
 class BrainTurn:
     text: str
     tool_calls: list[ToolTrace] = field(default_factory=list)
+    model: str | None = None
 
 
 class CallBrain:
@@ -69,6 +35,8 @@ class CallBrain:
         self._call_id = call_id
         self._messages: list[dict] = [{"role": "system", "content": system}]
         self._lock = asyncio.Lock()
+        self._memory: dict = {}
+        self._posted_unanswered: str | None = None
         self.greeting: str | None = None
 
     async def say(self, text: str) -> None:
@@ -86,20 +54,24 @@ class CallBrain:
 
     async def _reply(self, user_text: str) -> BrainTurn:
         self._messages.append({"role": "user", "content": user_text})
-        await self._api.turn(self._call_id, "customer", user_text)
+        if self._posted_unanswered != user_text:  # a retry of a failed turn is the same customer line
+            await self._api.turn(self._call_id, "customer", user_text)
+            self._posted_unanswered = user_text
         traces: list[ToolTrace] = []
+        model = None
         for _ in range(MAX_TOOL_ROUNDS):
             msg = await self._llm.complete(self._messages, TOOL_SCHEMAS)
+            model = msg.get("model", model)
             calls = msg.get("tool_calls") or []
             if not calls:
-                return await self._finish(msg.get("content") or "", traces)
+                return await self._finish(msg.get("content") or "", traces, model)
             self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
             for call in calls:
                 traces.append(await self._run(call))
                 self._messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(traces[-1].result)}
                 )
-        return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces)
+        return await self._handoff(LOOP_LIMIT_REPLY, "TOOL_LOOP_LIMIT", traces, model)
 
     async def _run(self, call: dict) -> ToolTrace:
         name = call["function"]["name"]
@@ -109,17 +81,18 @@ class CallBrain:
                 raise ValueError("arguments must be a JSON object")
         except ValueError as e:
             return ToolTrace(name, {}, {"error": "BAD_ARGUMENTS", "detail": f"invalid JSON: {e}"[:200]})
-        return ToolTrace(name, args, await run_tool(self._api, self._call_id, name, args))
+        return ToolTrace(name, args, await run_tool(self._api, self._call_id, name, args, self._memory))
 
-    async def _handoff(self, text: str, reason: str, traces: list[ToolTrace]) -> BrainTurn:
+    async def _handoff(self, text: str, reason: str, traces: list[ToolTrace], model: str | None) -> BrainTurn:
         result = await self._api.handoff(self._call_id, reason)
         traces.append(ToolTrace("handoff_to_human", {"reason": reason}, result))
-        return await self._finish(text, traces)
+        return await self._finish(text, traces, model)
 
-    async def _finish(self, text: str, traces: list[ToolTrace]) -> BrainTurn:
+    async def _finish(self, text: str, traces: list[ToolTrace], model: str | None = None) -> BrainTurn:
+        self._posted_unanswered = None
         self._messages.append({"role": "assistant", "content": text})
         try:
             await self._api.turn(self._call_id, "agent", text)
         except ApiUnavailable:
             pass
-        return BrainTurn(text, traces)
+        return BrainTurn(text, traces, model)

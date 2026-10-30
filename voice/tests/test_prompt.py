@@ -43,3 +43,7 @@ def test_unnamed_discount_is_checked_with_the_tool():
 def test_options_only_on_objection():
     assert ("After verify_identity succeeds, call get_policy only; call list_allowed_options only when "
             "the customer objects to the price or asks for options") in system_prompt(GREETING)
+
+
+def test_no_discounted_amount_without_a_successful_quote():
+    assert "Never say an amount is discounted unless quote_renewal returned it without an error" in system_prompt(GREETING)
