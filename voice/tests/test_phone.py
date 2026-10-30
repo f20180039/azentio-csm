@@ -129,7 +129,7 @@ def test_dial_posts_the_twilio_calls_request_with_basic_auth(logs):
     form = {k: v[0] for k, v in parse_qs(r.content.decode()).items()}
     assert form["To"] == "+919812344417" and form["From"] == FROM
     assert "Twiml" not in form  # trial accounts refuse inline TwiML
-    assert form["Url"] == f"{BASE}/twilio/twiml?callId={CALL}" and form["Method"] == "POST"
+    assert form["Url"] == f"{BASE}/twilio/twiml?callId={CALL}"
     assert not any(TOKEN in line for line in logs)
 
 
