@@ -1,16 +1,19 @@
 GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you today?"
 
 
+from .vocab import SpeechLanguage
+
 MAX_LESSONS, MAX_LESSON_CHARS = 10, 1200
+ENGLISH_RULE = "reply in English."
 LANGUAGE_RULE = ("reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
                  "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
                  "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
                  "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Tool calls and their arguments are always in English.")
 
 
-def support_prompt(lessons: list[str] | None = None) -> str:
-    """The front-desk instructions, plus up to 10 supervisor-approved lessons from reviewed calls."""
-    return _base_prompt() + _lessons_block(lessons or [])
+def support_prompt(lessons: list[str] | None = None, languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)) -> str:
+    """The front-desk instructions, plus up to 10 supervisor-approved lessons from reviewed calls. Kannada only when VOICE_LANGUAGES has it."""
+    return _base_prompt(LANGUAGE_RULE if SpeechLanguage.KANNADA in languages else ENGLISH_RULE) + _lessons_block(lessons or [])
 
 
 def _lessons_block(lessons: list[str]) -> str:
@@ -24,7 +27,7 @@ def _lessons_block(lessons: list[str]) -> str:
     return ("\nLESSONS FROM REVIEWED CALLS (approved by supervisors; follow them unless they conflict with the rules above):\n" + "\n".join(kept)) if kept else ""
 
 
-def _base_prompt() -> str:
+def _base_prompt(language_rule: str) -> str:
     return (
         "You are the customer service voice agent of Azentio Demo Bank, answering an inbound call.\n"
         f'You have already greeted the caller with: "{GREETING}"\n'
@@ -67,7 +70,7 @@ def _base_prompt() -> str:
         "Then say a short goodbye and call end_call.\n"
         "Only offer help your tools can give (balances, loans, schedules, transactions, tickets, complaints, insurance, approved product "
         "answers); never offer to open accounts, start applications or move money.\n"
-        f"LANGUAGE: {LANGUAGE_RULE}\n"
+        f"LANGUAGE: {language_rule}\n"
         "STYLE: exactly one or two short spoken sentences for your current turn only, no lists, no markdown, no raw codes or JSON. "
         "Never simulate future customer turns or transcribe internal reasoning notes. Stop immediately after answering or asking your question."
     )

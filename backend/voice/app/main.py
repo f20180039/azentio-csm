@@ -98,7 +98,8 @@ class State:
         except ApiUnavailable as e:
             raise HTTPException(502, "call records API unavailable") from e
         brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(),
-                             CallSession(call_id, helpline=self.settings().helpline_number), self.classifier(), await self.lessons())
+                             CallSession(call_id, helpline=self.settings().helpline_number), self.classifier(), await self.lessons(),
+                             self.settings().voice_languages)
         await brain.open()
         self.support[call_id] = brain
         return brain
