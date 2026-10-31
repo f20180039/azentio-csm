@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { ApiError } from '../api/errors';
 import {
+  applyLiveCorrection,
   clearTranscriptCorrection,
   correctTranscript,
   FeedbackVerdict,
@@ -9,6 +11,7 @@ import {
   sendFeedback,
   transcriptText,
   type CallRating,
+  type LiveCorrection,
   type SupportTurn,
   type TurnFeedback,
 } from '../api/support';
@@ -260,6 +263,15 @@ export function TurnFeedbackBlock({ callId, seq, feedback, onChanged }: { callId
 
 /* ---------- caller-turn transcript correction (Level 2 §6) ---------- */
 
+const HEARD_FROM_CORRECTION: { [K in keyof LiveCorrection['heard']]: string } = { mobile: 'number', dob: 'date of birth' };
+const LIVE_AGENT_NOT_UPDATED = 'Saved to the record; the live agent could not be updated.';
+
+/** What to tell the reviewer once the live agent took the correction; nothing when it carried no identity detail. */
+function liveCorrectionNote(r: LiveCorrection): string | null {
+  const parts = (Object.keys(HEARD_FROM_CORRECTION) as (keyof typeof HEARD_FROM_CORRECTION)[]).filter((k) => r.heard[k]).map((k) => HEARD_FROM_CORRECTION[k]);
+  return parts.length ? `The agent will use the corrected ${parts.join(' and ')}` : null;
+}
+
 /**
  * Who corrected a caller turn, for everyone; and for reviewers the control to correct it (prefilled with its current
  * reading) or remove the correction. The recognised text is never edited: the page shows it as "Heard as".
@@ -279,18 +291,35 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
     setEditing(true);
   }
 
-  async function run(action: () => Promise<unknown>, done: string) {
+  async function run(action: () => Promise<unknown>, done: string): Promise<boolean> {
     setBusy(true);
     try {
       await action();
       setEditing(false);
       toast.push(done, 'The recognised text stays on the record.');
       onChanged();
+      return true;
     } catch (e) {
       toast.error(e);
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Best effort, after the record is saved: a call that is no longer live (404) is left alone; any other failure is only noted. */
+  async function tellLiveAgent(corrected: string) {
+    try {
+      const note = liveCorrectionNote(await applyLiveCorrection(callId, turn.seq, corrected));
+      if (note) toast.push(note);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return;
+      toast.push(LIVE_AGENT_NOT_UPDATED, undefined, 'warn');
+    }
+  }
+
+  async function save() {
+    if (await run(() => correctTranscript(callId, turn.seq, trimmed), 'Transcript corrected')) await tellLiveAgent(trimmed);
   }
 
   if (!canReview && !correction) return null;
@@ -309,6 +338,7 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
             Correct transcript
           </button>
           {correction && (
+            // Removing a correction only clears the record: the live agent keeps what it heard from it (the caller says it again).
             <button type="button" className="btn ghost sm" onClick={() => void run(() => clearTranscriptCorrection(callId, turn.seq), 'Correction removed')} disabled={busy}>
               Remove correction
             </button>
@@ -320,7 +350,7 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
           className="sc-tc-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (valid) void run(() => correctTranscript(callId, turn.seq, trimmed), 'Transcript corrected');
+            if (valid) void save();
           }}
         >
           <label className="small" htmlFor={fieldId}>

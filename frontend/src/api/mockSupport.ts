@@ -7,6 +7,7 @@ import type {
   CustomerProfile,
   Insights,
   Lesson,
+  LiveCorrection,
   OfferAnswer,
   OfferBody,
   OpsRecord,
@@ -530,6 +531,12 @@ export const mockSupport = {
     await delay();
     if (on) paused.add(callId);
     else paused.delete(callId);
+  },
+
+  /** No live agent in mock mode: the correction is taken, and no identity detail comes of it. */
+  async applyLiveCorrection(): Promise<LiveCorrection> {
+    await delay();
+    return { applied: true, heard: { mobile: false, dob: false } };
   },
 
   /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s, except while paused. */

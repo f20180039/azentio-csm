@@ -17,3 +17,6 @@ export const turnAudioPath = (callId: string, seq: number) => `/support/calls/${
 
 /** Pause or resume a live support call (side talk during a demo). */
 export const supportPausePath = (callId: string) => `/support/calls/${encodeURIComponent(callId)}/pause`;
+
+/** Tell the live agent what a reviewer corrected a caller turn to, so a corrected mobile number or date of birth is used. */
+export const supportTurnCorrectionPath = (callId: string, seq: number) => `/support/calls/${encodeURIComponent(callId)}/turns/${seq}/correction`;

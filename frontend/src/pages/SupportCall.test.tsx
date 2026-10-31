@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../api/errors';
 import { SAMPLE_ESCALATION_CALL, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
@@ -18,12 +19,14 @@ const h = vi.hoisted(() => ({
   getCustomerProfile: vi.fn(),
   correctTranscript: vi.fn(),
   clearTranscriptCorrection: vi.fn(),
+  applyLiveCorrection: vi.fn(),
 }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
   return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall,
-    getCustomerProfile: h.getCustomerProfile, correctTranscript: h.correctTranscript, clearTranscriptCorrection: h.clearTranscriptCorrection };
+    getCustomerProfile: h.getCustomerProfile, correctTranscript: h.correctTranscript, clearTranscriptCorrection: h.clearTranscriptCorrection,
+    applyLiveCorrection: h.applyLiveCorrection };
 });
 
 /** With `roles`, the page is signed in as that role (the first one names the user); without, there is no session. */
@@ -47,6 +50,7 @@ function mount(path: string, roles?: Role[]) {
 beforeEach(() => {
   Object.values(h).forEach((f) => f.mockReset());
   h.getCustomerProfile.mockResolvedValue(structuredClone(SAMPLE_PROFILE));
+  h.applyLiveCorrection.mockResolvedValue({ applied: true, heard: { mobile: false, dob: false } });
 });
 
 describe('SupportCall', () => {
@@ -468,6 +472,65 @@ describe('caller transcript corrections (Level 2 §6)', () => {
     const fixed = main.closest('li')!;
     expect(within(fixed).getByTestId('turn-heard')).toHaveTextContent('Heard as: (no speech detected)');
     expect(within(fixed).getByRole('button', { name: 'Remove correction' })).toBeInTheDocument();
+  });
+
+  /** Signs in as a reviewer, opens the misheard caller turn for correction and saves the corrected text. */
+  async function saveCorrection(text: string): Promise<{ call: SupportCallRecord; seq: number }> {
+    const { call, seq } = corrected();
+    h.getCall.mockResolvedValue(call);
+    h.correctTranscript.mockResolvedValue({});
+    mount(`/support/calls/${call.id}`, [Role.REVIEWER]);
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(CORRECTED)).closest('li')!;
+    fireEvent.click(within(turn).getByRole('button', { name: 'Correct transcript' }));
+    fireEvent.change(within(turn).getByLabelText('Corrected transcript'), { target: { value: text } });
+    fireEvent.click(within(turn).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(h.correctTranscript).toHaveBeenCalledWith(call.id, seq, text));
+    return { call, seq };
+  }
+
+  it('saving a correction tells the live agent after the record, and says it will use a corrected number', async () => {
+    h.applyLiveCorrection.mockResolvedValue({ applied: true, heard: { mobile: true, dob: false } });
+    const { call, seq } = await saveCorrection('My number is 98765 00002');
+    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 98765 00002'));
+    expect(h.correctTranscript.mock.invocationCallOrder[0]).toBeLessThan(h.applyLiveCorrection.mock.invocationCallOrder[0]);
+    expect(await screen.findByText('The agent will use the corrected number')).toBeInTheDocument();
+    expect(screen.getByText('Transcript corrected')).toBeInTheDocument();
+  });
+
+  it('says the agent will use a corrected date of birth', async () => {
+    h.applyLiveCorrection.mockResolvedValue({ applied: true, heard: { mobile: false, dob: true } });
+    await saveCorrection('I was born on 3 November 1985');
+    expect(await screen.findByText('The agent will use the corrected date of birth')).toBeInTheDocument();
+  });
+
+  it('is silent when the call is no longer live (404), and keeps the record', async () => {
+    h.applyLiveCorrection.mockRejectedValue(new ApiError({ status: 404, title: 'The voice service refused the request', detail: 'no live call' }));
+    const { call, seq } = await saveCorrection('My number is 98765 00002');
+    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 98765 00002'));
+    expect(await screen.findByText('Transcript corrected')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be updated/)).toBeNull();
+    expect(screen.queryByText(/refused the request/)).toBeNull();
+  });
+
+  it('notes, without blocking, when the live agent could not be updated for another reason', async () => {
+    h.applyLiveCorrection.mockRejectedValue(new ApiError({ status: 0, title: 'Cannot reach the voice service' }));
+    await saveCorrection('My number is 98765 00002');
+    expect(await screen.findByText('Saved to the record; the live agent could not be updated.')).toBeInTheDocument();
+    expect(screen.getByText('Transcript corrected')).toBeInTheDocument();
+  });
+
+  it('does not tell the live agent when the record could not be saved', async () => {
+    const { call } = corrected();
+    h.getCall.mockResolvedValue(call);
+    h.correctTranscript.mockRejectedValue(new ApiError({ status: 500, title: 'Server error' }));
+    mount(`/support/calls/${call.id}`, [Role.REVIEWER]);
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(CORRECTED)).closest('li')!;
+    fireEvent.click(within(turn).getByRole('button', { name: 'Correct transcript' }));
+    fireEvent.click(within(turn).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Server error')).toBeInTheDocument();
+    expect(h.applyLiveCorrection).not.toHaveBeenCalled();
   });
 
   it('finds a turn by its corrected text when searching', async () => {
