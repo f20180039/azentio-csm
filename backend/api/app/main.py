@@ -6,7 +6,7 @@ from app import errors
 from app.clock import Clock
 from app.config import Settings
 from app.paths import API_PREFIX, ApiPath
-from app.routers import cases, ops, renewals, support
+from app.routers import cases, ops, renewals, review, support
 from app.services.container import build
 
 
@@ -29,7 +29,7 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
         allow_headers=["Authorization", "Content-Type"],
         expose_headers=["X-Cache", "Retry-After", "Location"],
     )
-    for r in (ops.router, support.router, renewals.router, cases.router):
+    for r in (ops.router, support.router, review.router, renewals.router, cases.router):
         app.include_router(r, prefix=API_PREFIX)
 
     @app.get(ApiPath.HEALTH, tags=["Health"])

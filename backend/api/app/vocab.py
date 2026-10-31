@@ -41,6 +41,38 @@ class TurnRole(StrEnum):
     AGENT = "agent"
 
 
+class RatingSource(StrEnum):
+    VOICE = "VOICE"
+    PANEL = "PANEL"
+
+
+class FeedbackVerdict(StrEnum):
+    GOOD = "GOOD"
+    BAD = "BAD"
+
+
+class ReviewReason(StrEnum):
+    LOW_RATING = "LOW_RATING"
+    DISSATISFIED = "DISSATISFIED"
+    BAD_FEEDBACK = "BAD_FEEDBACK"
+
+
+class LessonStatus(StrEnum):
+    PROPOSED = "PROPOSED"
+    ACTIVE = "ACTIVE"
+    RETIRED = "RETIRED"
+
+
+class SupportTool(StrEnum):
+    """Voice-agent tool names read back from a turn's meta.tool_trace."""
+    ESCALATE_TO_HUMAN = "escalate_to_human"
+
+
+class EscalationTrigger(StrEnum):
+    """The escalate_to_human trigger that puts a call in the review queue."""
+    DISSATISFIED = "DISSATISFIED"
+
+
 class CaseStatus(StrEnum):
     RECEIVED = "RECEIVED"
     PROCESSING = "PROCESSING"
@@ -150,6 +182,11 @@ class AuditAction(StrEnum):
     CASE_APPROVE = "CASE_APPROVE"
     CASE_REJECT = "CASE_REJECT"
     CASE_ESCALATE = "CASE_ESCALATE"
+    RATING_RECORDED = "rating.recorded"
+    FEEDBACK_RECORDED = "feedback.recorded"
+    REVIEW_RESOLVED = "review.resolved"
+    LESSON_PROPOSED = "lesson.proposed"
+    LESSON_STATUS_CHANGED = "lesson.status_changed"
 
 
 CASE_DECISION_AUDIT = {

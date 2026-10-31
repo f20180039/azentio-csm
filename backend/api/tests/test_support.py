@@ -54,7 +54,8 @@ def test_full_round_trip_with_merged_meta_and_listing(make_client):
 
     items = client.get(BASE, params={"outcome": "TICKET_CREATED", "limit": 50}, headers=REVIEWER).json()["items"]
     assert items == [{"id": cid, "channel": "SIM_AUDIO", "startedAt": d["startedAt"], "endedAt": d["endedAt"],
-                      "outcome": "TICKET_CREATED", "verified": True, "turnCount": 2, "intents": ["REPAYMENT"]}]
+                      "outcome": "TICKET_CREATED", "verified": True, "turnCount": 2, "intents": ["REPAYMENT"],
+                      "rating": None}]
     assert client.get(BASE, params={"outcome": "RESOLVED"}, headers=ADMIN).json()["items"] == []
 
     events = audit(client, cid)

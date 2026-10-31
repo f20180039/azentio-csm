@@ -12,6 +12,7 @@ from app.services.cases import CaseService
 from app.services.dashboard import DashboardService
 from app.services.packs import load_packs
 from app.services.renewals import RenewalService
+from app.services.review import ReviewService
 from app.services.support import SupportService
 
 
@@ -23,6 +24,7 @@ class Services:
     audit: AuditLog
     renewals: RenewalService
     support: SupportService
+    review: ReviewService
     dashboard: DashboardService
     cases: CaseService
     packs: list[dict]
@@ -37,6 +39,7 @@ def build(settings: Settings, clock: Clock | None = None) -> Services:
         settings=settings, clock=clock, db=db, audit=audit,
         renewals=RenewalService(db, audit, playbook, clock, settings.enforce_calling_hours),
         support=SupportService(db, audit, clock),
+        review=ReviewService(db, audit, clock),
         dashboard=DashboardService(db, audit, clock),
         cases=CaseService(db, audit, clock),
         packs=load_packs(),
