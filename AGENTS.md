@@ -62,6 +62,7 @@ If neither matches, ask the human which person they are. **Work only on tasks in
 | Path | What |
 |---|---|
 | `docs/brief/problem-05.md` | What the judges test (scenarios, required intents, rules) |
+| `docs/brief/problem-05-level2.md` | What the judges test at Level 2 |
 | `docs/superpowers/specs/2026-10-31-csm-voice-agent-design.md` | The design |
 | `docs/superpowers/plans/2026-10-31-csm-voice-agent.md` | The plan: shared contract and task index |
 | `backend/simulator` | FastAPI bank simulator, port 8090 (Chirag) |
