@@ -172,3 +172,47 @@ The system-of-record API (`http://localhost:8080/api/v1`, HTTP Basic). Roles fol
 - FAQ gaps come from the simulator: `GET /v1/ops/records?kind=routed` (the panel groups them by similar wording).
 
 **Voice:** the agent reads `GET /support/lessons?active=true` (cached 60 s) and appends at most 10 active lessons (≤ 1,200 characters total) to its system prompt under "Lessons from reviewed calls". Before saying goodbye it asks for a 1–5 rating and calls the `record_rating` tool with the score and any comment.
+
+---
+
+## Shared contract: Level 2 (added 31 Oct, Level 2)
+
+Additive only: every field below is optional for readers, every enum value is appended, and no existing name changes. Plan: `docs/superpowers/plans/2026-10-31-l2-gaps-and-hindi.md`.
+
+**Bank simulator (`http://localhost:8090/v1`)**
+
+| Request | Body | Returns |
+|---|---|---|
+| `GET /csm/tickets/{ref}` and each item of `GET /csm/tickets` | | now also `"details": {}` (what the request is about, e.g. `loan_id`), `"department"`, `"progress"`, `"eta_days": int\|null` |
+| `GET /csm/complaints/{ref}` (session) | | `{"ref", "category", "severity", "status", "description", "escalated", "created_at"}`; another customer's complaint is 403 `NOT_YOUR_RECORD` |
+| `POST /csm/complaints` | `+ "original_statement": str\|null` (the caller's own words), `"related_ref": str\|null` (account, loan or transaction reference) | unchanged |
+| `POST /csm/escalations` | `+ "category": EscalationCategory\|null`, `"related_refs": [str]` (tickets, complaints or other records it concerns) | unchanged |
+| `PATCH /ops/tickets/{ref}` (Basic `ops:ops`) | `{"status": TicketStatus, "progress": str\|null}` (`null` keeps the current note) | 200 the ticket view above; 404 `NOT_FOUND`; 422 on an unknown status |
+| `GET /ops/records` items | | `+ "department"`, `"progress"` (tickets), `"original_statement"`, `"related_ref"` (complaints), `"related_refs": [str]` (escalations); `null` for other kinds |
+| `GET /ops/customers/{ref}` | | tickets carry `department`, `progress`; complaints carry `original_statement`, `related_ref` |
+
+- Ticket `status` is one of `OPEN`, `IN_PROGRESS`, `AWAITING_INFO`, `REJECTED`, `RESOLVED`, `CLOSED`.
+- `department` is one of `Account Services`, `Loan Servicing`, `KYC & Records`, `Customer Service`, fixed by the ticket category (STATEMENT and ACCOUNT_DOCUMENT → Account Services, REPAYMENT_SCHEDULE → Loan Servicing, ADDRESS_CHANGE → KYC & Records, OTHER → Customer Service). A new ticket's `progress` starts as "Received by the {department} team."
+- Escalation `category` is one of `SECURITY`, `CUSTOMER_REQUEST`, `DISSATISFIED`, `UNRESOLVED`, `SENSITIVE`, `AUTH_LOCKED`, `REPEATED_MISUNDERSTANDING`. The voice agent offers the model only the four middle ones; `AUTH_LOCKED` (verification locked on this call) and `REPEATED_MISUNDERSTANDING` (three `UNCLEAR` turns in a row) are raised by the agent's own backstop, which gives a reference only when the record was created.
+- Seed tickets: SR-40103 (CUST-1003, ADDRESS_CHANGE, REJECTED), SR-40104 (CUST-1004, ACCOUNT_DOCUMENT, AWAITING_INFO), SR-40105 (CUST-1005, STATEMENT, RESOLVED); SR-40102 (CUST-1002) carries a progress note. `POST /ops/reset` restores them.
+- Verification hotfix (`fix/verification-capture`, merged to `develop` separately): a 401 `VERIFICATION_FAILED` body also carries `"mismatch": "MOBILE_NOT_FOUND" | "DOB_MISMATCH"`.
+
+**Voice tools (what the agent sends)**
+
+- `register_complaint` sends `original_statement` = the caller's last words and `related_ref` from its optional `related_ref` argument.
+- `escalate_to_human` sends its `trigger` as `category` and the call's references so far as `related_refs`.
+- `get_ticket` accepts a `CMP-` reference and reads `GET /csm/complaints/{ref}`.
+
+**Call records (`http://localhost:8080/api/v1`)**
+
+- Agent-turn `meta.tool_trace[]` entries gain `"outcome": "OK" | "FAILED" | "DECLINED"` (`FAILED` = `SYSTEM_UNAVAILABLE`, `BAD_ARGUMENTS`, `UNKNOWN_TOOL` or an `HTTP_5xx`; `DECLINED` = every other refusal such as `NOT_VERIFIED`, `LOCKED`, `NOT_YOUR_RECORD`). The same key is on the `tool_trace` of `/support/text-turn` and `/sim/audio` responses.
+- `GET /support/calls` items gain `"failedOps": int` (trace entries with outcome `FAILED`; entries without an `outcome` count as 0).
+- Any turn in Kannada or Hindi gains `meta.text_en` (its English) and `meta.language` (`"kn"` | `"hi"`), patched a moment after the turn through `PATCH /support/calls/{id}/turns/{seq}/meta`; English turns carry neither.
+
+**Voice settings**
+
+- `VOICE_LANGUAGES=en,kn,hi` enables Kannada and Hindi (`SpeechLanguage` values `en`, `kn`, `hi`); the agent's voice is `kn-IN-SapnaNeural` / `hi-IN-SwaraNeural`.
+- `VOICE_TRANSLATE_MODEL` (default `openai/gpt-oss-20b`) is the Groq model used for `text_en`.
+- `GET /v1/llm/status` returns `{"active": str, "links": [{"name", "available": bool, "cooldownUntil": str|null, "lastError": str|null}]}`.
+
+**On hold.** P1/P2 transcript redaction (`PiiKind`, `GET /support/calls/{id}/pii`, `PII_REVEALED` audit action) is parked on branch `feat/pii-redaction` by owner decision and is not part of this contract until it merges.
