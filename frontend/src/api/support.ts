@@ -5,7 +5,7 @@ import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
 import { SimulatorPath } from './paths/simulator';
-import { turnAudioPath, VoicePath } from './paths/voice';
+import { supportPausePath, turnAudioPath, VoicePath } from './paths/voice';
 import {
   FeedbackVerdict,
   Intent,
@@ -255,6 +255,17 @@ const liveSupport = {
     return (await res.json()) as SimAudioResult;
   },
 
+  /** While paused the agent ignores the caller's audio and does not hang up on silence. */
+  async pauseCall(callId: string, paused: boolean): Promise<void> {
+    await reach('voice service', VOICE_BASE, () =>
+      fetch(`${VOICE_BASE}${supportPausePath(callId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused }),
+      }),
+    );
+  },
+
   async supportOffer(body: OfferBody, fetchImpl: typeof fetch = fetch): Promise<OfferAnswer> {
     const res = await reach('voice service', VOICE_BASE, () =>
       fetchImpl(`${VOICE_BASE}${VoicePath.SUPPORT_OFFER}`, {
@@ -368,7 +379,7 @@ async function liveConnectSupportVoice(
   } finally {
     window.fetch = nativeFetch;
   }
-  return { disconnect: () => client.disconnect() };
+  return { disconnect: () => client.disconnect(), setMicEnabled: (on) => client.enableMic(on) };
 }
 
 export type SupportApi = typeof liveSupport;
@@ -381,6 +392,7 @@ export const listCalls = (outcome?: SupportOutcome) => api.listCalls(outcome);
 export const endCall = (id: string, outcome: SupportOutcome) => api.endCall(id, outcome);
 export const simAudio = (files: File[], callId?: string) => api.simAudio(files, callId);
 export const supportOffer = (body: OfferBody) => api.supportOffer(body);
+export const pauseCall = (id: string, paused: boolean) => api.pauseCall(id, paused);
 export const listRecords = (kind: RecordKind) => api.listRecords(kind);
 export const rateCall = (id: string, score: number, comment: string | null) => api.rateCall(id, score, comment, RatingSource.PANEL);
 export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, correction: string | null) =>

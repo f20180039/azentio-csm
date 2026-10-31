@@ -6,6 +6,7 @@ import {
   audioDataUrl,
   CHANNEL_LABEL,
   connectSupportVoice,
+  pauseCall,
   endCall,
   getCall,
   intentLabel,
@@ -560,6 +561,8 @@ export function SupportCall() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('mic');
   const [voice, setVoice] = useState<'off' | 'connecting' | 'on'>('off');
+  const [paused, setPaused] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [results, setResults] = useState<SimTurn[]>(() => (location.state as { results?: SimTurn[] } | null)?.results ?? []);
   const [ending, setEnding] = useState<'closed' | 'open' | 'busy'>('closed');
   const session = useRef<VoiceSession | null>(null);
@@ -608,19 +611,21 @@ export function SupportCall() {
     const s = session.current;
     session.current = null;
     setVoice('off');
+    setPaused(false);
     void s?.disconnect().catch(() => undefined);
   }, [ended]);
 
   const adopt = useCallback(
     (id: string, state?: { results: SimTurn[] }) => {
       setCreatedId(id);
-      if (!routeId) navigate(Route.supportCall(id), { replace: true, state });
+      // a mic call from a page already showing a call is a new call (the voice service never reattaches), so follow it
+      if (id !== routeId) navigate(Route.supportCall(id), { replace: !routeId, state });
     },
     [navigate, routeId],
   );
 
   const turns: SupportTurn[] = call?.turns.length ? call.turns : turnsFromSim(results);
-  const speech = useLiveSpeech(voice === 'on', audio, timelineRef);
+  const speech = useLiveSpeech(voice === 'on' && !paused, audio, timelineRef);
   const speaking = speech.customer ? 'customer' : speech.agent ? 'agent' : null;
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' });
@@ -640,10 +645,12 @@ export function SupportCall() {
     try {
       const s = await connectSupportVoice(callId ?? undefined, audio.current, {
         onCallId: (id) => {
-          if (!callId) adopt(id);
+          if (id !== callId) adopt(id);
         },
         onDisconnected: () => {
-          if (!unmounted.current) setVoice('off');
+          if (unmounted.current) return;
+          setVoice('off');
+          setPaused(false);
         },
         onError: (m) => toastRef.current.push('Voice connection problem', m, 'warn'),
       });
@@ -665,6 +672,26 @@ export function SupportCall() {
     session.current = null;
     await s?.disconnect().catch(() => undefined);
     setVoice('off');
+    setPaused(false);
+  }
+
+  /** Side talk during a demo: the mic is muted first, so nothing said while paused reaches the agent. */
+  async function togglePause() {
+    const s = session.current;
+    if (!s || !callId) return;
+    const next = !paused;
+    setPausing(true);
+    try {
+      if (next) s.setMicEnabled?.(false);
+      await pauseCall(callId, next);
+      if (!next) s.setMicEnabled?.(true);
+      setPaused(next);
+    } catch (e) {
+      s.setMicEnabled?.(!paused);
+      toast.error(e);
+    } finally {
+      setPausing(false);
+    }
   }
 
   async function finish(outcome: SupportOutcome) {
@@ -809,7 +836,7 @@ export function SupportCall() {
                     <p className="small muted">Talk to the agent through this browser. Its replies play through your speakers.</p>
                     <p className={`sc-mic-status${speaking ? ' active' : ''}`} role="status">
                       <span className="dot" aria-hidden="true" />
-                      {speechStatus(voice === 'on', speech)}
+                      {speechStatus(voice === 'on', speech, paused)}
                     </p>
                     <div className="row">
                       {voice === 'off' && (
@@ -823,9 +850,14 @@ export function SupportCall() {
                         </button>
                       )}
                       {voice === 'on' && (
-                        <button className="btn" onClick={() => void stopMic()}>
-                          Stop microphone
-                        </button>
+                        <>
+                          <button className="btn" onClick={() => void togglePause()} disabled={pausing || !callId} aria-pressed={paused}>
+                            {paused ? 'Resume' : 'Pause'}
+                          </button>
+                          <button className="btn" onClick={() => void stopMic()}>
+                            Stop
+                          </button>
+                        </>
                       )}
                     </div>
                     {!callId && voice === 'off' && <PhoneDial onCallId={(id) => adopt(id)} />}

@@ -1,4 +1,5 @@
 GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you today?"
+GREETING_KANNADA = "ನೀವು ಕನ್ನಡದಲ್ಲೂ ಮಾತನಾಡಬಹುದು."  # "You can speak in Kannada too", spoken after GREETING when Kannada is on
 
 
 from .vocab import SpeechLanguage
@@ -8,7 +9,8 @@ ENGLISH_RULE = "reply in English."
 LANGUAGE_RULE = ("reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
                  "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
                  "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
-                 "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Tool calls and their arguments are always in English.")
+                 "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Every line quoted in these instructions (the rating question, the reference read-back, "
+                 "the goodbye) is said in the caller's language. Tool calls and their arguments are always in English.")
 
 
 def support_prompt(lessons: list[str] | None = None, languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)) -> str:

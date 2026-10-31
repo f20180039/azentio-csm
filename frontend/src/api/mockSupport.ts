@@ -201,6 +201,7 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
 const calls = new Map<string, SupportCall>();
 const progress = new Map<string, number>();
 const resolved = new Map<string, string>();
+const paused = new Set<string>();
 let lessons: Lesson[] = [];
 let seq = 0;
 let lessonSeq = SAMPLE_LESSONS.length;
@@ -403,7 +404,13 @@ export const mockSupport = {
     return structuredClone(SAMPLE_RECORDS[kind]);
   },
 
-  /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s. */
+  async pauseCall(callId: string, on: boolean): Promise<void> {
+    await delay();
+    if (on) paused.add(callId);
+    else paused.delete(callId);
+  },
+
+  /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s, except while paused. */
   async connectSupportVoice(callId: string | undefined, _audio: HTMLAudioElement | null, h: SupportVoiceHandlers): Promise<VoiceSession> {
     await delay(300);
     const call = callId ? find(callId) : create(Channel.VOICE);
@@ -413,13 +420,15 @@ export const mockSupport = {
         clearInterval(timer);
         return;
       }
-      advance(call, 'mic');
+      if (!paused.has(call.id)) advance(call, 'mic');
     }, 2500);
     return {
       disconnect: async () => {
         clearInterval(timer);
+        paused.delete(call.id);
         h.onDisconnected();
       },
+      setMicEnabled: () => undefined,
     };
   },
 };

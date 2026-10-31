@@ -14,3 +14,6 @@ export const VoicePath = {
 
 /** What the caller said on one turn (recorded by the voice service), for playback beside the transcript. */
 export const turnAudioPath = (callId: string, seq: number) => `/support/calls/${encodeURIComponent(callId)}/turns/${seq}/audio`;
+
+/** Pause or resume a live support call (side talk during a demo). */
+export const supportPausePath = (callId: string) => `/support/calls/${encodeURIComponent(callId)}/pause`;
