@@ -426,6 +426,9 @@ td.sd-summary { min-width: 240px; max-width: 520px; }
 .chip:hover { color: var(--ink); border-color: var(--accent); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .ref-pill { display: inline-block; white-space: nowrap; font: 600 var(--fs-xs) / 1 var(--font-mono); padding: 4px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent-text); }
+/* a [KIND#n] token in a transcript: grey while redacted, mono once an admin has revealed the value */
+.pii-chip { vertical-align: baseline; font-weight: 600; padding: 2px 8px; }
+.pii-value { font-family: var(--font-mono); background: var(--warn-bg); color: var(--ink); padding: 1px 4px; border-radius: 4px; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 .sc-badge { font-size: var(--fs-sm); padding: 6px 12px; }

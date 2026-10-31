@@ -1,21 +1,55 @@
-GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you today?"
-GREETING_KANNADA = "ನೀವು ಕನ್ನಡದಲ್ಲೂ ಮಾತನಾಡಬಹುದು."  # "You can speak in Kannada too", spoken after GREETING when Kannada is on
-
+from dataclasses import dataclass
 
 from .vocab import SpeechLanguage
 
+GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you today?"
+GREETING_KANNADA = "ನೀವು ಕನ್ನಡದಲ್ಲೂ ಮಾತನಾಡಬಹುದು."  # "You can speak in Kannada too", spoken after GREETING when Kannada is on
+GREETING_HINDI = "आप हिंदी में भी बात कर सकते हैं।"  # "You can speak in Hindi too", spoken after GREETING when Hindi is on
+# One line per enabled non-English language, queued after GREETING in this order
+GREETINGS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: GREETING_KANNADA, SpeechLanguage.HINDI: GREETING_HINDI}
+
 MAX_LESSONS, MAX_LESSON_CHARS = 10, 1200
 ENGLISH_RULE = "reply in English."
-LANGUAGE_RULE = ("reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
-                 "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
-                 "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
-                 "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Every line quoted in these instructions (the rating question, the reference read-back, "
-                 "the goodbye) is said in the caller's language. Tool calls and their arguments are always in English.")
+
+
+@dataclass(frozen=True)
+class _ScriptRule:
+    name: str     # how the LANGUAGE rule names the language
+    script: str   # how the caller's language is described to the model
+    numbers: str  # the number words callers of that language may use
+
+
+_SCRIPT_RULES: dict[SpeechLanguage, _ScriptRule] = {
+    SpeechLanguage.KANNADA: _ScriptRule(
+        "Kannada", "Kannada in Kannada script (mixed Kannada-English is fine, e.g. EMI, loan, statement in English)",
+        "Kannada number words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9)"),
+    SpeechLanguage.HINDI: _ScriptRule(
+        "Hindi", "Hindi in Devanagari script (Hindi-English mixing is fine)",
+        "Hindi number words (शून्य 0, एक 1, दो 2, तीन 3, चार 4, पाँच 5, छह 6, सात 7, आठ 8, नौ 9)"),
+}
+
+
+def language_rule(languages: tuple[SpeechLanguage, ...]) -> str:
+    """The LANGUAGE rule for the enabled languages: English only, or English plus the enabled script languages."""
+    rules = [_SCRIPT_RULES[lang] for lang in _SCRIPT_RULES if lang in languages]
+    if not rules:
+        return ENGLISH_RULE
+    return (f"reply in the language the caller used: English, or {' or '.join(r.script for r in rules)}. "
+            f"In {' or '.join(r.name for r in rules)} too, say amounts as digits with the rupee sign (₹12,450) or "
+            "the *_spoken form, and read references letter by letter. "
+            + " ".join(f"{r.name} callers may say their mobile number and date of birth in {r.numbers}; convert them to digits yourself."
+                       for r in rules)
+            + " Every line quoted in these instructions (the rating question, the reference read-back, "
+            "the goodbye) is said in the caller's language. Tool calls and their arguments are always in English.")
+
+
+LANGUAGE_RULE = language_rule((SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA))  # the en,kn rule, as before Hindi
 
 
 def support_prompt(lessons: list[str] | None = None, languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)) -> str:
-    """The front-desk instructions, plus up to 10 supervisor-approved lessons from reviewed calls. Kannada only when VOICE_LANGUAGES has it."""
-    return _base_prompt(LANGUAGE_RULE if SpeechLanguage.KANNADA in languages else ENGLISH_RULE) + _lessons_block(lessons or [])
+    """The front-desk instructions, plus up to 10 supervisor-approved lessons from reviewed calls. Kannada and Hindi only when
+    VOICE_LANGUAGES has them."""
+    return _base_prompt(language_rule(languages)) + _lessons_block(lessons or [])
 
 
 def _lessons_block(lessons: list[str]) -> str:
@@ -62,6 +96,10 @@ def _base_prompt(language_rule: str) -> str:
         "SEVERAL REQUESTS: handle each request in turn in the same call; never restart.\n"
         "SERVICE REQUESTS: confirm what they need, call create_service_request, then read the reference back clearly, "
         "letter by letter and digit by digit, for example 'S R four zero two zero zero'.\n"
+        "REQUEST STATUS: give the status, the department and the progress note in plain words. OPEN or IN_PROGRESS: say it is "
+        "being worked on and offer a follow-up. AWAITING_INFO: say what the bank is waiting for, from the progress note. REJECTED: "
+        "give the reason from the progress note and offer to raise a new request. RESOLVED or CLOSED: say it is done. If a request "
+        "is unresolved and the caller is unhappy, offer to escalate.\n"
         "COMPLAINTS: call register_complaint with a fitting category and severity and read back the reference. "
         "For an unauthorised transaction, fraud or a lost card, also call escalate_to_human with trigger SENSITIVE.\n"
         "UNSUPPORTED: if the request is outside banking service (for example travel booking, weather, investment tips) or something "

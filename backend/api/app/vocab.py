@@ -74,6 +74,37 @@ class EscalationTrigger(StrEnum):
     DISSATISFIED = "DISSATISFIED"
 
 
+class PiiKind(StrEnum):
+    """What a redaction token stands for: `[KIND#n]` in a stored transcript, the value in the PII vault."""
+    MOBILE = "MOBILE"
+    DOB = "DOB"
+    AADHAAR = "AADHAAR"
+    PAN = "PAN"
+    EMAIL = "EMAIL"
+    CARD = "CARD"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    DIGITS = "DIGITS"
+    NAME = "NAME"
+
+
+class RefPrefix(StrEnum):
+    """Bank reference prefixes (simulator and voice records); `PREFIX-digits` is never treated as PII."""
+    SERVICE_REQUEST = "SR"
+    COMPLAINT = "CMP"
+    ROUTED = "RQ"
+    ESCALATION = "ESC"
+    PERSONAL_LOAN = "PL"
+    VEHICLE_LOAN = "VL"
+    HOME_LOAN = "HL"
+    LOAN_APPLICATION = "LA"
+    HOME_PRODUCT = "HP"
+    MORTGAGE_PRODUCT = "MP"
+    CLAIM = "CLM"
+    TRANSACTION = "TXN"
+    CUSTOMER = "CUST"
+    ACCOUNT = "ACC"
+
+
 class CaseStatus(StrEnum):
     RECEIVED = "RECEIVED"
     PROCESSING = "PROCESSING"
@@ -188,6 +219,7 @@ class AuditAction(StrEnum):
     REVIEW_RESOLVED = "review.resolved"
     LESSON_PROPOSED = "lesson.proposed"
     LESSON_STATUS_CHANGED = "lesson.status_changed"
+    PII_REVEALED = "PII_REVEALED"
 
 
 CASE_DECISION_AUDIT = {
@@ -214,3 +246,10 @@ SUMMARY_STATEMENTS = {
 def sql_in(enum: type[StrEnum]) -> str:
     """A SQL value list for CHECK constraints, derived from the enum."""
     return ", ".join(f"'{v.value}'" for v in enum)
+
+
+class OpOutcome(StrEnum):
+    """Per-tool-call outcome read back from a turn's meta.tool_trace (mirrors the voice service's values)."""
+    OK = "OK"
+    FAILED = "FAILED"
+    DECLINED = "DECLINED"

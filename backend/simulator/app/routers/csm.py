@@ -5,12 +5,12 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.enums import API_PREFIX, ComplaintCategory, Route, Severity, TicketCategory
+from app.enums import API_PREFIX, ComplaintCategory, EscalationCategory, Route, Severity, TicketCategory
 from app.guard import OptionalSessionDep, SessionDep, StoreDep, owns
 
 router = APIRouter(prefix=API_PREFIX, tags=["CSM"])
 
-TICKET_FIELDS = ("ref", "category", "status", "summary", "details", "created_on", "updated_on")
+TICKET_FIELDS = ("ref", "category", "status", "summary", "details", "department", "progress", "eta_days", "created_on", "updated_on")
 COMPLAINT_FIELDS = ("ref", "category", "severity", "status", "description", "escalated", "created_at")
 
 
@@ -23,9 +23,11 @@ class TicketRequest(BaseModel):
 
 class ComplaintRequest(BaseModel):
     category: ComplaintCategory
-    description: str = Field(min_length=1)
+    description: str = Field(min_length=1)  # the structured summary
     severity: Severity
     call_id: str = Field(min_length=1)
+    original_statement: str | None = None  # the caller's own words
+    related_ref: str | None = None  # the account, loan or transaction reference it is about
 
 
 class RoutedRequest(BaseModel):
@@ -39,21 +41,24 @@ class EscalationRequest(BaseModel):
     reason: str = Field(min_length=1)
     summary: str = Field(min_length=1)
     call_id: str = Field(min_length=1)
+    category: EscalationCategory | None = None
+    related_refs: list[str] = Field(default_factory=list)  # tickets, complaints or other records it concerns
 
 
-def _ticket_view(ticket: dict[str, Any]) -> dict[str, Any]:
-    """details carries what the request is about (e.g. loan_id), so a caller can go from a request to its loan."""
+def ticket_view(ticket: dict[str, Any]) -> dict[str, Any]:
+    """The ticket as the caller (and the ops status update) sees it: no call id or customer ref. details carries what the
+    request is about (e.g. loan_id), so a caller can go from a request to its loan."""
     return {k: ticket.get(k, {} if k == "details" else None) for k in TICKET_FIELDS}
 
 
 @router.get(Route.CSM_TICKETS)
 def tickets(customer: SessionDep, store: StoreDep) -> dict:
-    return {"items": [_ticket_view(t) for t in store.get_tickets(customer["customer_ref"])]}
+    return {"items": [ticket_view(t) for t in store.get_tickets(customer["customer_ref"])]}
 
 
 @router.get(Route.CSM_TICKET)
 def ticket(ref: str, customer: SessionDep, store: StoreDep) -> dict:
-    return _ticket_view(owns(customer, store.get_ticket(ref)))
+    return ticket_view(owns(customer, store.get_ticket(ref)))
 
 
 @router.post(Route.CSM_TICKETS, status_code=status.HTTP_201_CREATED)
@@ -70,7 +75,8 @@ def complaint(ref: str, customer: SessionDep, store: StoreDep) -> dict:
 
 @router.post(Route.CSM_COMPLAINTS, status_code=status.HTTP_201_CREATED)
 def create_complaint(body: ComplaintRequest, customer: SessionDep, store: StoreDep) -> dict:
-    return store.create_complaint(customer["customer_ref"], body.category, body.description, body.severity, body.call_id)
+    return store.create_complaint(customer["customer_ref"], body.category, body.description, body.severity, body.call_id,
+                                  original_statement=body.original_statement, related_ref=body.related_ref)
 
 
 @router.post(Route.CSM_ROUTED, status_code=status.HTTP_201_CREATED)
@@ -81,4 +87,5 @@ def create_routed(body: RoutedRequest, store: StoreDep) -> dict:
 @router.post(Route.CSM_ESCALATIONS, status_code=status.HTTP_201_CREATED)
 def create_escalation(body: EscalationRequest, customer: OptionalSessionDep, store: StoreDep) -> dict:
     return store.create_escalation(body.reason, body.summary, body.call_id,
-                                   customer_ref=customer["customer_ref"] if customer else None)
+                                   customer_ref=customer["customer_ref"] if customer else None,
+                                   category=body.category, related_refs=body.related_refs)

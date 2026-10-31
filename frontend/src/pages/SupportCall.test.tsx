@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
-import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setCredentials } from '../api/client';
+import { SAMPLE_PII, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
+import type { PiiTokens, SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { SupportCall } from './SupportCall';
 
@@ -13,12 +14,13 @@ const h = vi.hoisted(() => ({
   endCall: vi.fn(),
   pauseCall: vi.fn(),
   getCustomerProfile: vi.fn(),
+  getCallPii: vi.fn(),
 }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
   return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall,
-    getCustomerProfile: h.getCustomerProfile };
+    getCustomerProfile: h.getCustomerProfile, getCallPii: h.getCallPii };
 });
 
 function mount(path: string) {
@@ -220,5 +222,111 @@ describe('customer turn playback', () => {
   it('builds the voice service URL for a recorded turn', async () => {
     const { turnAudioUrl } = await import('../api/support');
     expect(turnAudioUrl('11111111-1111-1111-1111-111111111111', 3)).toMatch(/\/support\/calls\/11111111-1111-1111-1111-111111111111\/turns\/3\/audio$/);
+  });
+});
+
+describe('personal data on the call screen', () => {
+  const MOBILE = '9876500002';
+  const TOGGLE = /personal data/;
+
+  afterEach(() => setCredentials(null));
+
+  it('shows tokens as redacted chips and no reveal toggle for an analyst', async () => {
+    setCredentials({ username: 'analyst', password: 'analyst' });
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+
+    const log = within(await screen.findByRole('log', { name: 'Conversation history' }));
+    expect(log.getAllByText('Mobile (redacted)').length).toBeGreaterThan(0);
+    expect(log.getAllByText('Date of birth (redacted)').length).toBeGreaterThan(0);
+    expect(log.queryByText(/\[MOBILE#1\]/, { ignore: 'pre' })).not.toBeInTheDocument(); // only the Raw JSON dump keeps the token
+    expect(screen.queryByText(MOBILE)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: TOGGLE })).not.toBeInTheDocument();
+    expect(h.getCallPii).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin reveal the values once, holds them only in memory, and drops them when toggled off', async () => {
+    setCredentials({ username: 'admin', password: 'admin' });
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    h.getCallPii.mockResolvedValue(structuredClone(SAMPLE_PII[SAMPLE_VERIFIED_CALL.id]));
+    const localSet = vi.spyOn(Storage.prototype, 'setItem');
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+
+    const show = await screen.findByRole('button', { name: 'Show personal data' });
+    expect(show).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(MOBILE)).not.toBeInTheDocument();
+
+    fireEvent.click(show);
+    const log = within(await screen.findByRole('log', { name: 'Conversation history' }));
+    expect((await log.findAllByText(MOBILE)).length).toBeGreaterThan(0);
+    expect(log.getAllByText('1985-11-03').length).toBeGreaterThan(0);
+    expect(log.queryByText('Mobile (redacted)')).not.toBeInTheDocument();
+    expect(h.getCallPii).toHaveBeenCalledTimes(1);
+    expect(h.getCallPii).toHaveBeenCalledWith(SAMPLE_VERIFIED_CALL.id);
+    const hide = screen.getByRole('button', { name: 'Hide personal data' });
+    expect(hide).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(hide);
+    await waitFor(() => expect(screen.queryByText(MOBILE)).not.toBeInTheDocument());
+    expect(log.getAllByText('Mobile (redacted)').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Show personal data' })).toBeInTheDocument();
+    expect(h.getCallPii).toHaveBeenCalledTimes(1);
+    expect(localSet).not.toHaveBeenCalled();
+    localSet.mockRestore();
+  });
+
+  it('drops a reveal that resolves after the admin has moved on to another call', async () => {
+    setCredentials({ username: 'admin', password: 'admin' });
+    const a = structuredClone(SAMPLE_VERIFIED_CALL);
+    const b: SupportCallRecord = { ...structuredClone(SAMPLE_VERIFIED_CALL), id: 'sample-call-other-customer' };
+    h.getCall.mockImplementation(async (id: string) => (id === b.id ? b : a));
+    let resolveA!: (tokens: PiiTokens) => void;
+    h.getCallPii.mockReturnValue(new Promise<PiiTokens>((r) => { resolveA = r; }));
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={[`/support/calls/${a.id}`]}>
+          <Routes>
+            <Route
+              path="/support/calls/:callId"
+              element={
+                <>
+                  <SupportCall />
+                  <Link to={`/support/calls/${b.id}`}>Open call B</Link>
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show personal data' }));
+    expect(h.getCallPii).toHaveBeenCalledWith(a.id);
+    expect(screen.getByRole('button', { name: 'Revealing…' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Open call B' }));
+    await screen.findByText(b.id);
+    expect(screen.getByRole('button', { name: 'Show personal data' })).not.toBeDisabled(); // B starts redacted, not "revealing"
+
+    resolveA(structuredClone(SAMPLE_PII[a.id]));
+    await waitFor(() => expect(h.getCall).toHaveBeenCalledWith(b.id));
+    await new Promise((r) => setTimeout(r, 0)); // let the late response settle
+    const log = within(screen.getByRole('log', { name: 'Conversation history' }));
+    expect(log.getAllByText('Mobile (redacted)').length).toBeGreaterThan(0);
+    expect(screen.queryByText(MOBILE)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show personal data' })).toHaveAttribute('aria-pressed', 'false');
+    expect(h.getCallPii).toHaveBeenCalledTimes(1);
+  });
+
+  it('reveals personal data inside tool arguments too', async () => {
+    setCredentials({ username: 'admin', password: 'admin' });
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    h.getCallPii.mockResolvedValue(structuredClone(SAMPLE_PII[SAMPLE_VERIFIED_CALL.id]));
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show personal data' }));
+    const log = within(await screen.findByRole('log', { name: 'Conversation history' }));
+    await waitFor(() => expect(log.getAllByText(MOBILE).length).toBeGreaterThanOrEqual(2));
   });
 });

@@ -4,11 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
 
 from app.config import settings
-from app.enums import API_PREFIX, ErrorCode, RecordKind, Route
+from app.enums import API_PREFIX, ErrorCode, RecordKind, Route, TicketStatus
 from app.errors import ApiError
 from app.guard import StoreDep
+from app.routers.csm import ticket_view
 
 basic = HTTPBasic(auto_error=False)
 
@@ -23,6 +25,11 @@ def require_ops(credentials: Annotated[HTTPBasicCredentials | None, Depends(basi
 
 
 router = APIRouter(prefix=API_PREFIX, tags=["Operations"], dependencies=[Depends(require_ops)])
+
+
+class TicketUpdate(BaseModel):
+    status: TicketStatus
+    progress: str | None = None
 
 
 @router.get(Route.OPS_RECORDS)
@@ -47,6 +54,15 @@ def customer_profile(customer_ref: str, store: StoreDep) -> dict:
         "tickets": store.get_tickets(customer_ref),
         "complaints": store.get_complaints(customer_ref),
     }
+
+
+@router.patch(Route.OPS_TICKET)
+def update_ticket(ref: str, body: TicketUpdate, store: StoreDep) -> dict:
+    """Moves a service request to a status, with an optional progress note the caller then hears."""
+    ticket = store.update_ticket(ref, body.status, body.progress)
+    if ticket is None:
+        raise ApiError(404, ErrorCode.NOT_FOUND, "No ticket with that reference.")
+    return ticket_view(ticket)
 
 
 @router.post(Route.OPS_RESET)

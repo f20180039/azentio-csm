@@ -21,7 +21,8 @@ def test_create_and_read_ticket(client):
 
     got = client.get("/v1/csm/tickets/SR-40200", headers=headers).json()
     assert got["ref"] == "SR-40200" and got["category"] == "REPAYMENT_SCHEDULE" and got["status"] == "OPEN"
-    assert set(got) == {"ref", "category", "status", "summary", "details", "created_on", "updated_on"}
+    assert set(got) == {"ref", "category", "status", "summary", "details", "created_on", "updated_on",
+                        "department", "progress", "eta_days"}
     assert got["details"] == {"loan_id": "PL-31002"}
 
     mine = [t["ref"] for t in client.get("/v1/csm/tickets", headers=headers).json()["items"]]
@@ -94,7 +95,8 @@ def test_ops_records_need_basic_auth(client):
     items = records(client, "routed")
     assert len(items) == 1
     item = items[0]
-    assert set(item) == {"ref", "kind", "category", "status", "summary", "customer_ref", "call_id", "created_at", "escalated"}
+    assert set(item) == {"ref", "kind", "category", "status", "summary", "customer_ref", "call_id", "created_at",
+                         "escalated", "department", "progress", "original_statement", "related_ref", "related_refs"}
     assert item["kind"] == "routed" and item["call_id"] == "c6"
     assert "Weather?" in item["summary"] and "Out of scope" in item["summary"]
 

@@ -6,7 +6,7 @@ import pytest
 from conftest import ADMIN, ANALYST, REVIEWER, VOICE, audit, start_call
 from app.errors import ApiError
 from app.services.support import parse
-from app.vocab import Channel, Outcome, TurnRole
+from app.vocab import Channel, OpOutcome, Outcome, TurnRole
 
 BASE = "/api/v1/support/calls"
 
@@ -55,7 +55,7 @@ def test_full_round_trip_with_merged_meta_and_listing(make_client):
     items = client.get(BASE, params={"outcome": "TICKET_CREATED", "limit": 50}, headers=REVIEWER).json()["items"]
     assert items == [{"id": cid, "channel": "SIM_AUDIO", "startedAt": d["startedAt"], "endedAt": d["endedAt"],
                       "outcome": "TICKET_CREATED", "verified": True, "turnCount": 2, "intents": ["REPAYMENT"],
-                      "rating": None}]
+                      "rating": None, "failedOps": 0}]
     assert client.get(BASE, params={"outcome": "RESOLVED"}, headers=ADMIN).json()["items"] == []
 
     events = audit(client, cid)
@@ -128,6 +128,23 @@ def test_turns_keep_order_and_summary_derives_from_customer_turns(client):
     assert d["turns"][3]["meta"] == {}
     item = client.get(BASE, headers=ANALYST).json()["items"][0]
     assert item["intents"] == ["REPAYMENT", "CARD_BLOCK"] and item["turnCount"] == 4
+
+
+def test_call_list_counts_failed_operations(client):
+    failing = start(client, "TEXT")
+    turn(client, failing, "customer", "Block my card and send a statement", {"verified": True})
+    turn(client, failing, "agent", "The system is unavailable right now.", {"tool_trace": [
+        {"name": "create_service_request", "args": {}, "result_summary": "error SYSTEM_UNAVAILABLE", "outcome": OpOutcome.FAILED},
+        {"name": "get_accounts", "args": {}, "result_summary": "items", "outcome": OpOutcome.OK}]})
+    turn(client, failing, "agent", "Still unavailable, I'll raise a callback.", {"tool_trace": [
+        {"name": "create_service_request", "args": {}, "result_summary": "error HTTP_503", "outcome": OpOutcome.FAILED},
+        {"name": "get_loans", "args": {}, "result_summary": "error NOT_VERIFIED", "outcome": OpOutcome.DECLINED}]})
+    legacy = start(client, "TEXT")
+    turn(client, legacy, "agent", "The 5th.", {"tool_trace": [{"name": "get_loan", "result_summary": "next_due"}]})
+    by_id = {i["id"]: i for i in client.get(BASE, headers=ANALYST).json()["items"]}
+    assert by_id[failing]["failedOps"] == 2
+    assert by_id[legacy]["failedOps"] == 0
+    assert [o.value for o in OpOutcome] == ["OK", "FAILED", "DECLINED"]
 
 
 def test_verified_only_counts_customer_turns(client):

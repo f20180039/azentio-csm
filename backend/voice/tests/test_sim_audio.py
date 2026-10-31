@@ -80,6 +80,7 @@ def test_sim_audio_runs_turns_in_order_and_marks_silence():
     assert resp.status_code == 200 and body["call_id"] == CALL
     first, second = body["turns"]
     assert first["transcript"] == "When is my next EMI?" and first["tool_trace"][0]["result"]["error"] == "NOT_VERIFIED"
+    assert first["tool_trace"][0]["outcome"] == "DECLINED"
     assert first["reply_text"].startswith("Sure.") and first["verified"] is False
     assert second["no_speech"] is True and second["reply_text"] is None
     recorded = [b for m, p, b in spring if m == "POST" and p.endswith("/turns")]
