@@ -99,4 +99,4 @@ async def transcribe_file(data: bytes, *, api_key: str, model: str, transport: h
     text = " ".join(s.get("text", "").strip() for s in kept).strip() if body.get("segments") else (body.get("text") or "").strip()
     if not text or speech.is_phantom(text):
         return Transcript(None, secs, len(flac), "only noise or a phantom phrase")
-    return Transcript(text, secs, len(flac))
+    return Transcript(speech.normalise_refs(text), secs, len(flac))

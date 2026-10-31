@@ -59,7 +59,7 @@ def test_upload_carries_domain_prompt_language_and_flac():
     out = asyncio.run(speech_file.transcribe_file(SPEECH, api_key="k", model="whisper-large-v3", transport=transport))
     assert out.text == "When is my next EMI?"
     body = seen[0].content
-    assert b'name="language"\r\n\r\nen' in body and b"EMI, instalment" in body and b"audio/flac" in body and b"verbose_json" in body
+    assert b'name="language"\r\n\r\nen' in body and b"EMI, NACH, KYC" in body and b"audio/flac" in body and b"verbose_json" in body
 
 
 def test_invented_segments_are_dropped():
