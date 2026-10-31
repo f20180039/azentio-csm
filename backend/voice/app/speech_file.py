@@ -84,12 +84,17 @@ def trimmed_speech(data: bytes) -> tuple[np.ndarray, float]:
     return kept, len(kept) / RATE
 
 
-async def transcribe_file(data: bytes, *, api_key: str, model: str, transport: httpx.AsyncBaseTransport | None = None) -> Transcript:
+async def transcribe_file(data: bytes, *, api_key: str, model: str, transport: httpx.AsyncBaseTransport | None = None,
+                          call_language: speech.CallLanguage | None = None) -> Transcript:
+    """`call_language` carries the call's language across turns and is updated with what was heard."""
+    call_language = call_language or speech.CallLanguage()
     pcm, secs = await asyncio.to_thread(trimmed_speech, data)
     if secs == 0:
         return Transcript(None, 0.0, 0, "no speech detected")
     flac = await asyncio.to_thread(encode_flac, pcm)
-    form = {"model": model, "language": speech.LANGUAGE, "prompt": speech.DOMAIN_PROMPT, "response_format": "verbose_json", "temperature": "0"}
+    form = {"model": model, "prompt": call_language.stt_prompt(), "response_format": "verbose_json", "temperature": "0"}
+    if language := call_language.stt_language():
+        form["language"] = language
     async with httpx.AsyncClient(timeout=30.0, transport=transport) as client:
         resp = await client.post(GROQ_STT_URL, headers={"Authorization": f"Bearer {api_key}"}, data=form,
                                  files={"file": ("speech.flac", flac, "audio/flac")})
@@ -99,4 +104,5 @@ async def transcribe_file(data: bytes, *, api_key: str, model: str, transport: h
     text = " ".join(s.get("text", "").strip() for s in kept).strip() if body.get("segments") else (body.get("text") or "").strip()
     if not text or speech.is_phantom(text):
         return Transcript(None, secs, len(flac), "only noise or a phantom phrase")
+    call_language.heard(text)
     return Transcript(speech.normalise_refs(text), secs, len(flac))

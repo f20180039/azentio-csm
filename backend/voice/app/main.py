@@ -20,6 +20,7 @@ from .config import Settings, load_settings
 from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
 from .simulator_client import SimulatorClient
+from .speech import CallLanguage, voice_for
 from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
 from .support_tools import CallSession
@@ -271,14 +272,14 @@ MAX_SIM_FILES = 20
 MAX_SIM_BYTES = 10 * 1024 * 1024
 
 
-async def spoken_reply(text: str) -> str | None:
+async def spoken_reply(text: str, call_language: CallLanguage | None = None) -> str | None:
     """The reply as base64 MP3 in the same voice as live calls; None if the read-aloud service is unreachable."""
     import base64
 
     import edge_tts
     try:
         audio = bytearray()
-        async for chunk in edge_tts.Communicate(text, state.settings().tts_voice).stream():
+        async for chunk in edge_tts.Communicate(text, voice_for(text, state.settings().tts_voice, call_language)).stream():
             if chunk["type"] == "audio":
                 audio.extend(chunk["data"])
         return base64.b64encode(bytes(audio)).decode() if audio else None
@@ -303,6 +304,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
             raise HTTPException(404, "unknown call")
     brain = await state.new_support_brain(Channel.SIM_AUDIO, call_id)
     s = state.settings()
+    language = CallLanguage(s.voice_languages)
     turns = []
     for f in files:
         data = await f.read()
@@ -310,7 +312,8 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
             raise HTTPException(413, f"{f.filename} is larger than 10 MB")
         started = time.monotonic()
         try:
-            heard = await transcribe_file(data, api_key=s.groq_api_key, model=s.stt_model, transport=state.stt_transport)
+            heard = await transcribe_file(data, api_key=s.groq_api_key, model=s.stt_model, transport=state.stt_transport,
+                                         call_language=language)
         except (httpx.HTTPError, ValueError, OSError) as e:  # an unreadable file, or speech-to-text down
             raise HTTPException(422 if isinstance(e, (ValueError, OSError)) else 502, f"{f.filename}: could not transcribe ({type(e).__name__})") from e
         row = {"file": f.filename, "transcript": heard.text, "no_speech": heard.text is None, "speech_secs": round(heard.speech_secs, 2),
@@ -321,7 +324,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
                           "reply_text": None, "reply_audio_b64": None, "latency_ms": round((time.monotonic() - started) * 1000)})
             continue
         turn = await support_reply(brain, heard.text, audio=data, audio_suffix=Path(f.filename or "").suffix or ".wav")
-        audio = await spoken_reply(turn.text) if speak and turn.text else None
+        audio = await spoken_reply(turn.text, language) if speak and turn.text else None
         turns.append({**row, **turn_json(turn), "reply_audio_b64": audio, "latency_ms": round((time.monotonic() - started) * 1000)})
         if turn.ended:
             break

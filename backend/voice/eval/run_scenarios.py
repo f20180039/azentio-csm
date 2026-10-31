@@ -33,7 +33,8 @@ CREATES = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTER_CO
 
 def _ok(t: dict) -> bool:
     return "error" not in (t.get("result") or {})
-ACCENTS, CONDITIONS = ("in", "gb", "ng", "us"), ("clean", "noisy")
+ENGLISH_ACCENTS, CONDITIONS = ("in", "gb", "ng", "us"), ("clean", "noisy")
+ACCENTS = (*ENGLISH_ACCENTS, "kn")  # kn: the Kannada scenarios, run with --only
 
 
 @dataclass
@@ -196,7 +197,7 @@ def main() -> int:
     scenarios = [s for s in load() if not args.only or s["id"] in args.only]
     results: list[Result] = []
     with httpx.Client(base_url=args.voice, timeout=120) as voice:
-        combos = [(a, c) for a in ACCENTS for c in CONDITIONS] if args.full else [(args.accent, args.condition)]
+        combos = [(a, c) for a in ENGLISH_ACCENTS for c in CONDITIONS] if args.full else [(args.accent, args.condition)]
         for sc in scenarios:
             for accent, condition in (combos if args.audio else [("text", "typed")]):
                 reset(args.simulator)

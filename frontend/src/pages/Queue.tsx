@@ -172,8 +172,8 @@ export function Queue() {
                 key={c.id}
                 className="clickable"
                 tabIndex={0}
-                onClick={() => navigate(Route.case(c.id))}
-                onKeyDown={(e) => e.key === 'Enter' && navigate(Route.case(c.id))}
+                onClick={() => navigate(Route.caseOrCall(c))}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(Route.caseOrCall(c))}
               >
                 <td>
                   <StatusPill status={c.status} />

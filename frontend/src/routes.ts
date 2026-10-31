@@ -1,3 +1,5 @@
+import { CaseType } from './vocab';
+
 const Path = {
   SUPPORT: '/support',
   SUPPORT_NEW: '/support/new',
@@ -19,4 +21,7 @@ export const Route = {
   supportCall: (callId: string) => fill(Path.SUPPORT_CALL, 'callId', encodeURIComponent(callId)),
   renewalCall: (callId: string) => fill(Path.RENEWAL_CALL, 'callId', callId),
   case: (id: string) => fill(Path.CASE, 'id', id),
+  /** A support call's case has no documents or findings: open the call itself (same id). */
+  caseOrCall: (c: { id: string; caseType: string }) =>
+    c.caseType === CaseType.SUPPORT_CALL ? fill(Path.SUPPORT_CALL, 'callId', encodeURIComponent(c.id)) : fill(Path.CASE, 'id', c.id),
 } as const;
