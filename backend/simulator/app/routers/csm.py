@@ -10,7 +10,7 @@ from app.guard import OptionalSessionDep, SessionDep, StoreDep, owns
 
 router = APIRouter(prefix=API_PREFIX, tags=["CSM"])
 
-TICKET_FIELDS = ("ref", "category", "status", "summary", "created_on", "updated_on")
+TICKET_FIELDS = ("ref", "category", "status", "summary", "department", "progress", "eta_days", "created_on", "updated_on")
 
 
 class TicketRequest(BaseModel):
@@ -40,18 +40,19 @@ class EscalationRequest(BaseModel):
     call_id: str = Field(min_length=1)
 
 
-def _ticket_view(ticket: dict[str, Any]) -> dict[str, Any]:
+def ticket_view(ticket: dict[str, Any]) -> dict[str, Any]:
+    """The ticket as the caller (and the ops status update) sees it: no details, call id or customer ref."""
     return {k: ticket[k] for k in TICKET_FIELDS}
 
 
 @router.get(Route.CSM_TICKETS)
 def tickets(customer: SessionDep, store: StoreDep) -> dict:
-    return {"items": [_ticket_view(t) for t in store.get_tickets(customer["customer_ref"])]}
+    return {"items": [ticket_view(t) for t in store.get_tickets(customer["customer_ref"])]}
 
 
 @router.get(Route.CSM_TICKET)
 def ticket(ref: str, customer: SessionDep, store: StoreDep) -> dict:
-    return _ticket_view(owns(customer, store.get_ticket(ref)))
+    return ticket_view(owns(customer, store.get_ticket(ref)))
 
 
 @router.post(Route.CSM_TICKETS, status_code=status.HTTP_201_CREATED)

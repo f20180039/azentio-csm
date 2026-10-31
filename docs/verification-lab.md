@@ -15,9 +15,9 @@ Dates are relative to the simulator's start, as the seed stores them ("in 5 days
 |---|---|---|---|
 | Asha Verma (`CUST-1001`) | `98765 00001` | `1990-04-12` | Loan application in document verification |
 | Rahul Iyer (`CUST-1002`) | `98765 00002` | `1985-11-03` | Two loans, an open statement request |
-| Fatima Khan (`CUST-1003`) | `98765 00003` | `1992-07-21` | Vehicle loan with an overdue EMI |
-| Arjun Nair (`CUST-1004`) | `98765 00004` | `1978-02-14` | A failed and a pending transfer |
-| Meera Pillai (`CUST-1005`) | `98765 00005` | `1988-09-30` | Health claim under review, lapsed motor policy |
+| Fatima Khan (`CUST-1003`) | `98765 00003` | `1992-07-21` | Vehicle loan with an overdue EMI, rejected address change |
+| Arjun Nair (`CUST-1004`) | `98765 00004` | `1978-02-14` | A failed and a pending transfer, request awaiting info |
+| Meera Pillai (`CUST-1005`) | `98765 00005` | `1988-09-30` | Health claim under review, lapsed motor policy, resolved request |
 | Vikram Rao (`CUST-1006`) | `98765 00006` | `1995-12-05` | Home loan, open complaint |
 | Sana Mirza (`CUST-1007`) | `98765 00007` | `1999-05-18` | Rejected application, low balance |
 | David Fernandes (`CUST-1008`) | `98765 00008` | `1982-03-09` | Disputed ₹48,999 card payment |
@@ -50,7 +50,7 @@ Personal and vehicle loans (for the correction test), a savings account and requ
 | "When is my next vehicle loan EMI?" | ₹9,800 due in 12 days |
 | "No, I meant my vehicle loan." | Switches to VL-31003 without verifying again |
 | "What's the balance in my savings account?" | ₹85,400 in account ••• ••• 4012 |
-| "What's the status of my request SR-40102?" | in progress: Account statement request for last 6 months |
+| "What's the status of my request SR-40102?" | in progress: Account statement request for last 6 months. Progress: With the Account Services team. |
 | "Please send me my loan statement." | A new SR- ticket, read back letter by letter and digit by digit |
 
 | Loan | Type | Outstanding | Next EMI | Due | Overdue |
@@ -66,13 +66,14 @@ Personal and vehicle loans (for the correction test), a savings account and requ
 
 ## Fatima Khan
 
-An overdue instalment kept separate from the next one; her loan VL-31007 is the 'someone else's record' target.
+An overdue instalment kept separate from the next one; her loan VL-31007 is the 'someone else's record' target. Address-change request SR-40103 was rejected (unreadable proof).
 
 **Verify:** "My number is nine eight seven six five, zero zero zero zero three, and I was born on the 21st July 1992."
 
 | Say | Expect |
 |---|---|
 | "When is my next vehicle loan EMI?" | ₹9,800 due in 21 days; separately ₹9,800 overdue since 9 days ago |
+| "What's the status of my request SR-40103?" | rejected: Change of registered address. Progress: Rejected: the address proof was unreadable. Please submit a clear copy. |
 | "Please send me my loan statement." | A new SR- ticket, read back letter by letter and digit by digit |
 
 | Loan | Type | Outstanding | Next EMI | Due | Overdue |
@@ -84,7 +85,7 @@ An overdue instalment kept separate from the next one; her loan VL-31007 is the 
 
 ## Arjun Nair
 
-Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending.
+Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending. Request SR-40104 is waiting for the delivery address.
 
 **Verify:** "My number is nine eight seven six five, zero zero zero zero four, and I was born on the 14th February 1978."
 
@@ -93,6 +94,7 @@ Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending.
 | "What's the balance in my savings account?" | ₹42,300 in account ••• ••• 8821 |
 | "What happened to transaction TXN-88213?" | Recorded status failed; no guessed cause |
 | "What happened to transaction TXN-88214?" | Recorded status pending |
+| "What's the status of my request SR-40104?" | awaiting info: Interest certificate by post. Progress: Waiting for the customer to confirm the delivery address. |
 | "Please send me my loan statement." | A new SR- ticket, read back letter by letter and digit by digit |
 
 
@@ -108,12 +110,13 @@ Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending.
 
 ## Meera Pillai
 
-Health policy in force with claim CLM-7001 under review; the motor policy has lapsed.
+Health policy in force with claim CLM-7001 under review; the motor policy has lapsed. Statement request SR-40105 was resolved.
 
 **Verify:** "My number is nine eight seven six five, zero zero zero zero five, and I was born on the 30th September 1988."
 
 | Say | Expect |
 |---|---|
+| "What's the status of my request SR-40105?" | resolved: Account statement request for last 3 months. Progress: Statement sent to the registered email address. |
 | "Is my Family Health Protect policy active?" | In Force (active); premium ₹14,500 due in 18 days |
 | "Is my Comprehensive Motor Insurance policy active?" | Lapsed due to non-payment of renewal premium (lapsed); premium ₹8,200 due 45 days ago |
 | "What's happening with my claim CLM-7001?" | under review; it must not promise approval |

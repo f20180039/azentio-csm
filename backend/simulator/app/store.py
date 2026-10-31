@@ -21,6 +21,7 @@ from app.enums import (
     Severity,
     VerifyOutcome,
     Stage,
+    TICKET_DEPARTMENT,
     TicketCategory,
     TicketStatus,
     TxnStatus,
@@ -43,6 +44,7 @@ INITIAL_COUNTERS = {
 ADDED_COLUMNS = {
     "verification_attempts": {"customer_ref": "TEXT", "caller_key": "TEXT", "target_key": "TEXT", "outcome": "TEXT"},
     "escalations": {"category": "TEXT"},
+    "tickets": {"progress": "TEXT", "department": "TEXT"},
 }
 
 
@@ -262,6 +264,7 @@ class BankStore:
             d_str = (ref_date - timedelta(days=d_ago)).isoformat()
             item["created_on"] = d_str
             item["updated_on"] = d_str
+            item["department"] = str(TICKET_DEPARTMENT[TicketCategory(item["category"])])
             self.seed_tickets.append(item)
 
         # 7. Seed Complaints (relative: days_ago)
@@ -579,14 +582,17 @@ class BankStore:
         ref = self._next_ref(RefPrefix.TICKET)
         now_str = _now_iso()
         details_json = json.dumps(details or {})
+        department = str(TICKET_DEPARTMENT[TicketCategory(category)])
+        progress = f"Received by the {department} team."
         with self._get_connection() as con:
             con.execute(
                 """
-                INSERT INTO tickets (ref, customer_ref, category, status, summary, details, call_id, eta_days, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tickets (ref, customer_ref, category, status, summary, details, call_id, eta_days,
+                                     department, progress, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (ref, customer_ref, str(category), str(TicketStatus.OPEN), summary, details_json, call_id, eta_days,
-                 now_str, now_str),
+                 department, progress, now_str, now_str),
             )
             con.commit()
         return {
@@ -595,67 +601,85 @@ class BankStore:
             "eta_days": eta_days,
         }
 
+    @staticmethod
+    def _ticket_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "ref": row["ref"],
+            "customer_ref": row["customer_ref"],
+            "category": row["category"],
+            "status": row["status"],
+            "summary": row["summary"],
+            "details": json.loads(row["details"]) if row["details"] else {},
+            "call_id": row["call_id"],
+            "eta_days": row["eta_days"],
+            "department": row["department"],
+            "progress": row["progress"],
+            "created_on": row["created_at"][:10],
+            "updated_on": row["updated_at"][:10],
+        }
+
+    @staticmethod
+    def _ticket_from_seed(t: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ref": t["ref"],
+            "customer_ref": t["customer_ref"],
+            "category": t["category"],
+            "status": t["status"],
+            "summary": t["summary"],
+            "details": {},
+            "call_id": None,
+            "eta_days": t.get("eta_days"),
+            "department": t["department"],
+            "progress": t.get("progress"),
+            "created_on": t["created_on"][:10],
+            "updated_on": t["updated_on"][:10],
+        }
+
+    def _seed_ticket(self, ref_upper: str) -> dict[str, Any] | None:
+        return next((t for t in self.seed_tickets if t["ref"].upper() == ref_upper), None)
+
     def get_ticket(self, ref: str) -> dict[str, Any] | None:
         ref_upper = ref.strip().upper()
         # Check SQLite writes first
         with self._get_connection() as con:
             row = con.execute("SELECT * FROM tickets WHERE ref = ?", (ref_upper,)).fetchone()
             if row:
-                return {
-                    "ref": row["ref"],
-                    "customer_ref": row["customer_ref"],
-                    "category": row["category"],
-                    "status": row["status"],
-                    "summary": row["summary"],
-                    "details": json.loads(row["details"]) if row["details"] else {},
-                    "call_id": row["call_id"],
-                    "eta_days": row["eta_days"],
-                    "created_on": row["created_at"][:10],
-                    "updated_on": row["updated_at"][:10],
-                }
-        # Check seed tickets
-        for t in self.seed_tickets:
-            if t["ref"].upper() == ref_upper:
-                return {
-                    "ref": t["ref"],
-                    "customer_ref": t["customer_ref"],
-                    "category": t["category"],
-                    "status": t["status"],
-                    "summary": t["summary"],
-                    "created_on": t["created_on"][:10],
-                    "updated_on": t["updated_on"][:10],
-                }
-        return None
+                return self._ticket_from_row(row)
+        seed = self._seed_ticket(ref_upper)
+        return self._ticket_from_seed(seed) if seed else None
 
     def get_tickets(self, customer_ref: str) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        # Dynamic SQLite tickets first
+        # Dynamic SQLite tickets first, then the seed
         with self._get_connection() as con:
             rows = con.execute(
                 "SELECT * FROM tickets WHERE customer_ref = ? ORDER BY created_at DESC",
                 (customer_ref,),
             ).fetchall()
-            for row in rows:
-                results.append({
-                    "ref": row["ref"],
-                    "category": row["category"],
-                    "status": row["status"],
-                    "summary": row["summary"],
-                    "created_on": row["created_at"][:10],
-                    "updated_on": row["updated_at"][:10],
-                })
-        # Add seed tickets
-        for t in self.seed_tickets:
-            if t["customer_ref"] == customer_ref:
-                results.append({
-                    "ref": t["ref"],
-                    "category": t["category"],
-                    "status": t["status"],
-                    "summary": t["summary"],
-                    "created_on": t["created_on"][:10],
-                    "updated_on": t["updated_on"][:10],
-                })
+        results = [self._ticket_from_row(row) for row in rows]
+        results += [self._ticket_from_seed(t) for t in self.seed_tickets if t["customer_ref"] == customer_ref]
         return results
+
+    def update_ticket(self, ref: str, status: TicketStatus, progress: str | None = None) -> dict[str, Any] | None:
+        """Moves a ticket (SQLite or seed) to `status`, replacing its progress note when one is given; None if unknown.
+
+        Seed tickets change in memory only, so reset() restores them."""
+        ref_upper = ref.strip().upper()
+        with self._get_connection() as con:
+            cur = con.execute(
+                "UPDATE tickets SET status = ?, progress = COALESCE(?, progress), updated_at = ? WHERE ref = ?",
+                (str(status), progress, _now_iso(), ref_upper),
+            )
+            con.commit()
+            if cur.rowcount:
+                return self.get_ticket(ref_upper)
+        seed = self._seed_ticket(ref_upper)
+        if seed is None:
+            return None
+        seed["status"] = str(status)
+        if progress is not None:
+            seed["progress"] = progress
+        seed["updated_on"] = self.today.isoformat()  # seed dates are relative to the simulator's start
+        return self._ticket_from_seed(seed)
 
     def create_complaint(
         self,
@@ -820,18 +844,22 @@ class BankStore:
         kinds = [RecordKind(kind)] if kind else list(RecordKind)
         results: list[dict[str, Any]] = []
 
-        def item(ref, k, category, status, summary, customer_ref, call_id, created_at, escalated):
+        def item(ref, k, category, status, summary, customer_ref, call_id, created_at, escalated,
+                 department=None, progress=None):
             return {"ref": ref, "kind": str(k), "category": category, "status": status, "summary": summary,
-                    "customer_ref": customer_ref, "call_id": call_id, "created_at": created_at, "escalated": escalated}
+                    "customer_ref": customer_ref, "call_id": call_id, "created_at": created_at, "escalated": escalated,
+                    "department": department, "progress": progress}
 
         with self._get_connection() as con:
             if RecordKind.TICKET in kinds:
                 for r in con.execute("SELECT * FROM tickets"):
                     results.append(item(r["ref"], RecordKind.TICKET, r["category"], r["status"], r["summary"],
-                                        r["customer_ref"], r["call_id"], r["created_at"], None))
+                                        r["customer_ref"], r["call_id"], r["created_at"], None,
+                                        r["department"], r["progress"]))
                 for t in self.seed_tickets:
                     results.append(item(t["ref"], RecordKind.TICKET, t["category"], t["status"], t["summary"],
-                                        t["customer_ref"], None, t["created_on"], None))
+                                        t["customer_ref"], None, t["created_on"], None,
+                                        t["department"], t.get("progress")))
             if RecordKind.COMPLAINT in kinds:
                 for r in con.execute("SELECT * FROM complaints"):
                     results.append(item(r["ref"], RecordKind.COMPLAINT, r["category"], r["status"], r["description"],
