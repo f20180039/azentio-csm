@@ -5,6 +5,7 @@ backend/api/data/
 backend/voice/.venv/
 backend/simulator/.venv/
 backend/simulator/data/runtime/
+backend/simulator/data/*.db
 data/simulator/
 frontend/node_modules/
 frontend/dist/

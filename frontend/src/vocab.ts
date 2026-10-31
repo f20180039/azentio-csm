@@ -112,5 +112,5 @@ export type Role = ValueOf<typeof Role>;
 export const Theme = { LIGHT: 'light', DARK: 'dark' } as const;
 export type Theme = ValueOf<typeof Theme>;
 
-export const StorageKey = { THEME: 'ci-theme' } as const;
+export const StorageKey = { THEME: 'ci-theme', SESSION: 'azentio-csm-session' } as const;
 export type StorageKey = ValueOf<typeof StorageKey>;
