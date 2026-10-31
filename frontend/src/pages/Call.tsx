@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { endCall, getCall, textCall, textTurn } from '../api/renewals';
 import type { CallOutcome, CallView, CaseDetail, TranscriptTurn } from '../api/types';
-import { getPhoneAllowed, placePhoneCall, type PhoneAllowed } from '../api/phone';
+import { getPhoneAllowed, PHONE_RING_TIMEOUT_MS, placePhoneCall, type PhoneAllowed } from '../api/phone';
 import { connectVoice, type VoiceSession } from '../api/voice';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
@@ -14,8 +14,6 @@ import { Route } from '../routes';
 import { CallOutcome as Outcome, CallTurnRole, Role } from '../vocab';
 import { AuditTab, CaseActions } from './CaseWorkspace';
 
-/** The voice service forgets an unanswered dial after this long (its PENDING_TTL_SECS), so a page stops waiting for it too. */
-export const PHONE_RING_TIMEOUT_MS = 120_000;
 export const PHONE_END_HINT = 'Hang up on the phone (or let the agent end the call)';
 
 export const OUTCOME_LABEL: Record<CallOutcome, string> = {
@@ -145,9 +143,11 @@ export function Call() {
   }, [ended]);
 
   // the transcript can change from outside this page while voice connects or runs, a phone is dialled, rings or is
-  // answered, or a typed turn is being answered; at any other time only another operator could change the call
+  // answered, or a typed turn is being answered; a recent turn means a leg this page did not start (a reload, a second
+  // screen) is live; at any other time only another operator could change the call
   const liveLeg = voice !== 'off' || phone !== 'off' || sending;
-  useCallPolling(refresh, { callId, live: liveLeg, ended });
+  const lastTurnAt = call?.transcript[call.transcript.length - 1]?.at;
+  useCallPolling(refresh, { callId, live: liveLeg, ended, lastTurnAt });
 
   useEffect(() => {
     unmounted.current = false;

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CALL_POLL_FAST_MS, CALL_POLL_SLOW_MS } from '../hooks/useCallPolling';
+import { CALL_POLL_FAST_MS, CALL_POLL_SLOW_MS, CALL_RECENT_ACTIVITY_MS } from '../hooks/useCallPolling';
 
 const h = vi.hoisted(() => ({
   getCall: vi.fn(),
@@ -18,7 +18,8 @@ vi.mock('../api/renewals', async (orig) => {
   return { ...real, getCall: h.getCall, textTurn: h.textTurn };
 });
 vi.mock('../api/voice', () => ({ connectVoice: h.connectVoice }));
-vi.mock('../api/phone', () => ({
+vi.mock('../api/phone', async (orig) => ({
+  ...(await orig<typeof import('../api/phone')>()),
   getPhoneAllowed: vi.fn(async () => h.allowed),
   placePhoneCall: vi.fn(async () => ({ status: 'dialling' })),
 }));
@@ -63,6 +64,8 @@ async function mount(callId: string) {
 
 const calls = () => h.getCall.mock.calls.length;
 const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+/** A mock call opens with a greeting turn written "now", so it counts as recent activity; this outlives that window and any settle window. */
+const waitQuiet = () => tick(CALL_RECENT_ACTIVITY_MS + CALL_POLL_FAST_MS * 2); // plus the last poll scheduled while still recent
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -72,12 +75,14 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('Call page polling', () => {
-  it('polls an open call with nothing live about once every 10 s', async () => {
+  it('polls a just-started call fast (its greeting is recent activity), then about once every 10 s once nothing has happened for 15 s', async () => {
     await mount('sample-call-poll-1');
-    const before = calls();
-    await tick(CALL_POLL_SLOW_MS / 2);
-    expect(calls()).toBe(before);
-    await tick(CALL_POLL_SLOW_MS / 2 + 500);
+    let before = calls();
+    await tick(CALL_POLL_FAST_MS * 5);
+    expect(calls()).toBeGreaterThanOrEqual(before + 3);
+    await waitQuiet();
+    before = calls();
+    await tick(CALL_POLL_SLOW_MS + 500); // one slow period, whatever its phase: exactly one poll, not ten
     expect(calls()).toBe(before + 1);
   });
 
@@ -99,7 +104,7 @@ describe('Call page polling', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Hang up' }));
     await waitFor(() => expect(screen.queryByText('Voice live')).not.toBeInTheDocument());
-    await tick(300);
+    await waitQuiet();
     before = calls();
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeLessThanOrEqual(before + 1);
@@ -117,7 +122,7 @@ describe('Call page polling', () => {
     expect(calls()).toBeGreaterThanOrEqual(before + 3);
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await tick(300);
+    await waitQuiet();
     before = calls();
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeLessThanOrEqual(before + 1);
@@ -136,8 +141,9 @@ describe('Call page polling', () => {
     await act(async () => release!());
   });
 
-  it('does not request the call again just because a toast appeared', async () => {
+  it('a toast does not restart polling (the memoised toast value itself is proven in Toasts.test.tsx)', async () => {
     await mount('sample-call-poll-5');
+    await waitQuiet();
     const before = calls();
     await act(async () => h.toast!.push('Voice connection problem', 'ICE failed'));
     await screen.findByText('Voice connection problem');

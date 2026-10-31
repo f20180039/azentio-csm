@@ -32,7 +32,7 @@ import {
   transcriptText,
   turnAudioUrl,
 } from '../api/support';
-import { getPhoneAllowed, placeSupportPhoneCall, type PhoneAllowed } from '../api/phone';
+import { getPhoneAllowed, PHONE_RING_TIMEOUT_MS, placeSupportPhoneCall, type PhoneAllowed } from '../api/phone';
 import type { VoiceSession } from '../api/voice';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { Select } from '../components/Select';
@@ -41,8 +41,7 @@ import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../forma
 import { useCallPolling } from '../hooks/useCallPolling';
 import { Route } from '../routes';
 import { Highlight, turnMatches } from '../search';
-import { SpeechLanguage, TurnRole, Verification } from '../vocab';
-import { PHONE_RING_TIMEOUT_MS } from './Call';
+import { SpeechLanguage, SupportChannel, TurnRole, Verification } from '../vocab';
 import { RatingPanel, TranscriptCorrectionBlock, TurnFeedbackBlock } from './CallFeedback';
 import { CallStatusPill } from './SupportDesk';
 
@@ -660,12 +659,16 @@ export function SupportCall() {
   }, [callId]);
 
   // the call record changes from outside this page while the microphone is connecting or on (paused included: the leg
-  // is still up), while a phone rung from here rings or is answered, and while uploaded audio is being answered; at any
-  // other time only another operator could change it
-  const live = voice !== 'off' || phone !== 'off' || uploading;
-  useCallPolling(refresh, { callId, live, ended });
-
+  // is still up), while a phone rung from here rings or is answered, and while uploaded audio is being answered. A leg
+  // this page did not start (a reload mid-call, the desk's Live row, a second screen) shows in the record: a recent turn,
+  // or an open phone call that has been answered (a phone call gets turns only once answered and is closed on hang-up;
+  // an unanswered dial has none). At any other time only another operator could change it.
   const recordedTurns = call?.turns.length ?? 0;
+  const answeredPhoneCall = call?.channel === SupportChannel.PHONE && recordedTurns > 0;
+  const live = voice !== 'off' || phone !== 'off' || uploading || answeredPhoneCall;
+  const lastTurnAt = call?.turns[recordedTurns - 1]?.at;
+  useCallPolling(refresh, { callId, live, ended, lastTurnAt });
+
   useEffect(() => {
     if (phone === 'ringing' && recordedTurns > 0) setPhone('live');
   }, [phone, recordedTurns]);

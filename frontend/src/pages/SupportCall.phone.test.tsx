@@ -12,7 +12,8 @@ const h = vi.hoisted(() => ({
   getCall: vi.fn(),
 }));
 
-vi.mock('../api/phone', () => ({
+vi.mock('../api/phone', async (orig) => ({
+  ...(await orig<typeof import('../api/phone')>()),
   getPhoneAllowed: vi.fn(async () => h.allowed),
   placeSupportPhoneCall: vi.fn(async (numberId: string) => {
     h.placed.push(numberId);

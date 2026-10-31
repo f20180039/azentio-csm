@@ -1,6 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CALL_POLL_FAST_MS, CALL_POLL_SLOW_MS, useCallPolling, type CallPollingOptions } from './useCallPolling';
+import {
+  CALL_POLL_FAST_MS,
+  CALL_POLL_SETTLE_MS,
+  CALL_POLL_SLOW_MS,
+  CALL_RECENT_ACTIVITY_MS,
+  recentActivity,
+  useCallPolling,
+  type CallPollingOptions,
+} from './useCallPolling';
 
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
@@ -9,11 +17,11 @@ function setHidden(hidden: boolean) {
 }
 
 const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+const open = (o: Partial<CallPollingOptions> = {}): CallPollingOptions => ({ callId: 'call-1', live: false, ended: false, ...o });
 
 function mount(initial: Partial<CallPollingOptions> = {}, refresh = vi.fn(async () => true)) {
-  const view = renderHook((o: CallPollingOptions) => useCallPolling(refresh, o), {
-    initialProps: { callId: 'call-1', live: false, ended: false, ...initial },
-  });
+  const view = renderHook((o: CallPollingOptions) => useCallPolling(refresh, o), { initialProps: open(initial) });
   return { refresh, ...view };
 }
 
@@ -26,6 +34,15 @@ afterEach(() => {
 describe('useCallPolling', () => {
   it('loads once at mount', async () => {
     const { refresh } = mount();
+    await tick(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads once when mounted, unmounted and mounted again at once (StrictMode rehearsal)', async () => {
+    const refresh = vi.fn(async () => true);
+    const first = renderHook((o: CallPollingOptions) => useCallPolling(refresh, o), { initialProps: open() });
+    first.unmount();
+    renderHook((o: CallPollingOptions) => useCallPolling(refresh, o), { initialProps: open() });
     await tick(0);
     expect(refresh).toHaveBeenCalledTimes(1);
   });
@@ -55,14 +72,79 @@ describe('useCallPolling', () => {
     await tick(0);
     await tick(5000);
     expect(refresh).toHaveBeenCalledTimes(1);
-    rerender({ callId: 'call-1', live: true, ended: false });
+    rerender(open({ live: true }));
     await tick(CALL_POLL_FAST_MS);
     expect(refresh).toHaveBeenCalledTimes(2);
-    rerender({ callId: 'call-1', live: false, ended: false });
-    await tick(CALL_POLL_FAST_MS * 5);
-    expect(refresh).toHaveBeenCalledTimes(2);
-    await tick(CALL_POLL_SLOW_MS);
+  });
+
+  it('keeps the fast interval for the settle window after the live leg ends, then slows down', async () => {
+    expect(CALL_POLL_SETTLE_MS).toBe(6000);
+    const { refresh, rerender } = mount({ live: true });
+    await tick(0);
+    await tick(CALL_POLL_FAST_MS * 2);
     expect(refresh).toHaveBeenCalledTimes(3);
+    rerender(open({ live: false }));
+    await tick(CALL_POLL_SETTLE_MS);
+    expect(refresh).toHaveBeenCalledTimes(3 + CALL_POLL_SETTLE_MS / CALL_POLL_FAST_MS); // the closing turn and hang-up land promptly
+    const settled = refresh.mock.calls.length;
+    await tick(CALL_POLL_FAST_MS * 3);
+    expect(refresh).toHaveBeenCalledTimes(settled);
+    await tick(CALL_POLL_SLOW_MS);
+    expect(refresh).toHaveBeenCalledTimes(settled + 1);
+  });
+
+  it('does not open a settle window when the call was never live', async () => {
+    const { refresh, rerender } = mount();
+    await tick(0);
+    rerender(open({ live: false, lastTurnAt: null }));
+    await tick(CALL_POLL_SETTLE_MS);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  describe('recent activity in the record', () => {
+    it('names the window and reads an ISO timestamp', () => {
+      expect(CALL_RECENT_ACTIVITY_MS).toBe(15_000);
+      expect(recentActivity(ago(5000))).toBe(true);
+      expect(recentActivity(ago(CALL_RECENT_ACTIVITY_MS))).toBe(false);
+      expect(recentActivity(ago(10 * 60_000))).toBe(false);
+      expect(recentActivity(null)).toBe(false);
+      expect(recentActivity(undefined)).toBe(false);
+      expect(recentActivity('not a date')).toBe(false);
+    });
+
+    it('polls fast while the latest turn is recent, even though nothing on this page is live', async () => {
+      const { refresh } = mount({ lastTurnAt: ago(5000) });
+      await tick(0);
+      await tick(CALL_POLL_FAST_MS * 5);
+      expect(refresh).toHaveBeenCalledTimes(6);
+    });
+
+    it('polls slowly when the latest turn is old', async () => {
+      const { refresh } = mount({ lastTurnAt: ago(10 * 60_000) });
+      await tick(0);
+      await tick(CALL_POLL_FAST_MS * 5);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('slows down once the latest turn has aged past the window', async () => {
+      const { refresh } = mount({ lastTurnAt: ago(0) });
+      await tick(0);
+      await tick(CALL_RECENT_ACTIVITY_MS);
+      const atWindow = refresh.mock.calls.length;
+      expect(atWindow).toBeGreaterThanOrEqual(CALL_RECENT_ACTIVITY_MS / CALL_POLL_FAST_MS);
+      await tick(CALL_POLL_FAST_MS * 5);
+      expect(refresh).toHaveBeenCalledTimes(atWindow);
+    });
+
+    it('speeds up as soon as a new turn arrives', async () => {
+      const { refresh, rerender } = mount({ lastTurnAt: ago(10 * 60_000) });
+      await tick(0);
+      await tick(5000);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      rerender(open({ lastTurnAt: ago(0) }));
+      await tick(CALL_POLL_FAST_MS);
+      expect(refresh).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('makes no requests while the tab is hidden and refreshes at once when it is visible again', async () => {
@@ -84,6 +166,16 @@ describe('useCallPolling', () => {
     const { refresh } = mount();
     await tick(CALL_POLL_SLOW_MS);
     expect(refresh).not.toHaveBeenCalled();
+    act(() => setHidden(false));
+    await tick(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh on a tab switch when no poll was skipped', async () => {
+    const { refresh } = mount();
+    await tick(0);
+    act(() => setHidden(true));
+    await tick(1000); // back before the next slow poll was due
     act(() => setHidden(false));
     await tick(0);
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -118,33 +210,44 @@ describe('useCallPolling', () => {
   });
 
   it('loads an ended call once and never polls it', async () => {
-    const { refresh } = mount({ ended: true, live: true });
+    const { refresh } = mount({ ended: true, live: true, lastTurnAt: ago(0) });
     await tick(0);
     expect(refresh).toHaveBeenCalledTimes(1);
     await tick(CALL_POLL_SLOW_MS * 6);
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it('stops polling when the call ends, after one last load', async () => {
+  it('stops polling when the call ends, without fetching the record again', async () => {
     const { refresh, rerender } = mount({ live: true });
     await tick(0);
     await tick(CALL_POLL_FAST_MS * 2);
     expect(refresh).toHaveBeenCalledTimes(3);
-    rerender({ callId: 'call-1', live: false, ended: true });
+    rerender(open({ live: false, ended: true })); // the poll that returned the ended record was the last load
     await tick(0);
-    expect(refresh).toHaveBeenCalledTimes(4);
+    expect(refresh).toHaveBeenCalledTimes(3);
     await tick(CALL_POLL_SLOW_MS * 3);
-    expect(refresh).toHaveBeenCalledTimes(4);
+    expect(refresh).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not re-fetch an ended call on every tab switch', async () => {
+    const { refresh } = mount({ ended: true });
+    await tick(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    act(() => setHidden(true));
+    await tick(CALL_POLL_SLOW_MS * 2);
+    act(() => setHidden(false));
+    await tick(CALL_POLL_SLOW_MS);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing without a call id and reloads when the id changes', async () => {
     const { refresh, rerender } = mount({ callId: null });
     await tick(CALL_POLL_SLOW_MS * 2);
     expect(refresh).not.toHaveBeenCalled();
-    rerender({ callId: 'call-2', live: false, ended: false });
+    rerender(open({ callId: 'call-2' }));
     await tick(0);
     expect(refresh).toHaveBeenCalledTimes(1);
-    rerender({ callId: 'call-3', live: false, ended: false });
+    rerender(open({ callId: 'call-3' }));
     await tick(0);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
@@ -173,7 +276,7 @@ describe('useCallPolling', () => {
   it('uses the latest refresh function without restarting the schedule', async () => {
     const first = vi.fn(async () => true);
     const second = vi.fn(async () => true);
-    const { rerender } = renderHook(({ fn }: { fn: () => Promise<boolean> }) => useCallPolling(fn, { callId: 'call-1', live: true, ended: false }), {
+    const { rerender } = renderHook(({ fn }: { fn: () => Promise<boolean> }) => useCallPolling(fn, open({ live: true })), {
       initialProps: { fn: first },
     });
     await tick(0);

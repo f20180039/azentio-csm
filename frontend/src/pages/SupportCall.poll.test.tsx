@@ -2,11 +2,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_PROFILE, SAMPLE_ROUTED_CALL } from '../api/mockSupport';
+import { PHONE_RING_TIMEOUT_MS } from '../api/phone';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
-import { CALL_POLL_FAST_MS, CALL_POLL_SLOW_MS } from '../hooks/useCallPolling';
+import { CALL_POLL_FAST_MS, CALL_POLL_SETTLE_MS, CALL_POLL_SLOW_MS } from '../hooks/useCallPolling';
 import { SupportChannel } from '../vocab';
-import { PHONE_RING_TIMEOUT_MS } from './Call';
 import { SupportCall } from './SupportCall';
 
 const h = vi.hoisted(() => ({
@@ -45,9 +45,13 @@ function mount(path: string) {
   );
 }
 
+/** An open call whose turns are all minutes old (the sample's timestamps), so nothing in the record reads as recent. */
 const openCall = (): SupportCallRecord => ({ ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null });
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const calls = () => h.getCall.mock.calls.length;
 const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+/** Outlives the fast interval kept after a live leg ends. */
+const waitSettled = () => tick(CALL_POLL_SETTLE_MS + CALL_POLL_FAST_MS);
 
 beforeEach(() => {
   vi.stubGlobal('MediaStream', class {}); // jsdom has none; the live-speech meter checks `srcObject instanceof MediaStream` on a timer
@@ -87,13 +91,13 @@ describe('SupportCall polling', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     await screen.findByRole('button', { name: 'Reconnect microphone' });
-    await tick(300);
+    await waitSettled();
     before = calls();
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeLessThanOrEqual(before + 1);
   });
 
-  it('polls every second while uploaded audio is being sent', async () => {
+  it('polls every second while uploaded audio is being sent, shows the closing turn within the settle window, then slows down', async () => {
     const live = openCall();
     h.getCall.mockResolvedValue(live);
     let release: ((r: SimAudioResult) => void) | null = null;
@@ -109,12 +113,39 @@ describe('SupportCall polling', () => {
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeGreaterThanOrEqual(before + 4);
 
+    // the voice service writes the last exchange just before it answers simAudio: the record catches up after the upload
+    const closing = { ...live.turns[live.turns.length - 1], seq: live.turns.length + 1, text: 'Anything else I can help with today?' };
+    h.getCall.mockResolvedValue({ ...live, turns: [...live.turns, closing] });
     await act(async () => release!({ call_id: live.id, turns: [] }));
-    await waitFor(() => expect(screen.queryByRole('status', { name: '' })).not.toHaveTextContent(/Sending/));
-    await tick(300);
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+    await tick(CALL_POLL_FAST_MS * 2);
+    expect(screen.getByText(closing.text)).toBeInTheDocument(); // not 10 s later
+
+    await waitSettled();
     before = calls();
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeLessThanOrEqual(before + 1);
+  });
+
+  it('polls fast for an open call opened from the desk whose latest turn is recent (a leg this page did not start)', async () => {
+    const live = openCall();
+    live.turns[live.turns.length - 1].at = ago(5000);
+    h.getCall.mockResolvedValue(live);
+    mount(`/support/calls/${live.id}`);
+    await screen.findByRole('button', { name: 'End call' });
+    const before = calls();
+    await tick(CALL_POLL_FAST_MS * 5);
+    expect(calls()).toBeGreaterThanOrEqual(before + 4);
+  });
+
+  it('polls fast for an open, answered phone call opened directly, whatever the age of its turns', async () => {
+    const live: SupportCallRecord = { ...openCall(), channel: SupportChannel.PHONE };
+    h.getCall.mockResolvedValue(live);
+    mount(`/support/calls/${live.id}`);
+    await screen.findByRole('button', { name: 'End call' });
+    const before = calls();
+    await tick(CALL_POLL_FAST_MS * 5);
+    expect(calls()).toBeGreaterThanOrEqual(before + 4);
   });
 
   it('polls every second after the desk rings a phone, and keeps doing so once the caller answers', async () => {
@@ -143,7 +174,8 @@ describe('SupportCall polling', () => {
     mount('/support/new');
     fireEvent.click(await screen.findByRole('button', { name: 'Call a phone' }));
     await screen.findByText(h.phoneCallId);
-    await tick(PHONE_RING_TIMEOUT_MS + CALL_POLL_FAST_MS);
+    await tick(PHONE_RING_TIMEOUT_MS);
+    await waitSettled();
     const before = calls();
     await tick(CALL_POLL_FAST_MS * 5);
     expect(calls()).toBeLessThanOrEqual(before + 1);
