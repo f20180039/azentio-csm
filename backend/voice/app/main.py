@@ -212,6 +212,7 @@ async def text_turn(body: TextTurnIn) -> dict:
 
 def turn_json(turn: SupportTurn) -> dict:
     return {"reply_text": turn.text, "intents": turn.intents, "intent_source": turn.intent_source, "verified": turn.verified,
+            "locked": turn.locked, "verify_failures": turn.verify_failures,
             "refs": turn.refs, "ended": turn.ended, "model": turn.model, "retrieved": turn.retrieved(),
             "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
 
@@ -301,7 +302,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
                "upload_bytes": heard.upload_bytes}
         if heard.text is None:
             await brain.no_speech(heard.reason)
-            turns.append({**row, "reason": heard.reason, "intents": [], "verified": brain.call.verified, "tool_trace": [], "retrieved": {},
+            turns.append({**row, "reason": heard.reason, "intents": [], "verified": brain.call.verified, "locked": brain.call.locked, "tool_trace": [], "retrieved": {},
                           "reply_text": None, "reply_audio_b64": None, "latency_ms": round((time.monotonic() - started) * 1000)})
             continue
         turn = await support_reply(brain, heard.text)

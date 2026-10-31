@@ -133,6 +133,9 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
                 call.locked = True
             else:
                 call.verify_failures += 1
+                if out.get("attempts_left") == 0:  # the third failure locks; don't wait for a fourth try to find out
+                    call.locked = True
+                    out = {**out, "error": "LOCKED", "note": "Verification is now locked. Share nothing personal; offer a human representative."}
             return out
         case "get_loan_applications":
             return await client.applications(s)

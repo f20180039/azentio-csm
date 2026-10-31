@@ -29,6 +29,8 @@ class SupportTurn:
     intents: list[str] = field(default_factory=list)
     intent_source: str | None = None
     verified: bool = False
+    locked: bool = False
+    verify_failures: int = 0
     refs: list[str] = field(default_factory=list)
     model: str | None = None
     ended: bool = False
@@ -83,6 +85,7 @@ class SupportBrain:
             turn = await self._loop()
             self._messages.append({"role": "assistant", "content": turn.text})
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
+            turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
             await self._record("agent", turn.text, {"tool_trace": [{"name": t.name, "args": t.args, "result_summary": summarise(t.result)}
                                                                    for t in turn.tool_calls],
                                                     "retrieved": {t.name: _trim(t.result) for t in turn.tool_calls},

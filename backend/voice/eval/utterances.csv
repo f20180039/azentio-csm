@@ -1,0 +1,61 @@
+id,text,intents,notes
+U001,"I applied for a personal loan last week; can you check the status?",LOAN_APPLICATION,application stage
+U002,"Has my home loan application moved to credit review yet?",LOAN_APPLICATION,application stage
+U003,"What is the next step for application LA-24001?",LOAN_APPLICATION,application reference
+U004,"I submitted my vehicle loan papers on Monday, any update?",LOAN_APPLICATION,application update
+U005,"Is my application still waiting for document verification?",LOAN_APPLICATION,stage phrasing
+U006,"When is my next EMI due?",REPAYMENT,brief canonical phrasing
+U007,"How much do I need to pay next month?",REPAYMENT,amount phrasing
+U008,"Tell me my next loan instalment please.",REPAYMENT,instalment phrasing
+U009,"What's the due date for my personal loan?",REPAYMENT,due date phrasing
+U010,"EMI kab hai for my vehicle loan?",REPAYMENT,light code mixing
+U011,"What is my savings account balance?",ACCOUNT,account balance
+U012,"Can you read out my last three transactions?",ACCOUNT,transaction list
+U013,"What happened to transfer TXN-88213?",ACCOUNT,transaction reference
+U014,"Was my card payment of 2300 rupees posted?",ACCOUNT,transaction status
+U015,"Please check my account details after verifying me.",ACCOUNT,verification reminder
+U016,"Can you tell me the status of service request SR-40102?",SERVICE_REQUEST,existing reference
+U017,"I need a copy of my loan statement.",SERVICE_REQUEST,statement request
+U018,"Please raise a repayment schedule request.",SERVICE_REQUEST,schedule request
+U019,"Has my address change request been completed?",SERVICE_REQUEST,request status
+U020,"I submitted SR-40217 last week; any update?",SERVICE_REQUEST,synthetic reference
+U021,"What documents do I need for a vehicle loan?",PRODUCT_INFO,FAQ retrieval
+U022,"How do I stop the NACH auto debit?",PRODUCT_INFO,FAQ retrieval
+U023,"What are the branch hours on Saturday?",PRODUCT_INFO,FAQ retrieval
+U024,"Is there a grace period for this insurance premium?",PRODUCT_INFO,FAQ retrieval
+U025,"How do I foreclose a loan?",PRODUCT_INFO,FAQ retrieval
+U026,"I want to complain about an incorrect loan charge.",COMPLAINT,incorrect charge
+U027,"I didn't make this card transaction, please help.",COMPLAINT,unauthorised debit
+U028,"My transfer failed and the money hasn't returned.",COMPLAINT,failed transfer concern
+U029,"The service at the branch was really poor.",COMPLAINT,service experience
+U030,"Please escalate my complaint about this debit.",COMPLAINT,escalation request
+U031,"Can you check whether policy HP-77001 is active?",INSURANCE,policy status
+U032,"What is the status of claim CLM-7001?",INSURANCE,claim reference
+U033,"When is my insurance premium due?",INSURANCE,premium due date
+U034,"Which documents are needed for a motor claim?",INSURANCE,claim requirements
+U035,"Has my policy lapsed or is the cover still active?",INSURANCE,coverage status
+U036,"My registered mobile is 9876500002.",IDENTITY,phone digits
+U037,"My date of birth is 3 November 1985.",IDENTITY,natural date
+U038,"It's 03 11 1985, that's my date of birth.",IDENTITY,numeric date
+U039,"Registered number is nine eight seven six five zero zero zero zero two.",IDENTITY,spoken digits
+U040,"DOB third November nineteen eighty-five and my phone ends zero zero zero two.",IDENTITY,spoken date and partial number
+U041,"Can I speak to a person, please?",HUMAN_AGENT,direct handoff
+U042,"Please connect me to a human agent.",HUMAN_AGENT,direct handoff
+U043,"I need to talk to your supervisor about this charge.",HUMAN_AGENT,escalation
+U044,"Get me a customer service representative.",HUMAN_AGENT,alternate wording
+U045,"Hi, can someone call me back about complaint CMP-50011?",CHITCHAT|HUMAN_AGENT,reference and handoff plus greeting
+U046,"Hi, what's the weather like in Bangalore today?",CHITCHAT|UNSUPPORTED,out of banking scope plus greeting
+U047,"Give me stock tips for the next few days.",UNSUPPORTED,financial advice outside scope
+U048,"Transfer fifty thousand to my friend's account right now.",UNSUPPORTED,unauthorised action
+U049,"Can you book me a flight to Dubai?",UNSUPPORTED,travel request
+U050,"Tell me the score of yesterday's cricket match.",UNSUPPORTED,unrelated request
+U051,"Hi, I have an issue with the thing from last time.",CHITCHAT|UNCLEAR,clarification needed plus greeting
+U052,"It didn't work, can you fix it?",UNCLEAR,missing referent
+U053,"That amount looks wrong somehow.",UNCLEAR,missing transaction context
+U054,"I need help with my account thing.",UNCLEAR,ambiguous service
+U055,"The request is not right, you know what I mean.",UNCLEAR,underspecified
+U056,"Hi, can you check when my next EMI is due?",CHITCHAT|REPAYMENT,multi intent greeting and repayment
+U057,"I need a statement and also want to report an incorrect charge.",SERVICE_REQUEST|COMPLAINT,multi intent request and complaint
+U058,"Thanks, can you also tell me if claim CLM-7001 is under review?",CHITCHAT|INSURANCE,multi intent gratitude and claim
+U059,"My number is 9876500002 and I need the status of SR-40102.",IDENTITY|SERVICE_REQUEST,multi intent verification and request
+U060,"The transfer failed; please log a complaint and connect me to an agent.",COMPLAINT|HUMAN_AGENT,multi intent complaint and handoff
