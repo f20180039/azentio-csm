@@ -9,6 +9,7 @@ from app.config import Settings
 from app.simulator_client import SimulatorClient
 from app.support_brain import UNCLEAR_BEFORE_ESCALATION, SupportBrain, op_outcome
 from app.support_tools import CallSession
+from app.vocab import IntentSource
 from tests.test_brain import Scripted, text, tool_call
 from tests.test_support_brain import CALL, Found, make
 from tests.test_support_tools import FakeSimulator
@@ -20,12 +21,13 @@ def escalations(sim) -> list[dict]:
     return [json.loads(r.content) for r in sim.requests if r.url.path == "/v1/csm/escalations"]
 
 
-def classifier(*per_turn: list[str]):
-    """Returns the scripted intents for each customer turn, in order; no-speech turns never reach it."""
+def classifier(*per_turn: list[str], source: IntentSource = IntentSource.LLM):
+    """Returns the scripted intents for each customer turn, in order; no-speech turns never reach it.
+    The model classifier is the default: only its UNCLEAR verdicts count towards the misunderstanding hand-over."""
     queue = list(per_turn)
 
     async def classify(t, history):
-        return Found(queue.pop(0), "rules")
+        return Found(queue.pop(0), source)
     return classify
 
 
@@ -97,6 +99,31 @@ def test_three_unclear_turns_escalate_with_repeated_misunderstanding():
     assert "ESC-70200" in json.dumps([m for m in llm.seen[-1] if m["role"] == "tool"])
     assert turns[2].text.startswith("I'm sorry I couldn't follow") and "seven zero two zero zero" in turns[2].text
     assert turns[2].intents == ["UNCLEAR"] and turns[2].verified is False
+
+
+def test_rules_classified_unclear_turns_do_not_count_as_misunderstanding():
+    """When the model classifier is unavailable, the rule fallback labels short confirmations ('the first one', 'yes please',
+    'okay') UNCLEAR. Those are not misunderstandings: a healthy call must not be handed over because of them."""
+    llm = Scripted(text("The personal loan, then. Your next instalment is due on the fifth."), text("Noted."), text("Anything else?"))
+    brain, sim, _ = make(llm, classifier(*[["UNCLEAR"]] * UNCLEAR_BEFORE_ESCALATION, source=IntentSource.RULES))
+    turns = [asyncio.run(brain.reply(t)) for t in ("the first one", "yes please", "okay")]
+    assert escalations(sim) == [] and brain.call.refs == [] and brain.call.unclear_streak == 0
+    assert all(t.tool_calls == [] and t.intents == ["UNCLEAR"] and t.intent_source == IntentSource.RULES for t in turns)
+    assert turns[2].text == "Anything else?"
+
+
+def test_a_turn_that_reached_a_tool_was_understood_and_breaks_the_streak():
+    """Three model-classified UNCLEAR turns, but the agent answered one of them with a bank tool: it understood that turn,
+    so the run of misunderstandings is broken and nobody is handed over."""
+    llm = Scripted(text("Sorry, which product do you mean?"),
+                   tool_call("search_faq", {"query": "loan statement"}), text("You can ask me for a statement copy."),
+                   text("I'm still not sure I follow."))
+    brain, sim, _ = make(llm, classifier(*[["UNCLEAR"]] * UNCLEAR_BEFORE_ESCALATION))
+    turns = [asyncio.run(brain.reply(t)) for t in ("the thing", "that thing from last time", "you know, the thing")]
+    assert escalations(sim) == [] and brain.call.refs == []
+    assert [t.name for t in turns[1].tool_calls] == ["search_faq"] and turns[1].intent_source == IntentSource.LLM
+    assert turns[2].tool_calls == [] and brain.call.unclear_streak == 1  # only the turn after the tool counts
+    assert turns[2].text == "I'm still not sure I follow."
 
 
 def test_misunderstanding_streak_ignores_no_speech_and_resets_on_understanding():

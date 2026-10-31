@@ -17,7 +17,7 @@ from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits, script_language
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
+from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, IntentSource, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
                     ToolError, TurnRole, VerifyField)
 
 MAX_TOOL_ROUNDS = 6
@@ -141,6 +141,13 @@ def recover_text_tool_call(content: str | None) -> dict | None:
             "function": {"name": m.group(1), "arguments": json.dumps(args if isinstance(args, dict) else {})}}
 
 
+def _misunderstood(turn: SupportTurn) -> bool:
+    """A turn counts towards the misunderstanding hand-over only when the model classifier itself found nothing but UNCLEAR
+    and the agent reached no bank tool. The rule fallback (used when the model classifier is down) labels short
+    confirmations such as 'yes please' or 'the first one' UNCLEAR, and a turn the agent answered with a tool was understood."""
+    return turn.intents == [Intent.UNCLEAR] and turn.intent_source == IntentSource.LLM and not turn.tool_calls
+
+
 def outcome_for(refs: list[str]) -> Outcome:
     for prefix, outcome in OUTCOME_BY_PREFIX:
         if any(r.startswith(prefix) for r in refs):
@@ -178,7 +185,7 @@ class SupportBrain:
             locked_before = self.call.locked
             turn = await self._loop()
             turn.intents, turn.intent_source = await intents  # usually done long before the reply; the backstops need them
-            self.call.unclear_streak = self.call.unclear_streak + 1 if turn.intents == [Intent.UNCLEAR] else 0
+            self.call.unclear_streak = self.call.unclear_streak + 1 if _misunderstood(turn) else 0
             acted = await self._act_on_fraud_if_missed(user_text, turn)
             if await self._escalate_if_stuck(turn, locked_before=locked_before) or acted:
                 again = await self._loop()  # the reply the caller hears now carries the references raised, or the failure
