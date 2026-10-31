@@ -6,7 +6,7 @@ from uuid import UUID
 from pathlib import Path
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Response, WebSocket
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
@@ -34,6 +34,7 @@ class State:
         self.support: dict[str, SupportBrain] = {}
         self.sim: SimulatorClient | None = None
         self.support_calls: SupportCallsApi | None = None
+        self.stt_transport: httpx.AsyncBaseTransport | None = None
         self.webrtc = None
         self.live_calls: dict[str, str | None] = {}
         self.phone_pending: dict[str, tuple[str, float]] = {}
@@ -248,6 +249,70 @@ async def support_text_turn(body: SupportTextTurnIn) -> dict:
     if brain is None:
         raise HTTPException(404, "unknown call")
     return turn_json(await support_reply(brain, body.text.strip()))
+
+
+MAX_SIM_FILES = 20
+MAX_SIM_BYTES = 10 * 1024 * 1024
+
+
+async def spoken_reply(text: str) -> str | None:
+    """The reply as base64 MP3 in the same voice as live calls; None if the read-aloud service is unreachable."""
+    import base64
+
+    import edge_tts
+    try:
+        audio = bytearray()
+        async for chunk in edge_tts.Communicate(text, state.settings().tts_voice).stream():
+            if chunk["type"] == "audio":
+                audio.extend(chunk["data"])
+        return base64.b64encode(bytes(audio)).decode() if audio else None
+    except Exception as e:
+        logger.warning(f"reply audio not generated: {e!r}")
+        return None
+
+
+@app.post("/sim/audio")
+async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = Form(None), speak: bool = Form(True)) -> dict:
+    """Recorded-audio simulation: one file per customer turn, in order, through the same speech front end and brain as live calls."""
+    from .speech_file import transcribe_file
+
+    if not files or len(files) > MAX_SIM_FILES:
+        raise HTTPException(400, f"send 1 to {MAX_SIM_FILES} audio files")
+    if call_id is not None:
+        try:
+            call_id = str(UUID(call_id))
+        except ValueError:
+            raise HTTPException(400, "call_id must be a UUID") from None
+        if call_id not in state.support:
+            raise HTTPException(404, "unknown call")
+    brain = await state.new_support_brain("SIM_AUDIO", call_id)
+    s = state.settings()
+    turns = []
+    for f in files:
+        data = await f.read()
+        if len(data) > MAX_SIM_BYTES:
+            raise HTTPException(413, f"{f.filename} is larger than 10 MB")
+        started = time.monotonic()
+        try:
+            heard = await transcribe_file(data, api_key=s.groq_api_key, model=s.stt_model, transport=state.stt_transport)
+        except (httpx.HTTPError, ValueError, OSError) as e:  # an unreadable file, or speech-to-text down
+            raise HTTPException(422 if isinstance(e, (ValueError, OSError)) else 502, f"{f.filename}: could not transcribe ({type(e).__name__})") from e
+        row = {"file": f.filename, "transcript": heard.text, "no_speech": heard.text is None, "speech_secs": round(heard.speech_secs, 2),
+               "upload_bytes": heard.upload_bytes}
+        if heard.text is None:
+            await brain.no_speech(heard.reason)
+            turns.append({**row, "reason": heard.reason, "intents": [], "verified": brain.call.verified, "tool_trace": [], "retrieved": {},
+                          "reply_text": None, "reply_audio_b64": None, "latency_ms": round((time.monotonic() - started) * 1000)})
+            continue
+        turn = await support_reply(brain, heard.text)
+        audio = await spoken_reply(turn.text) if speak and turn.text else None
+        turns.append({**row, **turn_json(turn), "reply_audio_b64": audio, "latency_ms": round((time.monotonic() - started) * 1000)})
+        if turn.ended:
+            break
+    outcome = await brain.finish() if brain.ended else None
+    if outcome:
+        state.support.pop(brain.call.call_id, None)
+    return {"call_id": brain.call.call_id, "turns": turns, "ended": brain.ended, "outcome": outcome}
 
 
 @app.post("/support/end")

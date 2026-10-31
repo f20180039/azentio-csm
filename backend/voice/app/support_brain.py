@@ -92,6 +92,11 @@ class SupportBrain:
             await self._patch(customer_seq, {**self._verification(), "intents": turn.intents, "intent_source": turn.intent_source})
             return turn
 
+    async def no_speech(self, reason: str) -> None:
+        """A customer turn with nothing to answer (silence, or noise the model turned into words): recorded, not replied to."""
+        async with self._lock:
+            await self._record("customer", "", {**self._verification(), "no_speech": True, "reason": reason, "intents": []})
+
     async def finish(self, outcome: str | None = None) -> str:
         outcome = outcome or outcome_for(self.call.refs)
         if self._calls:
