@@ -36,7 +36,9 @@ class State:
 
     def settings(self) -> Settings:
         if self._settings is None:
-            env_file = Path(__file__).resolve().parents[2] / ".env"
+            env_file = Path(__file__).resolve().parents[3] / ".env"
+            if not env_file.exists():
+                env_file = Path(__file__).resolve().parents[2] / ".env"
             self._settings = load_settings(env_file if env_file.exists() else None)
         return self._settings
 

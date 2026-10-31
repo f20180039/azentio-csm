@@ -18,7 +18,7 @@ services:
       retries: 20
 
   agent:
-    build: ./agent
+    build: ./backend/agent
     env_file:
       - path: .env
         required: false
@@ -28,7 +28,7 @@ services:
       - "8000:8000"
 
   api:
-    build: ./api
+    build: ./backend/api
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,7 +46,7 @@ services:
       - "8080:8080"
 
   voice:
-    build: ./voice
+    build: ./backend/voice
     env_file:
       - path: .env
         required: false
@@ -60,7 +60,7 @@ services:
 
   web:
     build:
-      context: ./web
+      context: ./frontend
       args:
         VITE_API_BASE: http://localhost:8080/api/v1
         VITE_VOICE_BASE: http://localhost:7861

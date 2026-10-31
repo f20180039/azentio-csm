@@ -74,7 +74,10 @@ def main() -> int:
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--findings", type=Path)
     src.add_argument("--api")
-    ap.add_argument("--samples", type=Path, default=Path(__file__).resolve().parents[2] / "samples")
+    _candidate_samples = Path(__file__).resolve().parents[2] / "samples"
+    if not _candidate_samples.exists():
+        _candidate_samples = Path(__file__).resolve().parents[3] / "samples"
+    ap.add_argument("--samples", type=Path, default=_candidate_samples)
     ap.add_argument("--case-type", default="demo")
     ap.add_argument("--user", default="analyst:analyst")
     args = ap.parse_args()

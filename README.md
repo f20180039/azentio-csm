@@ -2,7 +2,7 @@
 
 Reusable scaffolding for document-driven review workflows. Documents come in, structured data comes out, a configurable rules engine scores each case, an LLM explains the findings with quotes it must prove, and a human reviewer decides. Every step lands in a tamper-evident audit log.
 
-Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [api/](api/README.md), [agent/](agent/README.md), [voice/](voice/README.md), [web/](web/README.md).
+Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
 **Renewal Desk** (problem #05, CSM voice agent) is the topic built on top: an insurance renewal call that an analyst starts from the Renewals queue and the customer takes in the browser. The agent talks, but the API decides what it may offer.
 

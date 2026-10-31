@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-SEED_SQL = Path(__file__).resolve().parents[2] / "api/src/main/resources/db/migration/R__renewal_seed.sql"
+_candidate_seed = Path(__file__).resolve().parents[2] / "api/src/main/resources/db/migration/R__renewal_seed.sql"
+if not _candidate_seed.exists():
+    _candidate_seed = Path(__file__).resolve().parents[3] / "backend/api/src/main/resources/db/migration/R__renewal_seed.sql"
+if not _candidate_seed.exists():
+    _candidate_seed = Path(__file__).resolve().parents[3] / "api/src/main/resources/db/migration/R__renewal_seed.sql"
+SEED_SQL = _candidate_seed
 _ROW = re.compile(r"VALUES \('([^']+)', '((?:[^']|'')*)', '(\d{4}-\d{2}-\d{2})', '\d+', '(?:[^']|'')*', \d+, '[^']+', \d+, (\d+),")
 
 RENEWED, HANDED_OFF = "RENEWAL_PENDING_PAYMENT", "HANDED_OFF"

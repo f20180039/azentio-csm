@@ -248,7 +248,9 @@ async def main(argv: list[str] | None = None) -> int:
     unknown = set(names) - set(PERSONAS)
     if unknown:
         raise SystemExit(f"unknown personas: {sorted(unknown)}")
-    env = Path(__file__).resolve().parents[2] / ".env"
+    env = Path(__file__).resolve().parents[3] / ".env"
+    if not env.exists():
+        env = Path(__file__).resolve().parents[2] / ".env"
     settings = load_settings(env if env.exists() else None)
     if not settings.groq_api_key:
         raise SystemExit("GROQ_API_KEY is not set")

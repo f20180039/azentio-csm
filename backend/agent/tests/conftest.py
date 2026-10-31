@@ -9,7 +9,10 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("LLM_PROVIDER", "mock")
 os.environ.setdefault("LLM_FALLBACK", "mock")
 
-SAMPLES = ROOT.parent / "samples"
+_candidate_samples = ROOT.parent / "samples"
+if not _candidate_samples.exists():
+    _candidate_samples = ROOT.parent.parent / "samples"
+SAMPLES = _candidate_samples
 
 
 @pytest.fixture(scope="session")
