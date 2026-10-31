@@ -58,7 +58,7 @@ def patch_meta(call_id: UUID, seq: int, patch: Any = Body(None), _: User = Depen
 
 
 @router.post(ApiPath.SUPPORT_END)
-def end(call_id: UUID, body: EndRequest | None = None, user: User = Depends(voice), s: Services = Depends(services)):
+def end(call_id: UUID, body: EndRequest | None = None, user: User = Depends(staff_or_voice), s: Services = Depends(services)):
     return s.support.end(str(call_id), parse(Outcome, "outcome", body.outcome if body else None), user.username)
 
 

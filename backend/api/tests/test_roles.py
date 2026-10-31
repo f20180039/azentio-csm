@@ -24,11 +24,15 @@ def test_only_voice_writes_support_calls(client):
         assert client.post(f"/api/v1/support/calls/{cid}/turns", json={"role": "agent", "text": "x"},
                            headers=who).status_code == 403
         assert client.patch(f"/api/v1/support/calls/{cid}/turns/1/meta", json={}, headers=who).status_code == 403
-        assert client.post(f"/api/v1/support/calls/{cid}/end", json={"outcome": "RESOLVED"},
-                           headers=who).status_code == 403
         assert client.get(f"/api/v1/support/calls/{cid}", headers=who).status_code == 200
         assert client.get("/api/v1/support/calls", headers=who).status_code == 200
     assert client.get("/api/v1/support/calls").status_code == 401
+
+
+def test_staff_and_voice_can_end_support_calls(client):
+    for who in ALL_STAFF:
+        cid = client.post("/api/v1/support/calls", json={"channel": "VOICE"}, headers=VOICE).json()["id"]
+        assert client.post(f"/api/v1/support/calls/{cid}/end", json={"outcome": "RESOLVED"}, headers=who).status_code == 200
 
 
 @pytest.mark.parametrize("method,tail,body", [
