@@ -116,3 +116,18 @@ def test_prompt_carries_the_rules_judges_check():
     p = support_prompt()
     for must in ("verify_customer", "route_unsupported", "clarifying question", "search_faq", "NOT_YOUR_RECORD", "never restart"):
         assert must.lower() in p.lower()
+
+
+def test_window_keeps_recent_turns_whole_and_shortens_old_tool_results():
+    from app.support_brain import window
+    msgs = [{"role": "system", "content": "S"}]
+    for n in range(10):
+        msgs += [{"role": "user", "content": f"u{n}"},
+                 {"role": "assistant", "content": None, "tool_calls": [{"id": f"c{n}", "type": "function", "function": {"name": "get_loans", "arguments": "{}"}}]},
+                 {"role": "tool", "tool_call_id": f"c{n}", "content": "x" * 2000},
+                 {"role": "assistant", "content": f"a{n}"}]
+    w = window(msgs, turns=3)
+    assert w[0]["content"] == "S" and w[1] == {"role": "user", "content": "u7"}  # cut at a caller message
+    tools = [m for m in w if m["role"] == "tool"]
+    assert [len(t["content"]) for t in tools[:-1]] == [600 + len("…(shortened)")] * 2 and len(tools[-1]["content"]) == 2000
+    assert all(any(t.get("tool_call_id") == c["id"] for t in tools) for m in w for c in m.get("tool_calls") or [])

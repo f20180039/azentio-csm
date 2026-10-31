@@ -27,7 +27,7 @@ def test_anthropic_key_never_loaded(tmp_path, monkeypatch):
 def test_defaults(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     s = load_settings(None)
-    assert s.llm_chain == ()
+    assert [l.name for l in s.llm_chain] == ["ollama:llama3.2"]  # no cloud keys: only the local fallback
     assert s.api_base == "http://localhost:8080/api/v1"
     assert s.groq_api_key == ""
 
@@ -37,8 +37,8 @@ def test_default_chain_from_env_file(tmp_path):
     env_file.write_text("GROQ_API_KEY=g\nGEMINI_API_KEY=ge\nMISTRAL_API_KEY=mi\nGEMINI_MODEL=gemini-x\n")
     s = load_settings(env_file)
     assert [l.name for l in s.llm_chain] == [
-        "groq:openai/gpt-oss-120b", "groq:openai/gpt-oss-20b", "gemini:gemini-x", "mistral:mistral-small-latest"]
-    assert [l.api_key for l in s.llm_chain] == ["g", "g", "ge", "mi"]
+        "groq:openai/gpt-oss-120b", "gemini:gemini-x", "groq:openai/gpt-oss-20b", "mistral:mistral-small-latest", "ollama:llama3.2"]
+    assert [l.api_key for l in s.llm_chain] == ["g", "ge", "g", "mi", "local"]
 
 
 def test_chain_override_and_anthropic_rejected(tmp_path, monkeypatch):

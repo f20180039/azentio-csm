@@ -1,4 +1,5 @@
 """Ordered chain of free OpenAI-compatible models: the first link not cooling down answers."""
+import os
 
 import asyncio
 import hashlib
@@ -26,6 +27,7 @@ PROVIDERS = {
     "groq": "https://api.groq.com/openai/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
     "mistral": "https://api.mistral.ai/v1",
+    "ollama": os.environ.get("OLLAMA_OPENAI_BASE", "http://localhost:11434/v1"),  # local, no key, no internet
 }
 SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator"
 TIMEOUT_SECS = 30.0
@@ -75,8 +77,8 @@ class Link:
 
 def default_chain_spec(gemini_model: str, mistral_model: str) -> str:
     return (
-        "groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,"
-        f"gemini:{gemini_model or 'gemini-2.5-flash'},mistral:{mistral_model or 'mistral-small-latest'}"
+        f"groq:openai/gpt-oss-120b,gemini:{gemini_model or 'gemini-3-flash-preview'},groq:openai/gpt-oss-20b,"
+        f"mistral:{mistral_model or 'mistral-small-latest'},ollama:llama3.2"
     )
 
 
@@ -350,6 +352,10 @@ class _MistralLink(_Shaped, MistralLLMService):
     _chain_provider = "mistral"
 
 
+class _OllamaLink(_Shaped, OpenAILLMService):
+    _chain_provider = "ollama"
+
+
 def build_live_llm(link: Link, system_instruction: str) -> LLMService:
     extra = {"reasoning_effort": link.reasoning_effort} if link.reasoning_effort else {}
     if link.provider == "groq":
@@ -357,6 +363,9 @@ def build_live_llm(link: Link, system_instruction: str) -> LLMService:
             model=link.model, system_instruction=system_instruction, extra=extra))
     elif link.provider == "gemini":
         llm = _GeminiLink(api_key=link.api_key, base_url=link.base_url, settings=_GeminiLink.Settings(
+            model=link.model, system_instruction=system_instruction))
+    elif link.provider == "ollama":
+        llm = _OllamaLink(api_key=link.api_key, base_url=link.base_url, settings=_OllamaLink.Settings(
             model=link.model, system_instruction=system_instruction))
     else:
         llm = _MistralLink(api_key=link.api_key, settings=_MistralLink.Settings(

@@ -17,6 +17,8 @@ from .vocab import MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
 RETRIEVED_LIMIT = 4000  # characters of a tool result kept for the panel
+HISTORY_TURNS = 6  # caller turns of history sent to the model (free tiers cap tokens per minute)
+OLD_TOOL_RESULT_CHARS = 600  # tool results from earlier turns are shortened; the current turn's stay whole
 
 Classifier = Callable[[str, list[dict]], Awaitable[object]]
 
@@ -56,6 +58,22 @@ def summarise(result: dict) -> str:
 def _trim(result: dict) -> dict:
     raw = json.dumps(result)
     return result if len(raw) <= RETRIEVED_LIMIT else {"truncated": raw[:RETRIEVED_LIMIT]}
+
+
+def window(messages: list[dict], turns: int = HISTORY_TURNS) -> list[dict]:
+    """The system prompt plus the last `turns` caller turns, cut only at a caller message so tool calls keep their results.
+    Tool results before the current caller turn are shortened: the agent already used them, and they cost tokens."""
+    users = [i for i, m in enumerate(messages) if m["role"] == "user"]
+    if not users:
+        return messages
+    start = users[-turns] if len(users) > turns else 1
+    current = users[-1]
+    out = [messages[0]]
+    for i, m in enumerate(messages[start:], start):
+        if i < current and m["role"] == "tool" and len(m.get("content") or "") > OLD_TOOL_RESULT_CHARS:
+            m = {**m, "content": m["content"][:OLD_TOOL_RESULT_CHARS] + "…(shortened)"}
+        out.append(m)
+    return out
 
 
 def outcome_for(refs: list[str]) -> Outcome:
@@ -123,7 +141,7 @@ class SupportBrain:
         traces: list[ToolTrace] = []
         model = None
         for _ in range(MAX_TOOL_ROUNDS):
-            msg = await self._llm.complete(self._messages, SUPPORT_TOOL_SCHEMAS)
+            msg = await self._llm.complete(window(self._messages), SUPPORT_TOOL_SCHEMAS)
             model = msg.get("model", model)
             calls = msg.get("tool_calls") or []
             if not calls:
