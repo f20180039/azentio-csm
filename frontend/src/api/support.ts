@@ -1,5 +1,5 @@
 import { ApiError, toApiError } from './errors';
-import { get, MOCK_MODE, postJson } from './client';
+import { get, MOCK_MODE, patchJson, postJson } from './client';
 import { VOICE_BASE } from './renewals';
 import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
@@ -7,17 +7,22 @@ import { CoreApiPath } from './paths/core';
 import { SimulatorPath } from './paths/simulator';
 import { VoicePath } from './paths/voice';
 import {
+  FeedbackVerdict,
   Intent,
   IntentSource,
   LegacyIntent,
+  LessonStatus,
+  RatingSource,
   RecordKind,
+  RefPrefix,
+  ReviewReason,
   SupportChannel,
   SupportOutcome,
   TurnRole,
   Verification,
 } from '../vocab';
 
-export { RecordKind, SupportChannel, SupportOutcome, Verification };
+export { FeedbackVerdict, LessonStatus, RatingSource, RecordKind, ReviewReason, SupportChannel, SupportOutcome, Verification };
 
 export const SIMULATOR_BASE: string =
   (import.meta.env.VITE_SIMULATOR_BASE as string | undefined) ?? 'http://localhost:8090/v1';
@@ -45,13 +50,59 @@ export interface TurnMeta {
   [key: string]: unknown;
 }
 
+export interface CallRating {
+  score: number;
+  comment: string | null;
+  source: RatingSource;
+  at: string;
+}
+
+export interface TurnFeedback {
+  seq: number;
+  verdict: FeedbackVerdict;
+  correction: string | null;
+  author: string;
+  at: string;
+}
+
 export interface SupportTurn {
   seq: number;
   role: TurnRole;
   text: string;
   at: string;
   meta: TurnMeta;
+  feedback?: TurnFeedback[];
 }
+
+export interface ReviewItem {
+  id: string;
+  startedAt: string;
+  outcome: SupportOutcome | null;
+  /** The call's rating score, if any (the API may send the rating object; normalised to its score). */
+  rating: number | null;
+  reasons: ReviewReason[];
+  resolved: boolean;
+}
+
+export interface Lesson {
+  id: string;
+  text: string;
+  status: LessonStatus;
+  sourceCallId: string | null;
+  sourceSeq: number | null;
+  author: string;
+  approvedBy: string | null;
+  createdAt: string;
+}
+
+export interface Insights {
+  ratings: { count: number; average: number | null; distribution: Record<string, number> };
+  lowRated: number;
+  openReviews: number;
+  badFeedback: number;
+  activeLessons: number;
+}
+
 
 export interface SupportCall {
   id: string;
@@ -61,6 +112,7 @@ export interface SupportCall {
   outcome: SupportOutcome | null;
   verified: boolean;
   turns: SupportTurn[];
+  rating?: CallRating | null;
 }
 
 export interface SupportCallSummary {
@@ -72,6 +124,7 @@ export interface SupportCallSummary {
   verified: boolean;
   turnCount: number;
   intents: string[];
+  rating?: CallRating | null;
 }
 
 export interface SimTurn {
@@ -125,8 +178,14 @@ function normaliseCall(c: SupportCall): SupportCall {
     ...c,
     endedAt: c.endedAt ?? null,
     outcome: c.outcome ?? null,
-    turns: (Array.isArray(c.turns) ? c.turns : []).map((t) => ({ ...t, meta: t.meta ?? {} })),
+    rating: c.rating ?? null,
+    turns: (Array.isArray(c.turns) ? c.turns : []).map((t) => ({ ...t, meta: t.meta ?? {}, feedback: t.feedback ?? [] })),
   };
+}
+
+function normaliseReview(r: Omit<ReviewItem, 'rating'> & { rating?: number | { score?: number } | null }): ReviewItem {
+  const rating = typeof r.rating === 'number' ? r.rating : r.rating?.score ?? null;
+  return { ...r, outcome: r.outcome ?? null, rating, reasons: r.reasons ?? [], resolved: !!r.resolved };
 }
 
 const liveSupport = {
@@ -142,11 +201,47 @@ const liveSupport = {
     const params = new URLSearchParams({ limit: '50' });
     if (outcome) params.set('outcome', outcome);
     const r = await get<{ items?: SupportCallSummary[] }>(`${CoreApiPath.SUPPORT_CALLS}?${params}`);
-    return (r?.items ?? []).map((c) => ({ ...c, intents: c.intents ?? [] }));
+    return (r?.items ?? []).map((c) => ({ ...c, intents: c.intents ?? [], rating: c.rating ?? null }));
   },
 
   endCall(id: string, outcome: SupportOutcome): Promise<unknown> {
     return postJson(CoreApiPath.supportCallEnd(id), { outcome });
+  },
+
+  /* ---------- ratings, feedback, review and lessons ---------- */
+
+  rateCall(id: string, score: number, comment: string | null, source: RatingSource = RatingSource.PANEL): Promise<CallRating> {
+    return postJson(CoreApiPath.supportCallRating(id), { score, comment, source });
+  },
+
+  sendFeedback(id: string, seq: number, verdict: FeedbackVerdict, correction: string | null): Promise<TurnFeedback> {
+    return postJson(CoreApiPath.turnFeedback(id, seq), { verdict, correction });
+  },
+
+  async listReview(): Promise<ReviewItem[]> {
+    const r = await get<{ items?: Parameters<typeof normaliseReview>[0][] }>(`${CoreApiPath.SUPPORT_REVIEW}?limit=50`);
+    return (r?.items ?? []).map(normaliseReview);
+  },
+
+  resolveReview(id: string, note: string): Promise<unknown> {
+    return postJson(CoreApiPath.reviewResolve(id), { note });
+  },
+
+  async listLessons(activeOnly = false): Promise<Lesson[]> {
+    const r = await get<{ items?: Lesson[] }>(activeOnly ? `${CoreApiPath.SUPPORT_LESSONS}?active=true` : CoreApiPath.SUPPORT_LESSONS);
+    return r?.items ?? [];
+  },
+
+  proposeLesson(text: string, sourceCallId: string | null = null, sourceSeq: number | null = null): Promise<Lesson> {
+    return postJson(CoreApiPath.SUPPORT_LESSONS, { text, sourceCallId, sourceSeq });
+  },
+
+  setLessonStatus(id: string, status: typeof LessonStatus.ACTIVE | typeof LessonStatus.RETIRED): Promise<Lesson> {
+    return patchJson(CoreApiPath.lesson(id), { status });
+  },
+
+  getInsights(): Promise<Insights> {
+    return get<Insights>(CoreApiPath.SUPPORT_INSIGHTS);
   },
 
   /* ---------- voice service ---------- */
@@ -269,6 +364,16 @@ export const endCall = (id: string, outcome: SupportOutcome) => api.endCall(id, 
 export const simAudio = (files: File[], callId?: string) => api.simAudio(files, callId);
 export const supportOffer = (body: OfferBody) => api.supportOffer(body);
 export const listRecords = (kind: RecordKind) => api.listRecords(kind);
+export const rateCall = (id: string, score: number, comment: string | null) => api.rateCall(id, score, comment, RatingSource.PANEL);
+export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, correction: string | null) =>
+  api.sendFeedback(id, seq, verdict, correction);
+export const listReview = () => api.listReview();
+export const resolveReview = (id: string, note: string) => api.resolveReview(id, note);
+export const listLessons = (activeOnly?: boolean) => api.listLessons(activeOnly);
+export const proposeLesson = (text: string, sourceCallId?: string | null, sourceSeq?: number | null) =>
+  api.proposeLesson(text, sourceCallId ?? null, sourceSeq ?? null);
+export const setLessonStatus = (id: string, status: typeof LessonStatus.ACTIVE | typeof LessonStatus.RETIRED) => api.setLessonStatus(id, status);
+export const getInsights = () => api.getInsights();
 export const connectSupportVoice = (callId: string | undefined, audio: HTMLAudioElement | null, h: SupportVoiceHandlers) =>
   api.connectSupportVoice(callId, audio, h);
 
@@ -346,10 +451,10 @@ export function verificationOf(call: Pick<SupportCall, 'turns' | 'verified'>): {
 /** The outcome an operator most likely wants, from the references the agent created. */
 export function suggestOutcome(call: Pick<SupportCall, 'turns'>): SupportOutcome {
   const refs = call.turns.flatMap((t) => t.meta.refs ?? []);
-  if (refs.some((r) => r.startsWith('ESC-'))) return SupportOutcome.ESCALATED;
-  if (refs.some((r) => r.startsWith('CMP-'))) return SupportOutcome.COMPLAINT_REGISTERED;
-  if (refs.some((r) => r.startsWith('SR-'))) return SupportOutcome.TICKET_CREATED;
-  if (refs.some((r) => r.startsWith('RQ-'))) return SupportOutcome.ROUTED;
+  if (refs.some((r) => r.startsWith(RefPrefix.ESCALATION))) return SupportOutcome.ESCALATED;
+  if (refs.some((r) => r.startsWith(RefPrefix.COMPLAINT))) return SupportOutcome.COMPLAINT_REGISTERED;
+  if (refs.some((r) => r.startsWith(RefPrefix.TICKET))) return SupportOutcome.TICKET_CREATED;
+  if (refs.some((r) => r.startsWith(RefPrefix.ROUTED))) return SupportOutcome.ROUTED;
   return call.turns.length ? SupportOutcome.RESOLVED : SupportOutcome.ABANDONED;
 }
 
@@ -358,3 +463,26 @@ export function audioDataUrl(b64: string): string {
   const mime = b64.startsWith('UklGR') ? 'audio/wav' : b64.startsWith('T2dn') ? 'audio/ogg' : 'audio/mpeg';
   return `data:${mime};base64,${b64}`;
 }
+
+export const REVIEW_REASON_LABEL: Record<ReviewReason, string> = {
+  [ReviewReason.LOW_RATING]: 'Low rating',
+  [ReviewReason.DISSATISFIED]: 'Dissatisfied',
+  [ReviewReason.BAD_FEEDBACK]: 'Bad answer',
+};
+
+export const LESSON_STATUS_LABEL: Record<LessonStatus, string> = {
+  [LessonStatus.PROPOSED]: 'Proposed',
+  [LessonStatus.ACTIVE]: 'Active',
+  [LessonStatus.RETIRED]: 'Retired',
+};
+
+export const LESSON_STATUS_TONE: Record<LessonStatus, string> = {
+  [LessonStatus.PROPOSED]: 'warn',
+  [LessonStatus.ACTIVE]: 'ok',
+  [LessonStatus.RETIRED]: 'dim',
+};
+
+export const RATING_SOURCE_LABEL: Record<RatingSource, string> = {
+  [RatingSource.VOICE]: 'Rated by the customer on the call',
+  [RatingSource.PANEL]: 'Added in the panel',
+};

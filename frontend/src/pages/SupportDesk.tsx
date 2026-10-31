@@ -15,6 +15,7 @@ import {
   type SupportOutcome,
 } from '../api/support';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
+import { Stars } from '../components/Stars';
 import { formatDateTime, humanise } from '../format';
 import { Route } from '../routes';
 import { Highlight, matches, SearchParam } from '../search';
@@ -145,13 +146,14 @@ function CallsPanel() {
               <th>Verified</th>
               <th>Intents</th>
               <th className="r">Turns</th>
+              <th>Rating</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {calls === null && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   Loading calls…
                 </td>
               </tr>
@@ -178,6 +180,7 @@ function CallsPanel() {
                   </div>
                 </td>
                 <td className="num r">{c.turnCount}</td>
+                <td>{c.rating ? <Stars score={c.rating.score} /> : <span className="muted small">—</span>}</td>
                 <td>
                   <CallStatusPill c={c} query={query} />
                 </td>

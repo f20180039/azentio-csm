@@ -30,6 +30,7 @@ import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../forma
 import { Route } from '../routes';
 import { Highlight, matches } from '../search';
 import { TurnRole, Verification } from '../vocab';
+import { RatingPanel, TurnFeedbackBlock } from './CallFeedback';
 import { CallStatusPill } from './SupportDesk';
 
 const POLL_MS = 1000;
@@ -194,7 +195,7 @@ function turnMatches(q: string, t: SupportTurn): boolean {
 
 type TurnMark = 'hit' | 'dim' | undefined;
 
-function Turn({ t, audio, query = '', mark }: { t: SupportTurn; audio?: string | null; query?: string; mark?: TurnMark }) {
+function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTurn; audio?: string | null; query?: string; mark?: TurnMark; callId?: string | null; onChanged?: () => void }) {
   const m = t.meta;
   const markClass = mark ? ` is-${mark}` : '';
   if (t.role === TurnRole.CUSTOMER) {
@@ -241,6 +242,7 @@ function Turn({ t, audio, query = '', mark }: { t: SupportTurn; audio?: string |
       <RefPills refs={m.refs ?? []} query={query} />
       {audio && <audio controls src={audioDataUrl(audio)} aria-label="Agent reply audio" className="sc-audio" />}
       <RetrievedCard trace={m.tool_trace ?? []} retrieved={m.retrieved ?? {}} refs={m.refs ?? []} />
+      {callId && onChanged && <TurnFeedbackBlock callId={callId} seq={t.seq} feedback={t.feedback ?? []} onChanged={onChanged} />}
     </li>
   );
 }
@@ -761,6 +763,8 @@ export function SupportCall() {
                 audio={t.role === TurnRole.AGENT ? audioByReply.get(t.text) : null}
                 query={query}
                 mark={searching ? (hits.has(t) ? 'hit' : 'dim') : undefined}
+                callId={call?.turns.length ? call.id : null}
+                onChanged={() => void refresh()}
               />
             ))}
             {speaking && <SpeakingBubble who={speaking} />}
@@ -836,6 +840,8 @@ export function SupportCall() {
               </>
             )}
           </section>
+
+          {call && <RatingPanel callId={call.id} rating={call.rating ?? null} ended={ended} onSaved={() => void refresh()} />}
 
           <section className="panel guard-panel" aria-labelledby="facts-title">
             <h2 id="facts-title">Call details</h2>
