@@ -10,7 +10,8 @@ from app.guard import OptionalSessionDep, SessionDep, StoreDep, owns
 
 router = APIRouter(prefix=API_PREFIX, tags=["CSM"])
 
-TICKET_FIELDS = ("ref", "category", "status", "summary", "department", "progress", "eta_days", "created_on", "updated_on")
+TICKET_FIELDS = ("ref", "category", "status", "summary", "details", "department", "progress", "eta_days", "created_on", "updated_on")
+COMPLAINT_FIELDS = ("ref", "category", "severity", "status", "description", "escalated", "created_at")
 
 
 class TicketRequest(BaseModel):
@@ -45,8 +46,9 @@ class EscalationRequest(BaseModel):
 
 
 def ticket_view(ticket: dict[str, Any]) -> dict[str, Any]:
-    """The ticket as the caller (and the ops status update) sees it: no details, call id or customer ref."""
-    return {k: ticket[k] for k in TICKET_FIELDS}
+    """The ticket as the caller (and the ops status update) sees it: no call id or customer ref. details carries what the
+    request is about (e.g. loan_id), so a caller can go from a request to its loan."""
+    return {k: ticket.get(k, {} if k == "details" else None) for k in TICKET_FIELDS}
 
 
 @router.get(Route.CSM_TICKETS)
@@ -63,6 +65,12 @@ def ticket(ref: str, customer: SessionDep, store: StoreDep) -> dict:
 def create_ticket(body: TicketRequest, customer: SessionDep, store: StoreDep) -> dict:
     return store.create_ticket(customer["customer_ref"], body.category, body.summary, body.details, body.call_id,
                                eta_days=settings.ticket_eta_days)
+
+
+@router.get(Route.CSM_COMPLAINT)
+def complaint(ref: str, customer: SessionDep, store: StoreDep) -> dict:
+    c = owns(customer, store.get_complaint(ref))
+    return {k: c.get(k) for k in COMPLAINT_FIELDS}
 
 
 @router.post(Route.CSM_COMPLAINTS, status_code=status.HTTP_201_CREATED)

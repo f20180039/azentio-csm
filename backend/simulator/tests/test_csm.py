@@ -21,8 +21,9 @@ def test_create_and_read_ticket(client):
 
     got = client.get("/v1/csm/tickets/SR-40200", headers=headers).json()
     assert got["ref"] == "SR-40200" and got["category"] == "REPAYMENT_SCHEDULE" and got["status"] == "OPEN"
-    assert set(got) == {"ref", "category", "status", "summary", "created_on", "updated_on",
+    assert set(got) == {"ref", "category", "status", "summary", "details", "created_on", "updated_on",
                         "department", "progress", "eta_days"}
+    assert got["details"] == {"loan_id": "PL-31002"}
 
     mine = [t["ref"] for t in client.get("/v1/csm/tickets", headers=headers).json()["items"]]
     assert {"SR-40200", "SR-40102"} <= set(mine)
@@ -148,3 +149,20 @@ def test_cors_allows_operator_panel_with_authorization(client):
     assert res.status_code == 200
     assert res.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert "authorization" in res.headers["access-control-allow-headers"].lower()
+
+
+def test_seed_ticket_view_has_empty_details(client):
+    got = client.get("/v1/csm/tickets/SR-40102", headers=session_for(client, "CUST-1002")).json()
+    assert got["details"] == {} and got["status"] == "IN_PROGRESS"
+
+
+def test_complaint_status_by_reference_for_its_owner_only(client):
+    got = client.get("/v1/csm/complaints/CMP-50011", headers=session_for(client, "CUST-1006"))
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["ref"] == "CMP-50011" and body["status"] == "OPEN" and body["category"] == "INCORRECT_CHARGE"
+    assert "customer_ref" not in body and "call_id" not in body
+    other = client.get("/v1/csm/complaints/CMP-50011", headers=session_for(client, "CUST-1002"))
+    assert other.status_code == 403 and other.json()["error"] == "NOT_YOUR_RECORD"
+    assert client.get("/v1/csm/complaints/CMP-99999", headers=session_for(client, "CUST-1006")).status_code == 404
+    assert client.get("/v1/csm/complaints/CMP-50011").status_code == 401
