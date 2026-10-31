@@ -11,13 +11,14 @@ from loguru import logger
 from . import recordings
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
+from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_numbers
 from .intents import Intent
 from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits, script_language
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
 from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
-                    ToolError, TurnRole)
+                    ToolError, TurnRole, VerifyField)
 
 MAX_TOOL_ROUNDS = 6
 UNCLEAR_BEFORE_ESCALATION = 3  # customer turns in a row understood as nothing but UNCLEAR before a person takes over
@@ -166,6 +167,7 @@ class SupportBrain:
     async def reply(self, user_text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
         async with self._lock:
             user_text = normalise_spoken_digits(user_text)
+            self._hear_identity(user_text)
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
@@ -195,6 +197,20 @@ class SupportBrain:
             await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source,
                                              **({MetaKey.AUDIO: True} if has_audio else {})})
             return turn
+
+    def _hear_identity(self, text: str) -> None:
+        """Keeps the mobile number and date of birth the caller said, so verify_customer uses them rather than the model's
+        copy. A new value replaces the old (latest wins); a turn without one leaves it; a wrong-length number is remembered
+        so the agent can say how many digits it heard. Only numbers this code could not read let the model fill a field."""
+        call = self.call
+        if mobile := extract_mobile(text):
+            call.heard_mobile, call.heard_digits = mobile, None
+        elif (run := digit_run(text)) and is_mobile_attempt(run):
+            call.heard_digits = run
+        if dob := extract_dob(text, call.today):
+            call.heard_dob = dob
+        if unexplained_numbers(text):
+            call.model_may_fill.update(VerifyField)
 
     def mark_unheard(self) -> None:
         """The caller interrupted before hearing the last reply: keep it in context, but say it was never heard."""

@@ -115,6 +115,12 @@ class VerifyOutcome(StrEnum):
     CALLER_BLOCKED = "CALLER_BLOCKED"
 
 
+class VerifyMismatch(StrEnum):
+    """Why a verification failed, for the agent's own use: it decides when, if ever, to tell the caller which field was wrong."""
+    MOBILE_NOT_FOUND = "MOBILE_NOT_FOUND"
+    DOB_MISMATCH = "DOB_MISMATCH"
+
+
 class LockScope(StrEnum):
     CUSTOMER = "CUSTOMER"
     CALLER = "CALLER"
