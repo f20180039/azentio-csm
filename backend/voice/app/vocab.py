@@ -72,6 +72,7 @@ class Channel(StrEnum):
     VOICE = "VOICE"
     SIM_AUDIO = "SIM_AUDIO"
     TEXT = "TEXT"
+    PHONE = "PHONE"
 
 
 class TurnRole(StrEnum):
@@ -115,3 +116,9 @@ class Route(StrEnum):
     API_OFFER = "/api/offer"
     TWILIO_TWIML = "/twilio/twiml"
     TWILIO_WS = "/ws/twilio"
+    PHONE_ALLOWED = "/v1/phone/allowed"
+    PHONE_CALL = "/v1/phone-call"
+    SUPPORT_PHONE_CALL = "/support/phone-call"
+    TWILIO_SUPPORT_INCOMING = "/twilio/support/incoming"
+    TWILIO_SUPPORT_TWIML = "/twilio/support/twiml"
+    TWILIO_SUPPORT_WS = "/ws/twilio/support"
