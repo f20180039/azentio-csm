@@ -45,6 +45,19 @@ class ToolError(StrEnum):
     UNKNOWN_TOOL = "UNKNOWN_TOOL"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
     ASK_FIRST = "ASK_FIRST"
+    MISSING_DETAILS = "MISSING_DETAILS"  # verify_customer: the caller has not yet said (or clearly said) every detail
+
+
+class VerifyField(StrEnum):
+    """The two details verification needs; MISSING_DETAILS lists which are missing and which are already noted."""
+    MOBILE = "MOBILE"
+    DOB = "DOB"
+
+
+class VerifyMismatch(StrEnum):
+    """The simulator's reason for a failed verification (its VerifyMismatch); the agent decides when to tell the caller."""
+    MOBILE_NOT_FOUND = "MOBILE_NOT_FOUND"
+    DOB_MISMATCH = "DOB_MISMATCH"
 
 
 class EscalationTrigger(StrEnum):

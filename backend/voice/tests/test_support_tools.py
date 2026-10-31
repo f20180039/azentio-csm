@@ -58,7 +58,8 @@ class FakeSimulator:
 
 def setup():
     sim = FakeSimulator()
-    return sim, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), CallSession(CALL)
+    # spoke_numbers: these tests drive the tool directly, standing in for a caller who did say their details aloud
+    return sim, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), CallSession(CALL, spoke_numbers=True)
 
 
 def run(client, call, name, args=None):
@@ -175,7 +176,7 @@ def test_verify_sends_the_caller_ref_on_phone_calls_only():
     verify(client, call)
     assert "caller_ref" not in json.loads(sim.requests[-1].content)
     sim, client, _ = setup()
-    verify(client, CallSession(CALL, caller_ref="+15005550199"))
+    verify(client, CallSession(CALL, caller_ref="+15005550199", spoke_numbers=True))
     assert json.loads(sim.requests[-1].content)["caller_ref"] == "+15005550199"
 
 
@@ -183,7 +184,7 @@ def test_verify_without_real_details_spends_no_attempt():
     sim, client, call = setup()
     for args in ({}, {"mobile": "", "date_of_birth": ""}, {"mobile": "98765", "date_of_birth": "1985-11-03"},
                  {"mobile": "9876500002", "date_of_birth": "third November"}):
-        assert run(client, call, "verify_customer", args)["error"] == "NOT_VERIFIED"
+        assert run(client, call, "verify_customer", args)["error"] == "MISSING_DETAILS"
     assert sim.requests == [] and call.verify_failures == 0
 
 

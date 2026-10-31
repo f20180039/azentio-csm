@@ -1,13 +1,14 @@
 """The front-desk agent's tools. Personal tools refuse here, before any HTTP call, when the caller is not verified; the
 simulator enforces the same rule again, so a prompt-injected tool call still gets nothing."""
-import re
 from dataclasses import dataclass, field
+from datetime import date
 from enum import StrEnum
 
 from .api_client import ApiUnavailable
+from .identity import MOBILE_LEN, clean_dob, clean_mobile
 from .simulator_client import SimulatorClient
 from .spoken import spoken_inr
-from .vocab import EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError
+from .vocab import EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError, VerifyField, VerifyMismatch
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
@@ -48,6 +49,11 @@ class CallSession:
     transfer_to: str | None = None  # the person a live phone call is transferred to; None means a call-back
     caller_ref: str | None = None  # the caller's phone number on phone calls: the simulator's per-caller lock key
     helpline: str = ""
+    heard_mobile: str | None = None  # the mobile number the caller themselves said, latest wins
+    heard_dob: str | None = None  # the date of birth the caller themselves said, ISO, latest wins
+    heard_digits: str | None = None  # the last run of digits that was an attempt at a mobile number but not 10 digits long
+    spoke_numbers: bool = False  # some caller turn carried a digit or non-Latin letters, so the model may have heard numbers the code cannot read
+    today: date = field(default_factory=date.today)  # for judging a date of birth; fixed in tests
 
     @property
     def verified(self) -> bool:
@@ -55,6 +61,17 @@ class CallSession:
 
 
 NOT_VERIFIED = {"error": ToolError.NOT_VERIFIED, "note": "Ask for the registered mobile number and date of birth first, then call verify_customer."}
+ASK_BOTH = "Ask for the registered mobile number and date of birth."
+ASK_MOBILE_ONLY = "Ask only for the registered 10-digit mobile number; the date of birth is already noted."
+ASK_DOB_ONLY = "Ask only for the date of birth; the mobile number is already noted."
+CONFIRM_BOTH = ("The details do not match our records. Ask the caller to confirm both their mobile number and date of birth. "
+                "Do not say which one is wrong.")
+MISMATCH_NOTES = {
+    VerifyMismatch.MOBILE_NOT_FOUND: ("That mobile number is not registered with us. Ask only for the registered mobile number; "
+                                      "keep the date of birth. This is the last attempt."),
+    VerifyMismatch.DOB_MISMATCH: ("The date of birth does not match the mobile number. Ask only for the date of birth; "
+                                  "keep the mobile number. This is the last attempt."),
+}
 
 
 def _tool(name: SupportTool, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:
@@ -113,9 +130,38 @@ REF_RAISING = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTE
                          SupportTool.ESCALATE_TO_HUMAN})
 
 
-def digits(text: str) -> str:
-    d = "".join(c for c in str(text) if c.isdigit())
-    return d[-10:] if len(d) >= 10 else d
+def resolve_identity(call: CallSession, args: dict) -> tuple[str | None, str | None]:
+    """The mobile and date of birth to verify with: what the caller said wins; the model's value counts only when it is
+    well-formed and the caller did say something numeric (Kannada or Hindi number words the code cannot read)."""
+    mobile = call.heard_mobile or (clean_mobile(args.get("mobile") or "") if call.spoke_numbers else None)
+    dob = call.heard_dob or (clean_dob(args.get("date_of_birth") or "", call.today) if call.spoke_numbers else None)
+    return mobile, dob
+
+
+def missing_details(call: CallSession, mobile: str | None, dob: str | None) -> dict | None:
+    have = [f for f, v in ((VerifyField.MOBILE, mobile), (VerifyField.DOB, dob)) if v]
+    missing = [f for f in VerifyField if f not in have]
+    if not missing:
+        return None
+    if missing == [VerifyField.MOBILE]:
+        note = ASK_MOBILE_ONLY
+        if call.heard_digits and len(call.heard_digits) != MOBILE_LEN:
+            note += f" The number heard had {len(call.heard_digits)} digits."
+    else:
+        note = ASK_DOB_ONLY if missing == [VerifyField.DOB] else ASK_BOTH
+    return {"error": ToolError.MISSING_DETAILS, "missing": missing, "have": have, "note": note}
+
+
+def mismatch_note(call: CallSession, mismatch: str | None) -> str:
+    """After the first failed attempt: confirm both, naming neither. After the second: name the wrong field, forget the
+    value heard for it, and keep the other. An unknown reason keeps the cautious wording."""
+    if call.verify_failures < 2 or mismatch not in MISMATCH_NOTES:
+        return CONFIRM_BOTH
+    if mismatch == VerifyMismatch.MOBILE_NOT_FOUND:
+        call.heard_mobile = None
+    else:
+        call.heard_dob = None
+    return MISMATCH_NOTES[VerifyMismatch(mismatch)]
 
 
 async def run_support_tool(client: SimulatorClient, call: CallSession, name: str, args: dict) -> dict:
@@ -144,10 +190,9 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
     s = call.session
     match name:
         case SupportTool.VERIFY_CUSTOMER:
-            mobile, dob = digits(args.get("mobile") or ""), str(args.get("date_of_birth") or "")
-            if len(mobile) != 10 or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dob):  # never spend an attempt on details not given
-                return {**NOT_VERIFIED, "note": "Ask the caller for their registered 10-digit mobile number and date of birth; "
-                                                "call verify_customer only with what they actually said."}
+            mobile, dob = resolve_identity(call, args)
+            if missing := missing_details(call, mobile, dob):  # never spend an attempt on details the caller has not given
+                return missing
             out = await client.verify(mobile, dob, call.call_id, call.caller_ref)
             if "session" in out:
                 call.session, call.customer, call.locked = out["session"], out.get("customer"), False
@@ -159,6 +204,8 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
                 if out.get("attempts_left") == 0:  # the third failure locks; don't wait for a fourth try to find out
                     call.locked = True
                     out = {**out, "error": ToolError.LOCKED, "note": "Verification is now locked. Share nothing personal; offer a human representative."}
+                else:
+                    out = {**out, "note": mismatch_note(call, out.get("mismatch"))}
             return out
         case SupportTool.GET_LOAN_APPLICATIONS:
             return await client.applications(s)

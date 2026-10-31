@@ -144,3 +144,16 @@ def test_caller_window_is_thirty_minutes(client, clock):
     verify(client, "CUST-1002", WRONG_DOB, call_id="c", caller_ref=CALLER)
     clock.advance(minutes=31)
     assert verify(client, "CUST-1003", WRONG_DOB, call_id="c", caller_ref=CALLER).status_code == 401
+
+
+def test_failed_verification_says_which_field_internally(client):
+    unknown = client.post("/v1/verify", json={"mobile": "9000000000", "dob": RAHUL["dob"], "call_id": "m1"})
+    assert unknown.status_code == 401
+    assert unknown.json()["error"] == "VERIFICATION_FAILED"
+    assert unknown.json()["mismatch"] == "MOBILE_NOT_FOUND"
+    assert unknown.json()["attempts_left"] == 2
+
+    wrong_dob = verify(client, "CUST-1002", WRONG_DOB, call_id="m2")
+    assert wrong_dob.status_code == 401
+    assert wrong_dob.json()["mismatch"] == "DOB_MISMATCH"
+    assert wrong_dob.json()["attempts_left"] == 2

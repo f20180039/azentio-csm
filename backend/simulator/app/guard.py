@@ -13,6 +13,7 @@ from app.enums import (
     EscalationCategory,
     EscalationReason,
     LockScope,
+    VerifyMismatch,
     VerifyOutcome,
 )
 from app.errors import ApiError
@@ -98,8 +99,9 @@ def verify_caller(store: BankStore, now: datetime, mobile: str, dob: str, call_i
         raise caller_blocked()
     if customer_failures >= settings.verify_max_failures:
         raise locked()
+    mismatch = VerifyMismatch.DOB_MISMATCH if customer else VerifyMismatch.MOBILE_NOT_FOUND
     raise ApiError(401, ErrorCode.VERIFICATION_FAILED, "Mobile number and date of birth do not match our records.",
-                   attempts_left=settings.verify_max_failures - customer_failures)
+                   attempts_left=settings.verify_max_failures - customer_failures, mismatch=mismatch)
 
 
 def locked() -> ApiError:

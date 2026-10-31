@@ -11,6 +11,7 @@ from loguru import logger
 from . import recordings
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
+from .identity import MOBILE_ATTEMPT_MAX, MOBILE_ATTEMPT_MIN, MOBILE_LEN, digit_run, extract_dob, extract_mobile, spoke_numbers
 from .intents import Intent
 from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits
@@ -146,6 +147,7 @@ class SupportBrain:
     async def reply(self, user_text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
         async with self._lock:
             user_text = normalise_spoken_digits(user_text)
+            self._hear_identity(user_text)
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
@@ -169,6 +171,19 @@ class SupportBrain:
             await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source,
                                              **({MetaKey.AUDIO: True} if has_audio else {})})
             return turn
+
+    def _hear_identity(self, text: str) -> None:
+        """Keeps the mobile number and date of birth the caller said, so verify_customer uses them rather than the model's
+        copy. A new value replaces the old (latest wins); a turn without one leaves it; a wrong-length number is remembered
+        so the agent can say how many digits it heard."""
+        call = self.call
+        if mobile := extract_mobile(text):
+            call.heard_mobile, call.heard_digits = mobile, None
+        elif (run := digit_run(text)) and MOBILE_ATTEMPT_MIN <= len(run) <= MOBILE_ATTEMPT_MAX and len(run) != MOBILE_LEN:
+            call.heard_digits = run
+        if dob := extract_dob(text, call.today):
+            call.heard_dob = dob
+        call.spoke_numbers = call.spoke_numbers or spoke_numbers(text)
 
     def mark_unheard(self) -> None:
         """The caller interrupted before hearing the last reply: keep it in context, but say it was never heard."""
