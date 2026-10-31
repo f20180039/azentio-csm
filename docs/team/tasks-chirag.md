@@ -58,11 +58,11 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   - `reset()` removes it.
 - [x] Step 5: Commit: `feat(simulator): seed data for the #05 scenarios and SQLite-backed writes`.
 
-- [~] (Anshuman, at the team lead's request; on develop) **C3: Verification, sessions, lockout, ownership** (needs: C2)
+- [x] **C3: Verification, sessions, lockout, ownership** (needs: C2)
 
 **Files:** create `backend/simulator/app/routers/verify.py` and `backend/simulator/app/guard.py`.
 
-- [ ] Step 1: Write the failing tests first (`tests/test_verify.py`):
+- [x] Step 1: Write the failing tests first (`tests/test_verify.py`):
   - the right mobile and dob give 200 with a `session`;
   - `+919876500002` and `09876500002` are normalised;
   - a wrong dob gives 401 `VERIFICATION_FAILED` with `attempts_left` of 2, then 1;
@@ -71,14 +71,14 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   - an expired session (more than 900 s) gives 401;
   - **CUST-1002's session fetching `/v1/lms/loans/VL-31007/schedule` (CUST-1003's) gives 403 `NOT_YOUR_RECORD`**;
   - a second verify on the same `call_id` replaces the first session.
-- [ ] Step 2: Implement `POST /v1/verify` and the dependency `require_session(x_customer_session: str = Header(...)) -> Customer`, plus `owns(customer, record)`. Record every attempt with the `call_id` in the audit module.
-- [ ] Step 3: Run the tests. Commit: `feat(simulator): customer verification with lockout and per-customer record guard`.
+- [x] Step 2: Implement `POST /v1/verify` and the dependency `require_session(x_customer_session: str = Header(...)) -> Customer`, plus `owns(customer, record)`. Record every attempt with the `call_id` in the audit module.
+- [x] Step 3: Run the tests. Commit: `feat(simulator): customer verification with lockout and per-customer record guard`.
 
-- [~] (Anshuman, at the team lead's request; on develop) **C4: LOS, LMS, CBS and insurance endpoints** (needs: C3)
+- [x] **C4: LOS, LMS, CBS and insurance endpoints** (needs: C3)
 
 **Files:** create `backend/simulator/app/routers/{los,lms,cbs,insurance}.py`.
 
-- [ ] Step 1: Write the failing tests (`tests/test_records.py`), all with a verified session:
+- [x] Step 1: Write the failing tests (`tests/test_records.py`), all with a verified session:
   - CUST-1001 `/v1/los/applications` has stage `DOCUMENT_VERIFICATION`;
   - CUST-1002 `/v1/lms/loans?type=vehicle` returns only `VL-31003`;
   - `/v1/lms/loans/PL-31002/schedule` has a `DUE` entry with amount 12450;
@@ -86,14 +86,14 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   - CUST-1005 `/v1/insurance/claims` has `CLM-7001 UNDER_REVIEW`;
   - every list returns only the session customer's records;
   - an unknown `type` gives 422.
-- [ ] Step 2: Implement exactly the contract's response fields. Amounts are integers in rupees. Dates are ISO `YYYY-MM-DD`.
-- [ ] Step 3: Commit: `feat(simulator): loan, banking and insurance record endpoints`.
+- [x] Step 2: Implement exactly the contract's response fields. Amounts are integers in rupees. Dates are ISO `YYYY-MM-DD`.
+- [x] Step 3: Commit: `feat(simulator): loan, banking and insurance record endpoints`.
 
-- [~] (Anshuman, at the team lead's request; on develop) **C5: CSM tickets, complaints, routed queries, escalations, ops** (needs: C3)
+- [x] **C5: CSM tickets, complaints, routed queries, escalations, ops** (needs: C3)
 
 **Files:** create `backend/simulator/app/routers/csm.py` and `backend/simulator/app/routers/ops.py`.
 
-- [ ] Step 1: Write the failing tests (`tests/test_csm.py`):
+- [x] Step 1: Write the failing tests (`tests/test_csm.py`):
   - creating a ticket `REPAYMENT_SCHEDULE` for CUST-1002 gives 201 `SR-40200` `OPEN`, and `GET /v1/csm/tickets/SR-40200` returns it;
   - CUST-1003 reading `SR-40102` gives 403;
   - a complaint `UNAUTHORISED_TRANSACTION` gives `escalated: true`;
@@ -102,8 +102,8 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   - an unknown category gives 422;
   - `GET /v1/ops/records?kind=routed` without Basic auth gives 401, and with `ops:ops` lists the record;
   - `POST /v1/ops/reset` empties the writes.
-- [ ] Step 2: Implement it. Every write stores the `call_id` and a `created_at` timestamp.
-- [ ] Step 3: Commit: `feat(simulator): CSM tickets, complaints, routed queries, escalations and ops listing`.
+- [x] Step 2: Implement it. Every write stores the `call_id` and a `created_at` timestamp.
+- [x] Step 3: Commit: `feat(simulator): CSM tickets, complaints, routed queries, escalations and ops listing`.
 
 - [ ] **C6: FAQ search; final clean-up** (needs: C2; content from P1)
 
