@@ -19,3 +19,4 @@ __pycache__/
 .superpowers/
 .pytest_cache/
 .claude/
+.run/
