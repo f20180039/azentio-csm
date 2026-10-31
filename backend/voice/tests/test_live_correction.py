@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.support_brain import CORRECTION_NOTE, SupportBrain
-from app.vocab import Route, ToolError
+from app.vocab import Route, ToolError, VerifyField
 from tests.test_brain import Scripted, text, tool_call
 from tests.test_verify_capture import CALL, RAHUL, make, verify_result
 
@@ -68,13 +68,31 @@ def test_correction_after_the_second_mismatch_refills_the_forgotten_field():
     assert brain.call.verify_failures == 2
 
 
+def test_a_typed_reference_in_a_correction_does_not_let_the_model_refill_a_forgotten_field():
+    """A correction is normalised like a caller turn (references included): 'TXN 88213' is a bank reference, not unexplained
+    digits, so it does not open model_may_fill and the model's stale copy cannot refill the mobile a mismatch forgot."""
+    llm = Scripted(tool_call("verify_customer", MODEL_COPY), text("Please confirm both."),
+                   tool_call("verify_customer", MODEL_COPY, "c2"), text("That number is not registered."),
+                   tool_call("verify_customer", MODEL_COPY, "c3"), text("Could I have the registered mobile number?"))
+    brain, sim = make(llm)
+    asyncio.run(brain.reply(MISHEARD))
+    asyncio.run(brain.reply("Yes, 98765 00003 and 3 November 1985"))
+    assert brain.call.heard_mobile is None and not brain.call.model_may_fill
+
+    heard = asyncio.run(brain.apply_correction(CALLER_SEQ, "the caller asked about TXN 88213"))
+    assert heard == {"mobile": False, "dob": False} and not brain.call.model_may_fill and brain.call.heard_mobile is None
+    assert "TXN-88213" in brain._messages[-1]["content"]
+    third = verify_result(asyncio.run(brain.reply("please try again")))
+    assert third["error"] == ToolError.MISSING_DETAILS and third["missing"] == [VerifyField.MOBILE]
+    assert len(sim.verify_bodies()) == 2 and brain.call.verify_failures == 2
+
+
 def test_correction_reaches_the_model_history():
     brain, sim = make(Scripted())
     heard = asyncio.run(brain.apply_correction(CALLER_SEQ, "No, I meant my vehicle loan"))
     assert heard == {"mobile": False, "dob": False}
     last = brain._messages[-1]
     assert last["role"] == "user" and last["content"] == CORRECTION_NOTE.format(text="No, I meant my vehicle loan")
-    assert "No, I meant my vehicle loan" in last["content"] and "Use this instead of what was heard" in last["content"]
     assert sim.requests == [] and brain.call.heard_mobile is None and brain.call.heard_dob is None  # no bank call, nothing heard
 
 

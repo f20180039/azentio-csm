@@ -14,7 +14,7 @@ from .brain import ChatClient, ToolTrace
 from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_numbers
 from .intents import Intent
 from .simulator_client import SimulatorClient
-from .speech import normalise_spoken_digits, script_language
+from .speech import normalise_refs, normalise_spoken_digits, script_language
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
 from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, IntentSource, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
@@ -235,8 +235,10 @@ class SupportBrain:
         number or date of birth replaces what was misheard (and refills a field forgotten after a bank mismatch), and the
         model is told to use the correction. Nothing is spoken, the bank is not called and no verification attempt is spent.
         Returns which identity fields the correction filled. Removing the correction later does not un-hear it."""
-        async with self._lock:
-            text = normalise_spoken_digits(text)
+        async with self._lock:  # waits for a reply in flight on purpose: the correction must land between turns, never inside one
+            # The same normalisation a caller turn gets: references at the speech stage (keep_transcript / transcribe_file),
+            # spoken digits again in reply(); a typed 'TXN 88213' is then a reference, not unexplained digits for the model to fill.
+            text = normalise_spoken_digits(normalise_refs(text))
             filled = self._hear_identity(text)
             self._messages.append({"role": "user", "content": CORRECTION_NOTE.format(text=text)})
             logger.info(f"call {self.call.call_id}: reviewer corrected turn {seq}; filled {sorted(str(f) for f in filled)}")
