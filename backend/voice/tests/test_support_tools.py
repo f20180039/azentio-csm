@@ -1,0 +1,125 @@
+import asyncio
+import json
+
+import httpx
+
+from app.config import Settings
+from app.simulator_client import SESSION_HEADER, SimulatorClient
+from app.support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, run_support_tool
+
+CALL = "22222222-2222-2222-2222-222222222222"
+
+
+class FakeSimulator:
+    """Just enough of the bank simulator contract: CUST-1002 owns PL-31002 and VL-31003; VL-31007 belongs to someone else."""
+
+    def __init__(self):
+        self.requests: list[httpx.Request] = []
+        self.failures = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        path = request.url.path.removeprefix("/v1")
+        if path == "/verify":
+            body = json.loads(request.content)
+            if self.failures >= 3:
+                return httpx.Response(423, json={"error": "LOCKED"})
+            if body["mobile"] == "9876500002" and body["dob"] == "1985-11-03":
+                return httpx.Response(200, json={"session": "tok", "expires_in": 900, "customer": {"customer_ref": "CUST-1002", "first_name": "Rahul"}})
+            self.failures += 1
+            return httpx.Response(401, json={"error": "VERIFICATION_FAILED", "attempts_left": 3 - self.failures})
+        if path == "/faq/search":
+            q = request.url.params["q"]
+            return httpx.Response(200, json={"items": [] if "weather" in q else [{"id": "FAQ-004", "question": "q", "answer": "a", "score": 3.1}]})
+        if path == "/csm/routed":
+            return httpx.Response(201, json={"ref": "RQ-60200"})
+        if request.headers.get(SESSION_HEADER) != "tok":
+            return httpx.Response(401, json={"error": "NOT_VERIFIED"})
+        if path == "/lms/loans":
+            loans = [{"loan_id": "PL-31002", "product_type": "personal", "next_instalment": {"amount": 12450, "due_date": "2026-11-05"}},
+                     {"loan_id": "VL-31003", "product_type": "vehicle", "next_instalment": {"amount": 9800, "due_date": "2026-11-12"}}]
+            t = request.url.params.get("type")
+            return httpx.Response(200, json={"items": [x for x in loans if not t or x["product_type"] == t]})
+        if path == "/lms/loans/VL-31007/schedule":
+            return httpx.Response(403, json={"error": "NOT_YOUR_RECORD"})
+        if path == "/csm/tickets" and request.method == "POST":
+            return httpx.Response(201, json={"ref": "SR-40200", "status": "OPEN", "eta_days": 2})
+        return httpx.Response(404, json={"error": "NOT_FOUND"})
+
+
+def setup():
+    sim = FakeSimulator()
+    return sim, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), CallSession(CALL)
+
+
+def run(client, call, name, args=None):
+    return asyncio.run(run_support_tool(client, call, name, args or {}))
+
+
+def verify(client, call, dob="1985-11-03"):
+    return run(client, call, "verify_customer", {"mobile": "+91 98765 00002", "date_of_birth": dob})
+
+
+def test_personal_tools_refuse_without_verification_and_make_no_request():
+    sim, client, call = setup()
+    for name in ("get_loans", "get_accounts", "get_ticket", "create_service_request", "get_claims"):
+        assert run(client, call, name, {"ref": "SR-1", "category": "STATEMENT", "summary": "s"})["error"] == "NOT_VERIFIED"
+    assert sim.requests == []
+
+
+def test_verify_then_filter_loans_by_type_with_spoken_amounts():
+    sim, client, call = setup()
+    assert verify(client, call)["verified"] is True and call.verified
+    assert json.loads(sim.requests[0].content)["mobile"] == "9876500002"  # +91 and spaces stripped
+    out = run(client, call, "get_loans", {"product_type": "vehicle"})
+    assert [x["loan_id"] for x in out["items"]] == ["VL-31003"]
+    assert out["items"][0]["next_instalment"]["amount_spoken"] == "nine thousand eight hundred rupees"
+
+
+def test_someone_elses_record_is_declined():
+    _, client, call = setup()
+    verify(client, call)
+    out = run(client, call, "get_schedule", {"loan_id": "VL-31007"})
+    assert out["error"] == "NOT_YOUR_RECORD" and "Decline" in out["note"]
+
+
+def test_three_failures_lock_and_personal_tools_keep_refusing():
+    sim, client, call = setup()
+    for _ in range(3):
+        assert verify(client, call, dob="1990-01-01")["error"] == "VERIFICATION_FAILED"
+    assert call.verify_failures == 3
+    assert verify(client, call)["error"] == "LOCKED" and call.locked
+    before = len(sim.requests)
+    assert run(client, call, "get_loans")["error"] == "LOCKED"
+    assert len(sim.requests) == before
+
+
+def test_faq_without_an_approved_answer_says_so():
+    _, client, call = setup()
+    assert run(client, call, "search_faq", {"query": "documents for vehicle loan"})["items"][0]["id"] == "FAQ-004"
+    assert run(client, call, "search_faq", {"query": "weather today"})["no_approved_answer"] is True
+
+
+def test_refs_are_collected_and_routing_needs_no_verification():
+    _, client, call = setup()
+    assert run(client, call, "route_unsupported", {"query_text": "book a flight", "reason": "not a banking service"})["ref"] == "RQ-60200"
+    verify(client, call)
+    assert run(client, call, "create_service_request", {"category": "STATEMENT", "summary": "loan statement"})["ref"] == "SR-40200"
+    assert call.refs == ["RQ-60200", "SR-40200"]
+
+
+def test_bad_category_and_unreachable_simulator_do_not_raise():
+    _, client, call = setup()
+    verify(client, call)
+    assert run(client, call, "create_service_request", {"category": "LOAN_WAIVER", "summary": "x"})["error"] == "BAD_ARGUMENTS"
+
+    def down(_):
+        raise httpx.ConnectError("refused")
+    call2 = CallSession(CALL, session="tok")
+    client2 = SimulatorClient(Settings(), transport=httpx.MockTransport(down))
+    assert run(client2, call2, "get_loans")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_schemas_cover_every_tool():
+    names = {t["function"]["name"] for t in SUPPORT_TOOL_SCHEMAS}
+    assert {"verify_customer", "search_faq", "route_unsupported", "escalate_to_human", "create_service_request", "end_call"} <= names

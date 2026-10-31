@@ -15,6 +15,7 @@ class Settings:
     api_base: str = "http://localhost:8080/api/v1"
     api_user: str = "voice"
     api_password: str = "voice"
+    simulator_base: str = "http://localhost:8090/v1"
     tts_voice: str = "en-IN-NeerjaNeural"
     twilio_account_sid: str = ""
     twilio_auth_token: str = field(default="", repr=False)
@@ -39,6 +40,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         api_base=get("RENEWALS_API_BASE", Settings.api_base),
         api_user=get("RENEWALS_API_USER", Settings.api_user),
         api_password=get("RENEWALS_API_PASSWORD", Settings.api_password),
+        simulator_base=get("SIMULATOR_BASE", Settings.simulator_base),
         tts_voice=get("VOICE_TTS_VOICE", Settings.tts_voice),
         twilio_account_sid=get("TWILIO_ACCOUNT_SID", ""),
         twilio_auth_token=get("TWILIO_AUTH_TOKEN", ""),
