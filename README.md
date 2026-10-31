@@ -4,13 +4,75 @@ A voice agent for a bank's customer service line, built for the Azentio.ai Build
 
 Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
-**What is here today**
-- **Voice agent** (`backend/voice`): a live speech loop (Pipecat, Silero voice detection, Groq Whisper speech-to-text, Edge read-aloud voice) with interruptions, a free-model fallback chain and tool calls. Its first specialist is **Renewal Desk**: an insurance renewal call where the agent talks but the API decides what it may offer.
-- **System of record** (Spring Boot, `backend/api/src`): calls, transcripts, renewals, dashboard queries and a hash-chained audit log on Postgres.
-- **Bank simulator** (FastAPI, `backend/api/app`): mock core banking and loan endpoints, sign-in, a personal-data masking step (Aadhaar, PAN, card and phone numbers) and an audit log. Its records are in memory and still being filled in.
-- **Web app** (`frontend`): the Renewals queue, the call screen, the dashboard and an agent desk with a phone simulator.
+## What it does
 
-**In progress:** inbound support intents (loan application status, repayment, account, service request, product questions from an approved FAQ, complaints), customer verification before account details, service tickets with reference numbers, and an operator panel. The bank simulator is moving to its own port (8090) so the Spring API keeps 8080; until then Compose builds the FastAPI app as `api`, and the renewal call needs the Spring API run natively (step 3 below).
+A customer phones the bank's service line and speaks naturally. The front-desk agent:
+- works out what they want: loan application status, repayment, account, service request, product question, complaint, insurance. It handles several requests in one call and asks a clarifying question when the request is unclear;
+- verifies them by registered mobile number and date of birth before anything personal. Three failures lock verification, and another customer's record is refused **by the bank simulator**, not just by the prompt;
+- answers only from the simulated bank systems and the approved FAQ. Every figure it says appears in that turn's retrieved data;
+- raises service requests and complaints with reference numbers, escalates fraud and unauthorised debits to a human, and politely declines and **routes** anything unsupported;
+- shows every step on the operator panel: the recognised speech, intents, verification status, the data each reply used, the reply text and the history.
+
+| Service | Path | Port |
+|---|---|---|
+| Voice agent (Pipecat, Groq Whisper and LLM, Edge voice) | `backend/voice` | 7861 |
+| Bank simulator: loan applications, loan accounts, core banking, tickets, insurance, FAQ | `backend/simulator` | 8090 |
+| System of record: calls, turns, audit log, Renewal Desk (Spring Boot, Postgres) | `backend/api` | 8080 |
+| Operator panel (React) | `frontend` | 5173 |
+
+**Three ways in, one agent:**
+- the browser microphone (**Support desk → Start a call → Microphone**);
+- recorded audio files (**Upload audio**, `POST /sim/audio`, or `scripts/simulate_audio.py`);
+- typed turns (`POST /support/text-turn`).
+
+All three use the same speech front end and the same agent, and record the same turn data.
+
+**Speech front end** (measured in [docs/stt-benchmark.md](docs/stt-benchmark.md) on Indian, British, Nigerian and American voices, clean and in café noise):
+- Silero voice detection tuned so pure noise never reaches speech-to-text;
+- a banking-vocabulary prompt for Whisper (word errors 4.6% → 3.7%; in noise 7.3% → 5.1%);
+- a filter for words Whisper invents from noise;
+- repair of spoken references ("S R four zero one zero two" → `SR-40102`);
+- no noise reduction, because it tripled errors in noise.
+
+**Renewal Desk**, the earlier outbound insurance-renewal agent, is still here (Renewals in the web app). It is planned as a specialist the front desk can hand renewal calls to.
+
+## Quick start without Docker
+
+```bash
+cp .env.example .env            # add GROQ_API_KEY (free at console.groq.com); never an Anthropic key
+scripts/dev-up.sh               # Spring + simulator + voice + web, on a local Postgres
+open http://localhost:5173/support   # sign in as analyst/analyst
+scripts/dev-down.sh
+```
+
+If a port is busy, the script names the process. You can also pick other ports with `API_PORT=8081 SIM_PORT=8091 VOICE_PORT=7862 WEB_PORT=5174 scripts/dev-up.sh`.
+
+## Recorded-audio simulation
+
+`POST /sim/audio` (voice service) takes multipart `files`, one file per customer turn, in order. It also takes an optional `call_id` to continue a call, and `speak=false` to skip reply audio. Any format ffmpeg/PyAV reads works (WAV, MP3, M4A, OGG, FLAC, WebM).
+
+```json
+{"call_id": "…", "ended": false, "outcome": null,
+ "turns": [{"file": "t1.wav", "transcript": "When is my next EMI?", "no_speech": false, "speech_secs": 1.81, "upload_bytes": 39395,
+            "intents": ["REPAYMENT"], "verified": false, "tool_trace": [{"name": "…", "args": {}, "result": {}}],
+            "retrieved": {"<tool>": {}}, "refs": [], "reply_text": "…", "reply_audio_b64": "<mp3>", "latency_ms": 2960}]}
+```
+
+- A file with only silence or noise comes back with `"no_speech": true` and no reply.
+- `python backend/voice/scripts/simulate_audio.py <files|folders>` writes a markdown and JSON report.
+- `python -m eval.run_scenarios [--audio --accent in|gb|ng|us --condition clean|noisy | --full]`, run from `backend/voice`, scores the scripted #05 scenarios: intents, verification, required and forbidden phrases, tickets, routing, and disclosure before verification (target 0).
+
+## Demo script (seed customers in `backend/simulator/data/seed`)
+
+| Scenario | Say | Expect |
+|---|---|---|
+| Loan application status | "I applied for a personal loan last week, what's the status? And when is my first instalment?" then 98765 00001 / 12 April 1990 | Document verification, never "approved". No schedule until disbursal. |
+| Repayment, then correction | "When is my next EMI?" then 98765 00002 / 3 Nov 1985, then "No, I meant my vehicle loan" | ₹12,450 personal loan, then ₹9,800 vehicle loan, with no re-verification. |
+| Service request, then unsupported | "Send me my loan statement", then "Can you book me a flight to Dubai?" | A ticket SR-… read back, and a polite refusal plus a routed query RQ-…. |
+| Failed transaction | 98765 00004 / 14 Feb 1978, "my transfer failed" | Recorded status only, no guessed cause. Offers a complaint. |
+| Someone else's loan | Verified as 98765 00002, "what about loan VL-31007?" | Declined; nothing disclosed. |
+| Unauthorised debit | 98765 00008 / 9 Mar 1982, "I didn't make this ₹48,999 payment" | Complaint CMP-… plus escalation to a human. |
+| Three wrong dates of birth | any mobile, wrong DOB × 3 | Locked; nothing personal shared. |
 
 ## Run it
 
