@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.identity import digit_run, extract_dob, extract_mobile
+from app.identity import digit_run, extract_dob, extract_mobile, unexplained_numbers
 
 TODAY = date(2026, 10, 31)
 
@@ -14,6 +14,8 @@ def test_extract_mobile_forms():
         assert extract_mobile(said) == "9876500002", said
     assert extract_mobile("9380939280 98765 00002") == "9876500002"  # a correction said straight after: the last one
     assert extract_mobile("9876500002 3 November 1985") == "9876500002"  # the day did not join the number
+    assert extract_mobile("3 November 1985 98765 00002") == "9876500002"  # nor did the year
+    assert extract_mobile("98765 0002 3 November 1985") is None  # a short number stays short: the day is not borrowed
     assert extract_mobile("my account 123456789012 please") is None
     assert extract_mobile("I want my loan") is None
     assert extract_mobile("SR-40102 please") is None
@@ -23,8 +25,17 @@ def test_extract_mobile_forms():
 def test_digit_run_finds_a_short_number():
     assert digit_run("98765 0002") == "987650002"
     assert digit_run("98765 0002, born 3 November 1985") == "987650002"
+    assert digit_run("98765 0002 3 November 1985") == "987650002"
     assert digit_run("+91 98765 0002") == "987650002"
     assert digit_run("I want my loan") is None
+
+
+def test_unexplained_numbers_are_only_those_the_code_did_not_read():
+    for said in ("My number is 98765 00002", "98765 00002, 3rd November 1985", "98765 0002, born 3 November 1985",
+                 "3 November 1985", "I want my loan", "due on 2026-11-05"):
+        assert not unexplained_numbers(said), said
+    for said in ("born third November 85", "9876500002, 3 Nov 85", "ನನ್ನ ಸಂಖ್ಯೆ ಒಂಬತ್ತು ಎಂಟು", "मेरा नंबर नौ आठ सात", "Question 0"):
+        assert unexplained_numbers(said), said
 
 
 def test_extract_dob_forms():

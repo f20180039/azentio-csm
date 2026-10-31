@@ -6,6 +6,7 @@ import httpx
 from app.config import Settings
 from app.simulator_client import SESSION_HEADER, SimulatorClient
 from app.support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, run_support_tool
+from app.vocab import VerifyField
 
 CALL = "22222222-2222-2222-2222-222222222222"
 
@@ -56,10 +57,12 @@ class FakeSimulator:
         return httpx.Response(404, json={"error": "NOT_FOUND"})
 
 
+SAID_ALOUD = set(VerifyField)  # these tests drive the tool directly, standing in for a caller whose details the model heard
+
+
 def setup():
     sim = FakeSimulator()
-    # spoke_numbers: these tests drive the tool directly, standing in for a caller who did say their details aloud
-    return sim, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), CallSession(CALL, spoke_numbers=True)
+    return sim, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), CallSession(CALL, model_may_fill=set(SAID_ALOUD))
 
 
 def run(client, call, name, args=None):
@@ -176,7 +179,7 @@ def test_verify_sends_the_caller_ref_on_phone_calls_only():
     verify(client, call)
     assert "caller_ref" not in json.loads(sim.requests[-1].content)
     sim, client, _ = setup()
-    verify(client, CallSession(CALL, caller_ref="+15005550199", spoke_numbers=True))
+    verify(client, CallSession(CALL, caller_ref="+15005550199", model_may_fill=set(SAID_ALOUD)))
     assert json.loads(sim.requests[-1].content)["caller_ref"] == "+15005550199"
 
 

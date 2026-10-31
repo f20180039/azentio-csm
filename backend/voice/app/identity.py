@@ -36,7 +36,8 @@ _ORDINAL_TEENS = {"tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13, 
                   "seventeenth": 17, "eighteenth": 18, "nineteenth": 19, "twentieth": 20, "thirtieth": 30}
 _ORDINALS = {**_ORDINAL_UNITS, **_ORDINAL_TEENS,
              **{f"{tens} {unit}": _TENS[tens] + n for tens in ("twenty", "thirty") for unit, n in _ORDINAL_UNITS.items() if _TENS[tens] + n <= 31}}
-_ORDINAL_WORDS = re.compile(r"\b(" + "|".join(sorted(_ORDINALS, key=len, reverse=True)).replace(" ", r"[\s-]+") + r")\b", re.I)
+_ORDINAL_WORDS = re.compile(r"\b(" + "|".join(sorted(_ORDINALS, key=len, reverse=True)).replace(" ", r"[\s-]+") + r")\b"
+                            r"(?=\s+(?:of\s+)?(?:" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\b)", re.I)  # only before a month
 
 
 def _alt(words) -> str:
@@ -59,13 +60,30 @@ def _prepare(text: str) -> str:
     return normalise_spoken_digits((text or "").translate(KANNADA_DIGITS))
 
 
+def _converted(text: str) -> str:
+    """The turn with spoken digits expanded, Kannada numerals, ordinal days and spoken years as numbers."""
+    return _words_to_numbers(_prepare(text))
+
+
+def _blank_dates(converted: str) -> str:
+    """Dates taken out, so '3 November 1985' never lends its digits to a mobile number said next to it."""
+    for pattern in (_NUMERIC_DATE, _DAY_MONTH_YEAR, _MONTH_DAY_YEAR):
+        converted = pattern.sub(" ", converted)
+    return converted
+
+
 def _groups(text: str) -> list[str]:
     """Every run of digits the caller said, as digit strings: '98765 00002' and 'nine eight seven…' alike; dates left out."""
     out = []
-    for m in _DIGIT_GROUP.finditer(_NUMERIC_DATE.sub(" ", _prepare(text))):
+    for m in _DIGIT_GROUP.finditer(_blank_dates(_converted(text))):
         tokens = re.split(r"[\s-]+", m.group(0).lstrip("+"))
         out.append("".join(t if t.isdigit() else _WORD_DIGITS[t.lower()] for t in tokens if t))
     return out
+
+
+def is_mobile_attempt(run: str) -> bool:
+    """A run of digits that was meant as a mobile number but is not 10 digits long."""
+    return MOBILE_ATTEMPT_MIN <= len(run) <= MOBILE_ATTEMPT_MAX and len(run) != MOBILE_LEN
 
 
 def _without_prefix(d: str) -> str:
@@ -137,7 +155,7 @@ def clean_dob(raw: str, today: date) -> str | None:
 def extract_dob(text: str, today: date) -> str | None:
     """The last date of birth said in the text as YYYY-MM-DD: numeric, 'third of November 1985', 'Nov 3, 1985' or words for
     the year ('nineteen eighty-five', 'two thousand and five'); None when no plausible birth date was said."""
-    text = _words_to_numbers(_prepare(text))
+    text = _converted(text)
     found: list[tuple[int, str]] = []
     for pattern in (_ISO, _DAY_FIRST, _DAY_MONTH_YEAR, _MONTH_DAY_YEAR):
         for m in pattern.finditer(text):
@@ -152,7 +170,15 @@ def extract_dob(text: str, today: date) -> str | None:
     return max(found)[1] if found else None
 
 
-def spoke_numbers(text: str) -> bool:
-    """Whether the turn carried a number the code may not be able to read: a digit, or letters outside the Latin scripts
-    (Kannada or Hindi number words), so a model's digits may be trusted for a caller who did say something numeric."""
-    return any(ch.isdigit() or (ch.isalpha() and ord(ch) > 0x024F) for ch in _prepare(text))
+def unexplained_numbers(text: str) -> bool:
+    """Whether the turn carried numbers this code could not read, so the model may have heard a detail it did not: letters
+    outside the Latin scripts (Kannada or Hindi number words), or digit runs left over once the mobile number, the dates and
+    a wrong-length attempt at the mobile are taken out. A turn fully accounted for gives the model nothing to add."""
+    if any(ch.isalpha() and ord(ch) > 0x024F for ch in _converted(text)):
+        return True
+    groups = _groups(text)
+    if any(_mobile_in(g) for g in groups):
+        groups = [g for g in groups if _mobile_in(g) is None]
+    elif groups and is_mobile_attempt(_without_prefix(longest := max(reversed(groups), key=len))):
+        groups.remove(longest)
+    return bool(groups)

@@ -72,7 +72,16 @@ def test_invented_details_are_never_sent():
     assert out["error"] == ToolError.MISSING_DETAILS
     assert out["missing"] == [VerifyField.MOBILE, VerifyField.DOB] and out["have"] == []
     assert out["note"] == "Ask for the registered mobile number and date of birth."
-    assert sim.verify_bodies() == [] and brain.call.verify_failures == 0 and not brain.call.spoke_numbers
+    assert sim.verify_bodies() == [] and brain.call.verify_failures == 0 and not brain.call.model_may_fill
+
+
+def test_the_callers_own_digits_do_not_unlock_an_invented_date():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-04-12"}), text("And your date of birth?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("My number is 98765 00002")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.DOB] and out["have"] == [VerifyField.MOBILE]
+    assert out["note"] == "Ask only for the date of birth; the mobile number is already noted."
+    assert sim.verify_bodies() == [] and brain.call.verify_failures == 0 and not brain.call.model_may_fill
 
 
 def test_only_the_missing_field_is_asked_for():
@@ -109,6 +118,7 @@ def test_first_mismatch_does_not_say_which_field():
     assert out["note"] == ("The details do not match our records. Ask the caller to confirm both their mobile number and date of birth. "
                            "Do not say which one is wrong.")
     assert "date of birth does not match" not in out["note"] and "not registered" not in out["note"]
+    assert "mismatch" not in out  # the bank's reason stays out of the model's sight until the second failure
     assert brain.call.verify_failures == 1 and brain.call.heard_mobile == "9876500002" and brain.call.heard_dob == "1990-01-01"
 
 
@@ -130,6 +140,19 @@ def test_second_mismatch_names_the_wrong_field_and_keeps_the_other():
     assert all(b["mobile"] == "9876500002" for b in sim.verify_bodies())
 
 
+def test_a_retry_in_the_same_turn_after_the_second_mismatch_spends_no_attempt():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-01-01"}), text("Please confirm both."),
+                   tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-01-01"}, "c2"),
+                   tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-01-01"}, "c3"),  # the model's stale copy
+                   text("Could you tell me your date of birth once more?"))
+    brain, sim = make(llm)
+    asyncio.run(brain.reply("98765 00002, 1 January 1990"))
+    turn = asyncio.run(brain.reply("Yes, 98765 00002 and 1 January 1990"))
+    retry = [t.result for t in turn.tool_calls if t.name == "verify_customer"][-1]
+    assert retry["error"] == ToolError.MISSING_DETAILS and retry["missing"] == [VerifyField.DOB] and retry["have"] == [VerifyField.MOBILE]
+    assert brain.call.verify_failures == 2 and not brain.call.locked and len(sim.verify_bodies()) == 2
+
+
 def test_second_mismatch_on_an_unknown_mobile_asks_for_the_mobile_alone():
     llm = Scripted(tool_call("verify_customer", {"mobile": "9380939280", "date_of_birth": "1985-11-03"}), text("Please confirm both."),
                    tool_call("verify_customer", {"mobile": "9380939280", "date_of_birth": "1985-11-03"}, "c2"), text("That number is not registered."))
@@ -138,14 +161,14 @@ def test_second_mismatch_on_an_unknown_mobile_asks_for_the_mobile_alone():
     second = verify_result(asyncio.run(brain.reply("Yes, 93809 39280 and 3 November 1985")))
     assert second["note"] == ("That mobile number is not registered with us. Ask only for the registered mobile number; keep the date of birth. "
                               "This is the last attempt.")
-    assert brain.call.heard_mobile is None and brain.call.heard_dob == "1985-11-03"
+    assert brain.call.heard_mobile is None and brain.call.heard_dob == "1985-11-03" and brain.call.heard_digits is None
 
 
 def test_kannada_number_words_fall_back_to_the_models_digits():
     llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("ಧನ್ಯವಾದಗಳು, ಪರಿಶೀಲಿಸಲಾಗಿದೆ."))
     brain, sim = make(llm)
     turn = asyncio.run(brain.reply("ನನ್ನ ಸಂಖ್ಯೆ ಒಂಬತ್ತು ಎಂಟು ಏಳು ಆರು ಐದು ಸೊನ್ನೆ ಸೊನ್ನೆ ಸೊನ್ನೆ ಸೊನ್ನೆ ಎರಡು, ಹುಟ್ಟಿದ ದಿನಾಂಕ ಮೂರು ನವೆಂಬರ್ ಸಾವಿರದ ಒಂಬೈನೂರ ಎಂಬತ್ತೈದು"))
-    assert brain.call.spoke_numbers and brain.call.heard_mobile is None and brain.call.heard_dob is None
+    assert brain.call.model_may_fill == {VerifyField.MOBILE, VerifyField.DOB} and brain.call.heard_mobile is None and brain.call.heard_dob is None
     assert verify_result(turn)["verified"] is True
     assert sim.verify_bodies() == [{"mobile": "9876500002", "dob": "1985-11-03", "call_id": CALL}]
 

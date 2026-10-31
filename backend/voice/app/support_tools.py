@@ -52,7 +52,8 @@ class CallSession:
     heard_mobile: str | None = None  # the mobile number the caller themselves said, latest wins
     heard_dob: str | None = None  # the date of birth the caller themselves said, ISO, latest wins
     heard_digits: str | None = None  # the last run of digits that was an attempt at a mobile number but not 10 digits long
-    spoke_numbers: bool = False  # some caller turn carried a digit or non-Latin letters, so the model may have heard numbers the code cannot read
+    model_may_fill: set[VerifyField] = field(default_factory=set)  # fields the model's own value may stand in for: a caller turn
+    # carried numbers this code could not read (Kannada or Hindi number words, a two-digit year); a bank mismatch takes the field out again
     today: date = field(default_factory=date.today)  # for judging a date of birth; fixed in tests
 
     @property
@@ -132,9 +133,9 @@ REF_RAISING = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTE
 
 def resolve_identity(call: CallSession, args: dict) -> tuple[str | None, str | None]:
     """The mobile and date of birth to verify with: what the caller said wins; the model's value counts only when it is
-    well-formed and the caller did say something numeric (Kannada or Hindi number words the code cannot read)."""
-    mobile = call.heard_mobile or (clean_mobile(args.get("mobile") or "") if call.spoke_numbers else None)
-    dob = call.heard_dob or (clean_dob(args.get("date_of_birth") or "", call.today) if call.spoke_numbers else None)
+    well-formed and a caller turn carried numbers this code could not read (Kannada or Hindi number words)."""
+    mobile = call.heard_mobile or (clean_mobile(args.get("mobile") or "") if VerifyField.MOBILE in call.model_may_fill else None)
+    dob = call.heard_dob or (clean_dob(args.get("date_of_birth") or "", call.today) if VerifyField.DOB in call.model_may_fill else None)
     return mobile, dob
 
 
@@ -152,15 +153,18 @@ def missing_details(call: CallSession, mobile: str | None, dob: str | None) -> d
     return {"error": ToolError.MISSING_DETAILS, "missing": missing, "have": have, "note": note}
 
 
-def mismatch_note(call: CallSession, mismatch: str | None) -> str:
-    """After the first failed attempt: confirm both, naming neither. After the second: name the wrong field, forget the
-    value heard for it, and keep the other. An unknown reason keeps the cautious wording."""
+def apply_mismatch(call: CallSession, mismatch: str | None) -> str:
+    """The note for a failed attempt, and what it does to the call. After the first: confirm both, naming neither. After the
+    second: name the wrong field, forget everything heard for it, and keep the other; the model may not refill it from its own
+    copy, only a fresh caller turn can. An unknown reason keeps the cautious wording."""
     if call.verify_failures < 2 or mismatch not in MISMATCH_NOTES:
         return CONFIRM_BOTH
     if mismatch == VerifyMismatch.MOBILE_NOT_FOUND:
-        call.heard_mobile = None
+        call.heard_mobile, call.heard_digits = None, None
+        call.model_may_fill.discard(VerifyField.MOBILE)
     else:
         call.heard_dob = None
+        call.model_may_fill.discard(VerifyField.DOB)
     return MISMATCH_NOTES[VerifyMismatch(mismatch)]
 
 
@@ -197,6 +201,7 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             if "session" in out:
                 call.session, call.customer, call.locked = out["session"], out.get("customer"), False
                 return {"verified": True, "customer": out.get("customer")}
+            mismatch = out.pop("mismatch", None)  # the bank's reason is for apply_mismatch only: the model sees just the note
             if out.get("error") == ToolError.LOCKED:
                 call.locked = True
             else:
@@ -205,7 +210,7 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
                     call.locked = True
                     out = {**out, "error": ToolError.LOCKED, "note": "Verification is now locked. Share nothing personal; offer a human representative."}
                 else:
-                    out = {**out, "note": mismatch_note(call, out.get("mismatch"))}
+                    out = {**out, "note": apply_mismatch(call, mismatch)}
             return out
         case SupportTool.GET_LOAN_APPLICATIONS:
             return await client.applications(s)

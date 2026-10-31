@@ -11,13 +11,13 @@ from loguru import logger
 from . import recordings
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
-from .identity import MOBILE_ATTEMPT_MAX, MOBILE_ATTEMPT_MIN, MOBILE_LEN, digit_run, extract_dob, extract_mobile, spoke_numbers
+from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_numbers
 from .intents import Intent
 from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole
+from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole, VerifyField
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -175,15 +175,16 @@ class SupportBrain:
     def _hear_identity(self, text: str) -> None:
         """Keeps the mobile number and date of birth the caller said, so verify_customer uses them rather than the model's
         copy. A new value replaces the old (latest wins); a turn without one leaves it; a wrong-length number is remembered
-        so the agent can say how many digits it heard."""
+        so the agent can say how many digits it heard. Only numbers this code could not read let the model fill a field."""
         call = self.call
         if mobile := extract_mobile(text):
             call.heard_mobile, call.heard_digits = mobile, None
-        elif (run := digit_run(text)) and MOBILE_ATTEMPT_MIN <= len(run) <= MOBILE_ATTEMPT_MAX and len(run) != MOBILE_LEN:
+        elif (run := digit_run(text)) and is_mobile_attempt(run):
             call.heard_digits = run
         if dob := extract_dob(text, call.today):
             call.heard_dob = dob
-        call.spoke_numbers = call.spoke_numbers or spoke_numbers(text)
+        if unexplained_numbers(text):
+            call.model_may_fill.update(VerifyField)
 
     def mark_unheard(self) -> None:
         """The caller interrupted before hearing the last reply: keep it in context, but say it was never heard."""
