@@ -62,15 +62,17 @@ def _trim(result: dict) -> dict:
     return result if len(raw) <= RETRIEVED_LIMIT else {"truncated": raw[:RETRIEVED_LIMIT]}
 
 
-def window(messages: list[dict], turns: int = HISTORY_TURNS) -> list[dict]:
+def window(messages: list[dict], turns: int = HISTORY_TURNS, state: str = "") -> list[dict]:
     """The system prompt plus the last `turns` caller turns, cut only at a caller message so tool calls keep their results.
-    Tool results before the current caller turn are shortened: the agent already used them, and they cost tokens."""
+    Tool results before the current caller turn are shortened: the agent already used them, and they cost tokens.
+    `state` is added to the system prompt: facts about the call that must outlive the window, such as verification."""
+    system = {**messages[0], "content": f"{messages[0]['content']}\n{state}"} if state else messages[0]
     users = [i for i, m in enumerate(messages) if m["role"] == "user"]
     if not users:
-        return messages
+        return [system, *messages[1:]]
     start = users[-turns] if len(users) > turns else 1
     current = users[-1]
-    out = [messages[0]]
+    out = [system]
     for i, m in enumerate(messages[start:], start):
         if i < current and m["role"] == "tool" and len(m.get("content") or "") > OLD_TOOL_RESULT_CHARS:
             m = {**m, "content": m["content"][:OLD_TOOL_RESULT_CHARS] + "…(shortened)"}
@@ -154,11 +156,19 @@ class SupportBrain:
                 logger.warning(f"call end not recorded: {e}")
         return outcome
 
+    def _call_state(self) -> str:
+        if not self.call.verified:
+            return ""
+        who = self.call.customer or {}
+        return (f"CALL STATE: the caller is already verified as {who.get('first_name', 'the customer')} "
+                f"({who.get('customer_ref', 'customer on record')}) for the rest of this call. Do not ask for their mobile "
+                "number or date of birth again and do not call verify_customer again; use the personal tools directly.")
+
     async def _loop(self) -> SupportTurn:
         traces: list[ToolTrace] = []
         model = None
         for _ in range(MAX_TOOL_ROUNDS):
-            msg = await self._llm.complete(window(self._messages), SUPPORT_TOOL_SCHEMAS)
+            msg = await self._llm.complete(window(self._messages, state=self._call_state()), SUPPORT_TOOL_SCHEMAS)
             model = msg.get("model", model)
             calls = msg.get("tool_calls") or []
             if not calls:

@@ -176,3 +176,16 @@ def test_approved_lessons_join_the_instructions_within_limits():
     p = support_prompt(lessons)
     assert p.count("\n- Lesson number") <= MAX_LESSONS and "Lesson number 0" in p and "Lesson number 14" not in p
     assert "ask once" in support_prompt() and "record_rating" in support_prompt()
+
+
+def test_a_verified_caller_is_not_asked_again_once_the_verify_turn_leaves_the_window():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}),
+                   *[text(f"Reply {n}.") for n in range(10)])
+    brain, _, _ = make(llm)
+    for n in range(9):
+        asyncio.run(brain.reply(f"Question {n}"))
+    seen = llm.seen
+    system = seen[-1][0]["content"]
+    assert "verify_customer" not in json.dumps(seen[-1][1:])  # the verification itself is out of the window
+    assert "already verified" in system and "CUST-1002" in system
+    assert "already verified" not in seen[0][0]["content"]
