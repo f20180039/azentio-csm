@@ -95,6 +95,13 @@ class SupportBrain:
             await self._patch(customer_seq, {**self._verification(), "intents": turn.intents, "intent_source": turn.intent_source})
             return turn
 
+    def mark_unheard(self) -> None:
+        """The caller interrupted before hearing the last reply: keep it in context, but say it was never heard."""
+        for m in reversed(self._messages):
+            if m["role"] == "assistant" and m.get("content") and not m.get("tool_calls"):
+                m["content"] = f"(Not heard: the caller interrupted before this was spoken.) {m['content']}"
+                return
+
     async def no_speech(self, reason: str) -> None:
         """A customer turn with nothing to answer (silence, or noise the model turned into words): recorded, not replied to."""
         async with self._lock:

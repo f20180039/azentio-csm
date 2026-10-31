@@ -57,7 +57,7 @@ If neither matches, ask the human which person they are. **Work only on tasks in
 | `backend/simulator` | FastAPI bank simulator, port 8090 (Chirag) |
 | `backend/voice` | Pipecat voice agent, port 7861 (Anshuman) |
 | `backend/voice/eval` | Scenarios, utterances, audio renderer (Pavan) and harness (Anshuman) |
-| `backend/api` | Spring Boot system of record, port 8080: calls, transcripts, audit, Renewal Desk |
+| `backend/api` | FastAPI system of record, port 8080: calls, transcripts, audit, Renewal Desk |
 | `frontend` | React operator panel, port 5173 |
 
 ## 5. Running tests
@@ -66,5 +66,5 @@ If neither matches, ask the human which person they are. **Work only on tasks in
 |---|---|
 | Simulator | `cd backend/simulator && python -m pytest -q` |
 | Voice | `cd backend/voice && .venv/bin/pytest -q` |
-| Spring API | `cd backend/api && ./mvnw test` |
+| Core API | `cd backend/api && .venv/bin/pytest -q` |
 | Frontend | `cd frontend && npm test && npx tsc --noEmit` |
