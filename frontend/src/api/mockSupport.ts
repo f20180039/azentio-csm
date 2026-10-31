@@ -39,7 +39,7 @@ import {
   TurnRole,
 } from '../vocab';
 import { ApiError } from './errors';
-import { LessonLength } from '../vocab';
+import { LessonLength, TranscriptLength } from '../vocab';
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
@@ -418,7 +418,9 @@ export const mockSupport = {
     await delay();
     const turn = callerTurn(id, turnSeq);
     const corrected = text.trim();
-    if (!corrected) throw new ApiError({ status: 400, title: 'Nothing to save', detail: 'The corrected transcript cannot be blank.' });
+    if (corrected.length < TranscriptLength.MIN || corrected.length > TranscriptLength.MAX) {
+      throw new ApiError({ status: 400, title: 'Invalid transcript', detail: `A corrected transcript is ${TranscriptLength.MIN} to ${TranscriptLength.MAX} characters.` });
+    }
     turn.meta.transcript_correction = { text: corrected, author: currentUsername() ?? 'reviewer', at: new Date().toISOString() };
     return structuredClone(turn);
   },

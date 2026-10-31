@@ -296,7 +296,7 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
   if (!canReview && !correction) return null;
   const fieldId = `tc-${callId}-${turn.seq}`;
   return (
-    <div className="tc">
+    <div className="sc-tc">
       {correction && (
         <span className="small muted">
           Corrected by {displayName(correction.author)} ·{' '}
@@ -304,7 +304,7 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
         </span>
       )}
       {canReview && !editing && (
-        <span className="row tc-actions">
+        <span className="row sc-tc-actions">
           <button type="button" className="btn ghost sm" onClick={open} disabled={busy}>
             Correct transcript
           </button>
@@ -317,7 +317,7 @@ export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId:
       )}
       {canReview && editing && (
         <form
-          className="tc-form"
+          className="sc-tc-form"
           onSubmit={(e) => {
             e.preventDefault();
             if (valid) void run(() => correctTranscript(callId, turn.seq, trimmed), 'Transcript corrected');

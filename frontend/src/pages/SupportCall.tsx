@@ -212,17 +212,20 @@ function LanguageChip({ meta }: { meta: SupportTurn['meta'] }) {
  *
  * A caller turn a reviewer has corrected leads with the corrected reading; the recognised text follows as "Heard as",
  * then the English (which translates the recognised text, so it stays with it). "English first" does not reorder these.
+ * A turn the recogniser marked as silent can be corrected too (a false "no speech" is a mis-recognition): its "Heard as"
+ * says so instead of quoting an empty record.
  */
 function TurnText({ t, query, englishFirst }: { t: SupportTurn; query: string; englishFirst: boolean }) {
   const m = t.meta;
   if (m.transcript_correction) {
+    const silent = m.no_speech || !t.text.trim();
     return (
       <>
         <p lang={m.language} data-testid="turn-corrected">
           <Highlight text={transcriptText(t)} query={query} />
         </p>
-        <p lang={m.language} data-testid="turn-heard" className="small muted sc-turn-alt">
-          <span className="sc-turn-alt-label">Heard as:</span> <Highlight text={t.text} query={query} />
+        <p lang={silent ? undefined : m.language} data-testid="turn-heard" className="small muted sc-turn-alt">
+          <span className="sc-turn-alt-label">Heard as:</span> {silent ? '(no speech detected)' : <Highlight text={t.text} query={query} />}
         </p>
         {m.text_en && (
           <p lang={SpeechLanguage.ENGLISH} data-testid="turn-english" className="small muted sc-turn-alt">
@@ -269,7 +272,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged, englishFirst = fa
             {formatDateTime(t.at)}
           </time>
         </div>
-        {m.no_speech ? <p className="muted sc-nospeech">No speech detected</p> : <TurnText t={t} query={query} englishFirst={englishFirst} />}
+        {m.no_speech && !m.transcript_correction ? <p className="muted sc-nospeech">No speech detected</p> : <TurnText t={t} query={query} englishFirst={englishFirst} />}
         {m.audio && callId && (
           <audio controls preload="none" src={turnAudioUrl(callId, t.seq)} aria-label="What the customer said" className="sc-audio" />
         )}
@@ -284,7 +287,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged, englishFirst = fa
             </span>
           ) : null}
         </div>
-        {callId && onChanged && !m.no_speech && <TranscriptCorrectionBlock callId={callId} turn={t} onChanged={onChanged} />}
+        {callId && onChanged && <TranscriptCorrectionBlock callId={callId} turn={t} onChanged={onChanged} />}
       </li>
     );
   }

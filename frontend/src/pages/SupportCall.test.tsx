@@ -443,6 +443,33 @@ describe('caller transcript corrections (Level 2 §6)', () => {
     expect(screen.queryByRole('button', { name: 'Remove correction' })).toBeNull();
   });
 
+  it('offers the control on a no-speech caller turn, and shows a correction saved on one', async () => {
+    const call = structuredClone(SAMPLE_ROUTED_CALL);
+    const silent = call.turns.find((t) => t.role === TurnRole.CUSTOMER && t.meta.no_speech)!;
+    // Serve the call lazily and let a save land on it, as the core API would, so the page's refresh after saving sees it.
+    h.getCall.mockImplementation(async () => structuredClone(call));
+    h.correctTranscript.mockImplementation(async (_id: string, seq: number, text: string) => {
+      const t = call.turns.find((x) => x.seq === seq)!;
+      t.meta.transcript_correction = { text, author: 'reviewer', at: '2026-10-31T06:00:00Z' };
+      return t;
+    });
+    mount(`/support/calls/${call.id}`, [Role.REVIEWER]);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText('No speech detected')).closest('li')!;
+    fireEvent.click(within(turn).getByRole('button', { name: 'Correct transcript' }));
+    const field = within(turn).getByLabelText('Corrected transcript') as HTMLInputElement;
+    expect(field.value).toBe('');
+    fireEvent.change(field, { target: { value: 'Hello, can you hear me?' } });
+    fireEvent.click(within(turn).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(h.correctTranscript).toHaveBeenCalledWith(call.id, silent.seq, 'Hello, can you hear me?'));
+
+    const main = await within(log).findByText('Hello, can you hear me?');
+    const fixed = main.closest('li')!;
+    expect(within(fixed).getByTestId('turn-heard')).toHaveTextContent('Heard as: (no speech detected)');
+    expect(within(fixed).getByRole('button', { name: 'Remove correction' })).toBeInTheDocument();
+  });
+
   it('finds a turn by its corrected text when searching', async () => {
     const { call } = corrected();
     h.getCall.mockResolvedValue(call);

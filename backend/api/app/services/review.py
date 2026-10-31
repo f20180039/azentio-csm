@@ -131,9 +131,10 @@ class ReviewService:
     def clear_transcript_correction(self, call_id: str, seq: int, user: User) -> dict:
         with self.db.tx() as con:
             turns, t, meta = self._caller_turn(con, call_id, seq)
-            correction = meta.pop(TurnMetaKey.TRANSCRIPT_CORRECTION, None)
+            correction = meta.get(TurnMetaKey.TRANSCRIPT_CORRECTION)
             if not isinstance(correction, dict):
                 raise ApiError.not_found(f"Turn {seq} on call {call_id} has no transcript correction")
+            del meta[TurnMetaKey.TRANSCRIPT_CORRECTION]
             con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
             self.audit.record(con, call_id, user.username, AuditAction.TRANSCRIPT_CORRECTION_REMOVED,
                               {"seq": seq, "original": t.get("text"), "corrected": correction.get("text")})
