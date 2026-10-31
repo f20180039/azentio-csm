@@ -132,3 +132,17 @@ def test_key_never_logged(caplog):
     finally:
         logger.remove(sink)
     assert lines and not any(KEY in str(l) for l in lines)
+
+
+def test_rules_fallback_on_pavans_labelled_utterances():
+    """eval/utterances.csv: a greeting alongside a request is scored on the request (CHITCHAT is returned only alone)."""
+    import csv
+    from pathlib import Path
+
+    rows = list(csv.DictReader((Path(__file__).parents[1] / "eval" / "utterances.csv").open(encoding="utf-8")))
+    hits = 0
+    for r in rows:
+        want = set(r["intents"].split("|"))
+        want = want - {"CHITCHAT"} if len(want) > 1 else want
+        hits += want <= {str(i) for i in rules_classify(r["text"]).intents}
+    assert len(rows) == 60 and hits >= 57, f"{hits}/60"

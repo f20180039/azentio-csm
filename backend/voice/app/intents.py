@@ -47,7 +47,8 @@ _RULES: dict[Intent, re.Pattern] = {
         r"\bmy\s+application\b", r"\bappl(?:ied|ication)\b.{0,25}\bloan\b",
         r"\bloan\b.{0,15}\b(?:status|sanction(?:ed)?|approved|disburs\w*)\b",
         r"\b(?:status|sanction|approval|disbursal|disbursement)\s+of\s+(?:my\s+)?(?:\w+\s+)?loan\b(?!\s+statement)",
-        r"\bAPP[\s-]?\d{3,}\b"),
+        r"\bAPP[\s-]?\d{3,}\b", r"\bLA[\s-]?\d{3,}\b", r"\bapplication\b.{0,25}\b(?:next\s+step|update|stage)\b",
+        r"\b(?:submitted|applied)\b.{0,40}\bloan\b", r"\bloan\s+papers?\b"),
     Intent.REPAYMENT: _rx(
         r"\bemi\b", r"\bemis\b", r"\binstall?e?ments?\b", r"\bdue\s+date\b", r"\bdue\s+(?:amount|on)\b",
         r"\brepay\w*", r"\boverdue\b", r"\boutstanding\b", r"\bforeclos\w*", r"\bpre-?pay\w*",
@@ -56,30 +57,39 @@ _RULES: dict[Intent, re.Pattern] = {
     Intent.ACCOUNT: _rx(
         r"\bbalance\b", r"\btransactions?\b", r"\bmini\s+statement\b", r"\bdebited\b", r"\bcredited\b",
         r"\b(?:savings|current|salary|bank)\s+account\b", r"\baccount\s+(?:details|number|summary)\b",
-        r"\bpaisa\b.{0,20}\b(?:kat|cut)\b"),
+        r"\bpaisa\b.{0,20}\b(?:kat|cut)\b", r"\bTXN[\s-]?\d{3,}\b", r"\btransfer\b.{0,30}\b(?:status|fail\w*|pending|happened|went|through|reflect\w*|stuck)\b", r"\bhappened\s+to\b.{0,15}\btransfer\b",
+        r"\bpayment\b.{0,30}\b(?:posted|pending|status|go\s+through|gone\s+through)\b"),
     Intent.SERVICE_REQUEST: _rx(
         r"\bSR[\s-]?\d{3,}\b", r"\btickets?\b", r"\bservice\s+request\b", r"\brequest\s+(?:status|number|id)\b",
         r"\b(?<!mini\s)statement\b", r"\bnoc\b", r"\bno\s+objection\b", r"\b(?:interest|tax)\s+certificate\b",
         r"\b(?:change|update)\s+(?:my\s+)?(?:address|email|e-mail|mobile|phone|contact)\b",
-        r"\bcheque\s*book\b", r"\b(?:block|replace|reissue)\b.{0,15}\bcard\b"),
+        r"\bcheque\s*book\b", r"\b(?:block|replace|reissue)\b.{0,15}\bcard\b", r"\braise\b.{0,30}\brequest\b",
+        r"\b(?:schedule|statement|change|document)\s+request\b", r"\baddress\s+change\b"),
     Intent.PRODUCT_INFO: _rx(
         r"\bdocuments?\b.{0,15}\b(?:for|required|needed|to)\b", r"\bdocuments?\s+(?:list|required)\b",
         r"\beligib\w*", r"\binterest\s+rates?\b", r"\brate\s+of\s+interest\b", r"\broi\b",
         r"\bhow\s+(?:do|can|to)\s+(?:i\s+)?apply\b", r"\bapply\s+for\b", r"\bwant\s+(?:a|to\s+take\s+a)\s+\w*\s*loan\b",
         r"\btenure\b", r"\bprocessing\s+fees?\b", r"\btell\s+me\s+about\b", r"\bfeatures\s+of\b",
-        r"\b(?:fixed|recurring)\s+deposit\b", r"\bfd\s+rates?\b", r"\bloan\s+options\b", r"\bwhich\s+loan\b"),
+        r"\b(?:fixed|recurring)\s+deposit\b", r"\bfd\s+rates?\b", r"\bloan\s+options\b", r"\bwhich\s+loan\b",
+        r"\bhow\s+(?:do|can|to)\s+(?:i\s+)?(?:stop|start|set\s+up|cancel|foreclose|prepay|close|activate)\b",
+        r"\b(?:branch|helpline|working|office|customer\s+care)\s+(?:hours|timings?)\b", r"\bgrace\s+period\b"),
     Intent.COMPLAINT: _rx(
         r"\bcomplain\w*", r"\bgrievance\b", r"\bfraud\w*", r"\bunauthori[sz]ed\b", r"\bdispute\b",
         r"\bfail(?:ed|ing|s)?\b", r"\bdeducted\s+twice\b", r"\bcharged\s+(?:twice|extra|wrongly)\b",
         r"\bwrong(?:ly)?\b", r"\bnot\s+(?:received|credited|refunded|reflect\w*|working|updated)\b",
-        r"\brefund\b", r"\bdebited\s+but\b", r"\bpathetic\b", r"\bharass\w*", r"\bkat\s+gaya\b"),
+        r"\brefund\b", r"\bdebited\s+but\b", r"\bpathetic\b", r"\bharass\w*", r"\bkat\s+gaya\b",
+        r"\b(?:didn'?t|did\s+not|never)\s+(?:make|do|authori[sz]e)\b", r"\b(?:poor|bad|terrible|rude|slow)\s+(?:service|experience)\b",
+        r"\bservice\b.{0,30}\b(?:poor|terrible|rude|very\s+slow)\b", r"\bincorrect\s+charge\b",
+        r"\breport\b.{0,25}\b(?:charge|transaction|issue|fraud|problem)\b"),
     Intent.INSURANCE: _rx(
         r"\binsurance\b", r"\binsured\b", r"\bpolicy\b", r"\bpolicies\b", r"\bclaims?\b", r"\bpremium\b",
         r"\b(?:health|life|motor)\s+cover\b"),
     Intent.HUMAN_AGENT: _rx(
         r"\b(?:talk|speak|connect|transfer)\b.{0,15}\b(?:person|human|agent|someone|somebody|executive|"
         r"representative|manager|officer|staff)\b",
-        r"\breal\s+(?:person|human)\b", r"\bhuman\s+agent\b", r"\bcustomer\s+care\s+executive\b"),
+        r"\breal\s+(?:person|human)\b", r"\bhuman\s+agent\b", r"\bcustomer\s+care\s+executive\b",
+        r"\bsupervisor\b", r"\b(?:get|need|want)\b.{0,25}\b(?:representative|executive|human|real\s+person)\b",
+        r"\bcall\s+me\s+back\b", r"\bcall\s*back\b"),
     Intent.UNSUPPORTED: _rx(
         r"\bweather\b", r"\bflights?\b", r"\btrain\s+tickets?\b", r"\bhotel\b", r"\bmovies?\b", r"\bcricket\b",
         r"\bscore\b", r"\bjokes?\b", r"\brecipe\b", r"\bsongs?\b", r"\bnews\b", r"\bbook\s+(?:me\s+)?an?\s+(?:cab|taxi)\b",
@@ -125,7 +135,7 @@ def rules_classify(text: str) -> IntentResult:
         found[Intent.COMPLAINT] = weak.start()
     if (pos := _identity_at(text)) is not None:
         found[Intent.IDENTITY] = pos
-    if not found and _CHITCHAT.search(text):
+    if not found and (greet := _CHITCHAT.search(text)) and len(text[greet.end():].split()) <= 3:  # "Hi, I have an issue with…" is not small talk
         return IntentResult([Intent.CHITCHAT], 0.7, "rules")
     if not found:
         return IntentResult([Intent.UNCLEAR], 0.3, "rules")
