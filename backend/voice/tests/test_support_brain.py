@@ -189,3 +189,17 @@ def test_a_verified_caller_is_not_asked_again_once_the_verify_turn_leaves_the_wi
     assert "verify_customer" not in json.dumps(seen[-1][1:])  # the verification itself is out of the window
     assert "already verified" in system and "CUST-1002" in system
     assert "already verified" not in seen[0][0]["content"]
+
+
+def test_a_tool_call_written_as_text_is_run_and_never_spoken():
+    from app.support_brain import recover_text_tool_call
+    assert recover_text_tool_call("Your EMI is due on 5 November.") is None
+    assert recover_text_tool_call('{"name": "book_flight", "parameters": {}}') is None
+    broken = '{"name":"get_loans","parameters\\":{\\"product_type\\n":\\"personal\\"}}'  # as llama3.2 wrote it in the eval
+    assert recover_text_tool_call(broken)["function"]["name"] == "get_loans"
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Verified."),
+                   text('{"name": "get_loans", "parameters": {"product_type": "vehicle"}}'), text("Nine thousand eight hundred rupees."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("My number is 98765 00002, born third November 85."))
+    turn = asyncio.run(brain.reply("When is my vehicle loan EMI?"))
+    assert turn.text == "Nine thousand eight hundred rupees." and tools_called(sim)[-1] == ("/v1/lms/loans", {"type": "vehicle"})

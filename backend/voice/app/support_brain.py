@@ -2,6 +2,7 @@
 recorded in Spring with the metadata the operator panel shows (intents, verification, tool trace, retrieved data, refs)."""
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -78,6 +79,26 @@ def window(messages: list[dict], turns: int = HISTORY_TURNS, state: str = "") ->
             m = {**m, "content": m["content"][:OLD_TOOL_RESULT_CHARS] + "…(shortened)"}
         out.append(m)
     return out
+
+
+TEXT_TOOL_NAME = re.compile(r'^\s*\{.*?"name\\?"\s*:\s*\\?"(\w+)', re.S)
+
+
+def recover_text_tool_call(content: str | None) -> dict | None:
+    """Small local models sometimes write a tool call as reply text ('{"name": "get_loans", "parameters": {...}}').
+    Turn that into the tool call it meant, so it is run and never spoken; None when the text is a normal reply."""
+    m = TEXT_TOOL_NAME.match(content or "")
+    if not m or m.group(1) not in SupportTool.__members__.values():
+        return None
+    raw = (content or "").replace("\\n", "").replace("\\", "").replace("\n", "")
+    args: dict = {}
+    try:
+        body = json.loads(raw)
+        args = body.get("parameters") or body.get("arguments") or {}
+    except ValueError:
+        pass
+    return {"id": f"text-{abs(hash(raw)) % 10**8}", "type": "function",
+            "function": {"name": m.group(1), "arguments": json.dumps(args if isinstance(args, dict) else {})}}
 
 
 def outcome_for(refs: list[str]) -> Outcome:
@@ -171,6 +192,8 @@ class SupportBrain:
             msg = await self._llm.complete(window(self._messages, state=self._call_state()), SUPPORT_TOOL_SCHEMAS)
             model = msg.get("model", model)
             calls = msg.get("tool_calls") or []
+            if not calls and (recovered := recover_text_tool_call(msg.get("content"))):
+                calls, msg = [recovered], {**msg, "content": None}
             if not calls:
                 return SupportTurn(msg.get("content") or "", traces, model=model, ended=self.ended)
             self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
