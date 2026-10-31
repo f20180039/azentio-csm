@@ -51,8 +51,9 @@ class SimulatorClient:
             return {**data, "error": data.get("error") or f"HTTP_{resp.status_code}", "status": resp.status_code}
         return data
 
-    async def verify(self, mobile: str, dob: str, call_id: str) -> dict:
-        return await self._send("POST", SimPath.VERIFY, body={"mobile": mobile, "dob": dob, "call_id": call_id})
+    async def verify(self, mobile: str, dob: str, call_id: str, caller_ref: str | None = None) -> dict:
+        body = {"mobile": mobile, "dob": dob, "call_id": call_id} | ({"caller_ref": caller_ref} if caller_ref else {})
+        return await self._send("POST", SimPath.VERIFY, body=body)
 
     async def applications(self, session: str) -> dict:
         return await self._send("GET", SimPath.LOS_APPLICATIONS, session)

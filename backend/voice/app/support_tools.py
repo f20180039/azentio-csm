@@ -45,6 +45,8 @@ class CallSession:
     refs: list[str] = field(default_factory=list)
     human_requests: int = 0
     phone_call_sid: str | None = None  # set on phone calls, so an escalation can transfer the live call
+    transfer_to: str | None = None  # the person a live phone call is transferred to; None means a call-back
+    caller_ref: str | None = None  # the caller's phone number on phone calls: the simulator's per-caller lock key
     helpline: str = ""
 
     @property
@@ -141,7 +143,7 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             if len(mobile) != 10 or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dob):  # never spend an attempt on details not given
                 return {**NOT_VERIFIED, "note": "Ask the caller for their registered 10-digit mobile number and date of birth; "
                                                 "call verify_customer only with what they actually said."}
-            out = await client.verify(mobile, dob, call.call_id)
+            out = await client.verify(mobile, dob, call.call_id, call.caller_ref)
             if "session" in out:
                 call.session, call.customer, call.locked = out["session"], out.get("customer"), False
                 return {"verified": True, "customer": out.get("customer")}
@@ -194,7 +196,7 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             out = await client.escalation(s, f"{trigger}: {args['reason']}", args.get("summary") or args["reason"], call.call_id)
             if "error" in out:
                 return out
-            if call.phone_call_sid:
+            if call.phone_call_sid and call.transfer_to:
                 return {**out, "handoff": {"mode": HandoffMode.TRANSFER},
                         "note": "Tell them you are connecting them to a colleague now, then stop talking."}
             return {**out, "handoff": {"mode": HandoffMode.CALLBACK, "helpline": call.helpline},
