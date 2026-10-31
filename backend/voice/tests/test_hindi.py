@@ -1,4 +1,5 @@
-"""Hindi callers (H1): script detection, call-language tracking, Hindi voice, fixed lines, greeting, prompts, classifier."""
+"""Hindi callers (H1): script detection, call-language tracking, Hindi voice, fixed lines, greeting, prompts, classifier;
+(H2) the eval renderer, harness accent and scenarios 15-16."""
 import asyncio
 
 from app import support_pipeline
@@ -9,6 +10,9 @@ from app.speech import (BILINGUAL_PROMPT, CODE_MIX_SHARE, HINDI_PROMPT, KANNADA_
 from app.support_pipeline import HINDI_LINES, KANNADA_LINES, LINES, STILL_THERE
 from app.support_prompt import GREETING, GREETING_HINDI, GREETING_KANNADA, LANGUAGE_RULE, language_rule, support_prompt
 from app.vocab import SpeechLanguage
+from eval.audio.render import VOICES as RENDER_VOICES
+from eval.audio.render import manifest_rows
+from eval.run_scenarios import ACCENTS, ENGLISH_ACCENTS, load
 from tests.test_pause import FakeBrain, responder, run
 
 EN, KN, HI = SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI
@@ -165,3 +169,19 @@ def test_live_speech_to_text_prompt_follows_a_hindi_call():
     first, second = fake.calls
     assert "language" not in first and "बैंक" in first["prompt"] and "ಬ್ಯಾಂಕ್" in first["prompt"]
     assert second["prompt"] == HINDI_PROMPT and stt.call_language.current == HI
+
+
+def test_renderer_and_harness_accept_hindi(tmp_path):
+    assert RENDER_VOICES["hi"] == "hi-IN-MadhurNeural"  # the caller's voice; the agent replies with hi-IN-SwaraNeural
+    assert "hi" in ACCENTS and "hi" not in ENGLISH_ACCENTS  # --full stays on the English accents
+    rows = manifest_rows([{"id": "15-hindi-repayment", "turn": 1, "text": "मेरी अगली EMI कब है?", "intents": ["REPAYMENT"]}],
+                         "scenarios", ["hi"], ["clean"], tmp_path)
+    assert rows[0]["file"] == "scenarios/hi/clean/15-hindi-repayment_t01.wav"
+    scenarios = {s["id"]: s for s in load()}
+    for sid in ("15-hindi-repayment", "16-hindi-statement"):
+        sc = scenarios[sid]
+        assert sc["customer"] == {"mobile": "9876500002", "dob": "1985-11-03"}
+        assert all(is_mostly_hindi(t["say"]) for t in sc["turns"])
+        assert sc["turns"][1]["expect"] == {"intents": ["IDENTITY"], "verified": True}
+    assert scenarios["15-hindi-repayment"]["turns"][-1]["expect"]["tools_any"] == ["get_loans", "get_schedule"]
+    assert scenarios["16-hindi-statement"]["turns"][-1]["expect"]["creates"] == {"ticket": "STATEMENT"}

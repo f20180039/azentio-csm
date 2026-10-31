@@ -23,7 +23,7 @@ else:  # Support direct execution as documented in the Pavan task.
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(__file__).resolve().parent / "out"
 VOICES = {"in": "en-IN-NeerjaNeural", "gb": "en-GB-RyanNeural", "ng": "en-NG-EzinneNeural", "us": "en-US-GuyNeural",
-          "kn": "kn-IN-SapnaNeural"}
+          "kn": "kn-IN-SapnaNeural", "hi": "hi-IN-MadhurNeural"}
 CAFE_LINES = ["The train leaves from platform six this afternoon.", "Please leave the package beside the front desk.", "The weekend market opens at nine in the morning."]
 
 

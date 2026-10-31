@@ -1,0 +1,11 @@
+id: 16-hindi-statement
+title: Hindi caller requests a loan statement
+customer: {mobile: "9876500002", dob: "1985-11-03"}
+turns:
+  - say: "मुझे मेरा लोन स्टेटमेंट चाहिए"
+    expect: {intents: [SERVICE_REQUEST]}
+  - say: "मेरा मोबाइल नंबर 98765 00002, जन्म तिथि 3 नवंबर 1985."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "कृपया स्टेटमेंट रिक्वेस्ट कर दीजिए."
+    expect: {intents: [SERVICE_REQUEST], creates: {ticket: STATEMENT}, tools_any: [create_service_request]}
+outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0}
