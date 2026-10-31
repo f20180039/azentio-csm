@@ -188,3 +188,11 @@ def test_a_named_loan_comes_back_only_if_it_is_the_callers():
     assert [x["loan_id"] for x in run(client, call, "get_loans", {"loan_id": "vl-31003"})["items"]] == ["VL-31003"]
     other = run(client, call, "get_loans", {"loan_id": "VL-31007"})
     assert other["error"] == "NOT_YOUR_RECORD" and "items" not in other
+
+
+def test_get_loans_accepts_null_for_its_optional_filters():  # Groq rejects a tool call whose null doesn't match the schema
+    props = next(t for t in SUPPORT_TOOL_SCHEMAS if t["function"]["name"] == "get_loans")["function"]["parameters"]["properties"]
+    assert all("null" in p["type"] for p in props.values()) and None in props["product_type"]["enum"]
+    sim, client, call = setup()
+    verify(client, call)
+    assert len(run(client, call, "get_loans", {"product_type": None, "loan_id": None})["items"]) == 2
