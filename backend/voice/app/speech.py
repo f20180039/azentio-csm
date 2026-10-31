@@ -2,6 +2,7 @@
 service, and the filter that drops transcripts the model invents from noise. Values are tuned from spikes/stt-bench."""
 import os
 import re
+import unicodedata
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -33,9 +34,29 @@ DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-4
 # the Kannada clips English, Tamil or Hindi, so the call's language is read from the transcript's script instead.
 BILINGUAL_PROMPT = "Bank customer call. ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, NACH, KYC, statement, SR-40102."
 KANNADA_PROMPT = "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102."
-KANNADA_VOICE = "kn-IN-SapnaNeural"
-_KANNADA_CHAR = re.compile(r"[ಀ-೿]")
+HINDI_PROMPT = "बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102."
+# The prompt once the call is in a script language; the words that keep Whisper in that script while the call is still English
+STT_PROMPTS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: KANNADA_PROMPT, SpeechLanguage.HINDI: HINDI_PROMPT}
+_SCRIPT_WORDS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು,",
+                                            SpeechLanguage.HINDI: "बैंक ग्राहक कॉल. EMI, लोन, खाता, स्टेटमेंट, किस्त,"}
+VOICES: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: "kn-IN-SapnaNeural", SpeechLanguage.HINDI: "hi-IN-SwaraNeural"}
+KANNADA_VOICE = VOICES[SpeechLanguage.KANNADA]
+_SCRIPTS: dict[SpeechLanguage, re.Pattern] = {SpeechLanguage.KANNADA: re.compile(r"[ಀ-೿]"), SpeechLanguage.HINDI: re.compile(r"[ऀ-ॿ]")}
+# A caller mixing English words into Kannada or Hindi ("मेरा loan statement चाहिए") is still speaking that language: the script
+# only has to make up this share of the letters. Vowel signs count as letters, since Indic scripts write most vowels that way.
+CODE_MIX_SHARE = 0.3
+MOSTLY_SHARE = 0.5  # a reply or fixed line is "mostly" in a script at half its letters
 _LETTER = re.compile(r"[^\W\d_]")
+_MARK_CATEGORIES = ("Mn", "Mc")
+
+
+def multilingual_prompt(enabled: tuple[SpeechLanguage, ...]) -> str:
+    """The English domain prompt plus the Kannada and/or Hindi words of the enabled languages (BILINGUAL_PROMPT for en,kn)."""
+    words = [_SCRIPT_WORDS[lang] for lang in _SCRIPT_WORDS if lang in enabled]
+    return ("Bank customer call. " + " ".join(words) + " NACH, KYC, statement, SR-40102.") if words else DOMAIN_PROMPT
+
+
+MULTILINGUAL_PROMPT = multilingual_prompt((SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))
 
 # Whisper's well-known inventions on silence and noise. Not "okay" or "bye": callers say those.
 PHANTOMS = {"thank you", "thanks for watching", "thank you for watching", "you", "thank you so much", "please subscribe"}
@@ -96,12 +117,15 @@ def normalise_spoken_digits(text: str) -> str:
 
 
 KANNADA_DIGITS = str.maketrans("೦೧೨೩೪೫೬೭೮೯", "0123456789")
+HINDI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+SCRIPT_DIGITS = KANNADA_DIGITS | HINDI_DIGITS
 
 
 def normalise_refs(text: str) -> str:
     """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents.
-    Kannada numerals (೯೩೮…) become ASCII digits, so a mobile number said in Kannada reaches verification intact."""
-    text = normalise_spoken_digits(text.translate(KANNADA_DIGITS))
+    Kannada (೯೩೮…) and Devanagari (९८७…) numerals become ASCII digits, so a mobile number said in Kannada or Hindi reaches
+    verification intact."""
+    text = normalise_spoken_digits(text.translate(SCRIPT_DIGITS))
     text = _SPELLED_PREFIX.sub(lambda m: m.group(1).replace(" ", "").upper(), text)
 
     def fix(m: re.Match) -> str:
@@ -110,13 +134,44 @@ def normalise_refs(text: str) -> str:
     return _REF.sub(fix, text)
 
 
+def _letters(text: str | None) -> list[str]:
+    """Letters of any script, with Indic vowel signs and other combining marks counted as letters of their script."""
+    return [c for c in (text or "") if _LETTER.match(c) or unicodedata.category(c) in _MARK_CATEGORIES]
+
+
+def _script_shares(text: str | None) -> dict[SpeechLanguage, float]:
+    """How much of the text's letters each script language's script makes up; empty when there are no letters."""
+    letters = _letters(text)
+    if not letters:
+        return {}
+    return {lang: sum(1 for c in letters if script.match(c)) / len(letters) for lang, script in _SCRIPTS.items()}
+
+
+def script_language(text: str | None) -> SpeechLanguage | None:
+    """KANNADA or HINDI when that script makes up at least CODE_MIX_SHARE of the letters; ENGLISH when there are letters but
+    neither script does (Latin, romanised Hindi, Urdu...); None when there are no letters (digits, silence)."""
+    shares = _script_shares(text)
+    if not shares:
+        return None
+    lang, share = max(shares.items(), key=lambda item: item[1])
+    return lang if share >= CODE_MIX_SHARE else SpeechLanguage.ENGLISH
+
+
+def is_mostly(language: SpeechLanguage, text: str | None) -> bool:
+    """At least half the letters are in the language's script: a reply or fixed line that should get that language's voice."""
+    return _script_shares(text).get(language, 0.0) >= MOSTLY_SHARE
+
+
 def is_mostly_kannada(text: str | None) -> bool:
-    letters = _LETTER.findall(text or "")
-    return bool(letters) and 2 * sum(1 for c in letters if _KANNADA_CHAR.match(c)) >= len(letters)
+    return is_mostly(SpeechLanguage.KANNADA, text)
+
+
+def is_mostly_hindi(text: str | None) -> bool:
+    return is_mostly(SpeechLanguage.HINDI, text)
 
 
 class CallLanguage:
-    """The language one call is in: Kannada from a mostly-Kannada transcript until the caller speaks English again."""
+    """The language one call is in: Kannada or Hindi from a transcript in that script until the caller speaks English again."""
 
     def __init__(self, enabled: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)):
         self.enabled = enabled
@@ -128,22 +183,27 @@ class CallLanguage:
         return len(self.enabled) > 1
 
     def heard(self, text: str | None) -> None:
-        if self.detects and _LETTER.search(text or ""):
-            self.current = SpeechLanguage.KANNADA if is_mostly_kannada(text) else SpeechLanguage.ENGLISH
+        """Follows the transcript's script, but only into an enabled language: Devanagari on an en,kn call changes nothing."""
+        if not self.detects:
+            return
+        language = script_language(text)
+        if language is not None and language in self.enabled:
+            self.current = language
 
     def stt_language(self) -> str | None:
         return None if self.detects else self.enabled[0].value
 
     def stt_prompt(self) -> str:
-        if SpeechLanguage.KANNADA not in self.enabled:
-            return DOMAIN_PROMPT
-        return KANNADA_PROMPT if self.current == SpeechLanguage.KANNADA else BILINGUAL_PROMPT
+        """The current language's prompt once the call is Kannada or Hindi; otherwise the English prompt with the enabled scripts' words."""
+        return STT_PROMPTS.get(self.current) or multilingual_prompt(self.enabled)
 
 
 def voice_for(text: str, default: str, call: CallLanguage | None = None) -> str:
-    """Kannada voice for a reply in Kannada script or during a Kannada call; the configured voice otherwise."""
-    kannada_call = call is not None and call.current == SpeechLanguage.KANNADA
-    return KANNADA_VOICE if is_mostly_kannada(text) or kannada_call else default
+    """The Kannada or Hindi voice for a reply mostly in that script, else for a call in that language; the configured voice otherwise."""
+    spoken = next((lang for lang in VOICES if is_mostly(lang, text)), None)
+    if spoken is None and call is not None:
+        spoken = call.current
+    return VOICES.get(spoken, default)
 
 
 def build_vad() -> SileroVADAnalyzer:

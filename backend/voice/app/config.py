@@ -9,7 +9,7 @@ from .vocab import SpeechLanguage
 
 
 def parse_languages(spec: str) -> tuple[SpeechLanguage, ...]:
-    """'en,kn' → (ENGLISH, KANNADA); an unknown code is a ValueError at start-up, not a silent English-only call."""
+    """'en,kn' → (ENGLISH, KANNADA), 'en,kn,hi' adds HINDI; an unknown code is a ValueError at start-up, not a silent English-only call."""
     langs = tuple(dict.fromkeys(SpeechLanguage(p.strip().lower()) for p in spec.split(",") if p.strip()))
     return langs or (SpeechLanguage.ENGLISH,)
 

@@ -89,9 +89,10 @@ class RefPrefix(StrEnum):
 
 
 class SpeechLanguage(StrEnum):
-    """Caller languages (Whisper codes); VOICE_LANGUAGES lists the enabled ones."""
+    """Caller languages (Whisper codes); VOICE_LANGUAGES lists the enabled ones (en,kn,hi enables all three)."""
     ENGLISH = "en"
     KANNADA = "kn"
+    HINDI = "hi"
 
 
 class IntentSource(StrEnum):

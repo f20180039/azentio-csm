@@ -25,7 +25,7 @@ from .edge_tts_service import EdgeTTSService
 from .recordings import join_wavs
 from .speech import CallLanguage, build_stt, build_vad, keep_transcript
 from .support_brain import SupportBrain, SupportTurn
-from .support_prompt import GREETING, GREETING_KANNADA
+from .support_prompt import GREETING, GREETINGS
 from .support_tools import CallSession
 from .vocab import HandoffMode, Outcome, SpeechLanguage, SupportTool
 
@@ -49,6 +49,15 @@ KANNADA_LINES = {
     NOISY_ASK: "ಕ್ಷಮಿಸಿ, ಹಿನ್ನೆಲೆಯಲ್ಲಿ ಸ್ವಲ್ಪ ಶಬ್ದವಿದೆ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳುತ್ತೀರಾ?",
     IDLE_GOODBYE: "ನನಗೆ ಏನೂ ಕೇಳಿಸಲಿಲ್ಲ, ಆದ್ದರಿಂದ ಈಗ ಕರೆಯನ್ನು ಮುಗಿಸುತ್ತಿದ್ದೇನೆ. ಅಜೆಂಟಿಯೊ ಡೆಮೊ ಬ್ಯಾಂಕ್‌ಗೆ ಕರೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
 }
+# The same lines in Hindi (feminine verb forms: the Hindi voice is female)
+HINDI_LINES = {
+    FALLBACK: "माफ़ कीजिए, मैं ठीक से सुन नहीं पाई। क्या आप दोबारा बता सकते हैं?",
+    SYSTEM_DOWN: "माफ़ कीजिए, हमारे सिस्टम से जुड़ने में दिक्कत हो रही है। कृपया थोड़ी देर रुकें या कुछ देर बाद फिर कोशिश करें।",
+    STILL_THERE: "क्या आप अभी भी लाइन पर हैं?",
+    NOISY_ASK: "माफ़ कीजिए, पीछे से कुछ शोर आ रहा है। क्या आप दोबारा बता सकते हैं?",
+    IDLE_GOODBYE: "मुझे कुछ सुनाई नहीं दिया, इसलिए मैं अब कॉल समाप्त कर रही हूँ। अज़ेंटियो डेमो बैंक को कॉल करने के लिए धन्यवाद।",
+}
+LINES: dict[SpeechLanguage, dict[str, str]] = {SpeechLanguage.KANNADA: KANNADA_LINES, SpeechLanguage.HINDI: HINDI_LINES}
 
 # Live support calls by call id, so the operator panel can pause one (POST /support/calls/{call_id}/pause)
 LIVE: dict[str, "SupportResponder"] = {}
@@ -188,8 +197,8 @@ class SupportResponder(FrameProcessor):
 
     def line(self, text: str) -> str:
         """A fixed agent line in the call's current language."""
-        kannada = self._language is not None and self._language.current == SpeechLanguage.KANNADA
-        return KANNADA_LINES.get(text, text) if kannada else text
+        lines = LINES.get(self._language.current, {}) if self._language is not None else {}
+        return lines.get(text, text)
 
     async def set_paused(self, paused: bool) -> None:
         """Side talk during a demo: while paused the caller's audio is ignored, the agent stops mid-sentence, a reply still
@@ -290,9 +299,9 @@ def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTranspo
 
     @transport.event_handler("on_client_connected")
     async def on_connected(_transport, _client):
-        # with Kannada on, a second line in the Kannada voice tells the caller they can switch
-        await task.queue_frames([TTSSpeakFrame(GREETING)] + ([TTSSpeakFrame(GREETING_KANNADA)] if language.detects
-                                                              and SpeechLanguage.KANNADA in language.enabled else []))
+        # with Kannada or Hindi on, one more line per language, in that language's voice, tells the caller they can switch
+        offers = [GREETINGS[lang] for lang in GREETINGS if lang in language.enabled] if language.detects else []
+        await task.queue_frames([TTSSpeakFrame(text) for text in [GREETING, *offers]])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(_transport, _client):
