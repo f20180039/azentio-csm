@@ -1,5 +1,5 @@
 import os
-import sys
+from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -13,33 +13,38 @@ def create_deck():
     prs.slide_height = Inches(7.5)
     blank_layout = prs.slide_layouts[6]
 
-    # Colors
-    NAVY = RGBColor(11, 25, 44)
-    SLATE_DARK = RGBColor(15, 23, 42)
-    ACCENT_BLUE = RGBColor(37, 99, 235)
-    CYAN = RGBColor(14, 165, 233)
-    BG_CARD = RGBColor(248, 250, 252)
-    BORDER_COLOR = RGBColor(226, 232, 240)
-    TEXT_MAIN = RGBColor(30, 41, 59)
-    TEXT_MUTED = RGBColor(100, 116, 139)
-    GREEN = RGBColor(22, 163, 74)
+    # Typography & Palette
+    FONT_FAMILY = "Segoe UI"
+    NAVY_TOPBAR = RGBColor(11, 25, 44)       # Azentio Deep Navy
+    SLATE_DARK = RGBColor(15, 23, 42)        # Charcoal Navy for Headings
+    ACCENT_BLUE = RGBColor(30, 64, 175)      # Royal Cobalt
+    CYAN_ACCENT = RGBColor(14, 165, 233)     # Cyan highlight
+    BG_CARD = RGBColor(248, 250, 252)        # Clean off-white surface
+    BORDER_LIGHT = RGBColor(226, 232, 240)   # Crisp subtle divider
+    TEXT_MAIN = RGBColor(51, 65, 85)         # Readable slate body
+    TEXT_MUTED = RGBColor(100, 116, 139)     # Secondary slate
+    PILL_BG = RGBColor(238, 242, 255)        # Soft indigo/blue tag fill
+    PILL_TEXT = RGBColor(49, 46, 129)        # Deep indigo tag text
+    GREEN_ACCENT = RGBColor(22, 163, 74)     # Success green
     WHITE = RGBColor(255, 255, 255)
 
     slides_data = [
         {
             "num": "01",
             "tag": "EXECUTIVE PITCH",
-            "title": "Azentio-CSM: Next-Gen Autonomous BFSI Voice Platform",
+            "title": "Azentio-CSM: Autonomous BFSI Voice AI Platform",
             "subtitle": "Deterministic Guardrails, Multilingual Intelligence & Cryptographic Auditability",
             "points": [
-                ("Full-Stack BFSI Solution", "Autonomous voice agent handling complex customer support, loan inquiries, statement generation, and policy renewals."),
+                ("Full-Stack BFSI Solution", "Autonomous voice agent handling tier-1 customer support, loan inquiries, statement generation, and renewals."),
                 ("Zero-Hallucination Architecture", "Every financial figure, reference number, and date is strictly grounded against Core Banking Simulator APIs before synthesis."),
                 ("Enterprise Compliance & 2FA", "Automated Two-Factor Authentication (OTP/DOB) with hard guardrails and instant supervisor handoff backstops."),
                 ("Production-Grade Quality", "924 automated tests passing (100% green across Core API, Banking Simulator, Voice Agent, and Web Desk).")
             ],
-            "kpi": ("924 Tests Passing", "100% Automated Coverage"),
+            "kpi": ("924 Tests Passing", "100% Automated Coverage Across 4 Microservices"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/01_support_desk.png",
-            "caption": "Live Operator Support Desk running on localhost:5173"
+            "meta_label": "LIVE OPERATOR SUPPORT DESK",
+            "meta_route": "http://localhost:5173/",
+            "meta_tech": "FastAPI Core (8080) · Pipecat WebRTC (7861) · React Desk (5173)"
         },
         {
             "num": "02",
@@ -52,9 +57,11 @@ def create_deck():
                 ("Security & Verification Vulnerability", "Weak authentication leads to data leakage, social engineering attacks, and compromised customer PII."),
                 ("Black-Box Operations", "Zero explainability into why an AI agent made a decision, with no tamper-evident audit trail for dispute resolution.")
             ],
-            "kpi": ("65%+ Call Volume", "Demands Regional Language Support"),
+            "kpi": ("65%+ Call Volume", "Demands Vernacular Regional Language Support"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/02_dashboard.png",
-            "caption": "Real-Time Operations Analytics & Intent Trends on localhost:5173/dashboard"
+            "meta_label": "EXECUTIVE DASHBOARD & INTENT TRENDS",
+            "meta_route": "http://localhost:5173/dashboard",
+            "meta_tech": "Rolling 7-Day Intent Classification · Live Model Cooldown Tracker"
         },
         {
             "num": "03",
@@ -67,9 +74,11 @@ def create_deck():
                 ("Clean Microservices", "Core API (8080) + Core Banking Simulator (8090) + Pipecat Voice Pipeline (7861) + Modern React Desk (5173)."),
                 ("100% Modern Python & TypeScript", "Completely eliminated legacy Java dependencies for lightning-fast container startup and agile CI/CD.")
             ],
-            "kpi": ("<850ms Latency", "End-to-End Voice Response"),
+            "kpi": ("<850ms Latency", "Sub-Second Glass-to-Glass Voice Response"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/01_support_desk.png",
-            "caption": "Integrated Microservices Ecosystem: Core API (8080), Voice (7861), Web (5173)"
+            "meta_label": "INTEGRATED MICROSERVICES ECOSYSTEM",
+            "meta_route": "http://localhost:5173/",
+            "meta_tech": "FastAPI (Python 3.12) · SQLite Storage · WebRTC SmallWebRTC SCTP"
         },
         {
             "num": "04",
@@ -82,9 +91,11 @@ def create_deck():
                 ("Phonetic Reference Recovery", "Translates spoken phonetic phrases into valid banking references ('ಎಂಟು ನೂರು' -> '800', 'ಲೋನ್' -> 'LOAN')."),
                 ("Speech-to-Text Benchmark Proven", "Benchmarked across diverse accents and background noise with >94% intent classification accuracy.")
             ],
-            "kpi": ("94%+ STT Accuracy", "Across Kannada, Hindi & Indian English"),
+            "kpi": ("94%+ STT Accuracy", "Across Kannada, Hindi & Indian English Dialects"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/03_kannada_call.png",
-            "caption": "Live Kannada Support Call with Parallel English Translation (localhost:5173)"
+            "meta_label": "MULTILINGUAL TIMELINE WITH ENGLISH TRANSLATION",
+            "meta_route": "http://localhost:5173/support/calls/475b0ac5-...",
+            "meta_tech": "Acoustic Conditioning (VOICE_LANGUAGES=en,kn,hi) · Real-time Translate"
         },
         {
             "num": "05",
@@ -97,9 +108,11 @@ def create_deck():
                 ("Brute-Force Protection", "Maximum 3 failed verification attempts before account lock and automated supervisor escalation (ESC-XXXXX)."),
                 ("Caller Profile Integration", "Verified callers instantly surface KYC profile, active loan accounts, and risk score on the operator desk.")
             ],
-            "kpi": ("Zero Leaks", "Strict Identity Gate Enforced"),
+            "kpi": ("Zero Data Leaks", "Hardware-Enforced 2FA Gate & Automatic Lockout"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/05_customer_verification.png",
-            "caption": "Customer Identity Verification & Security Card on localhost:5173"
+            "meta_label": "CUSTOMER IDENTITY VERIFICATION CARD",
+            "meta_route": "http://localhost:5173/support/calls/475b0ac5-...",
+            "meta_tech": "Deterministic 2FA Gate · 3-Strike Lockout · KYC Data Surface"
         },
         {
             "num": "06",
@@ -112,9 +125,11 @@ def create_deck():
                 ("Formal Complaint Lodging", "Logs grievances with category classification, department routing, and SLA tracking (CMP-3011)."),
                 ("Phonetic Reference Repair", "Spoken letters and numbers are phonetically spelled out and matched against active database records.")
             ],
-            "kpi": ("100% Autonomous", "SR-1042 / CMP-3011 Real-Time Creation"),
+            "kpi": ("100% Autonomous", "SR-1042 / CMP-3011 Real-Time API Execution"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/06_ops_records.png",
-            "caption": "Live Core Banking Operations Ledger: Tickets, Complaints & Service Requests"
+            "meta_label": "CORE BANKING OPERATIONS LEDGER",
+            "meta_route": "http://localhost:5173/ (Tickets & Complaints Tabs)",
+            "meta_tech": "Simulated Core Banking (8090) · SQLite Backend · SLA Department Routing"
         },
         {
             "num": "07",
@@ -127,9 +142,11 @@ def create_deck():
                 ("Anti-Hallucination Gate", "If a number cannot be verified in the bank simulator output, the draft reply is intercepted and safely deflected."),
                 ("Raw JSON Auditability", "Operators and compliance officers can inspect the underlying JSON payload for every turn with one click.")
             ],
-            "kpi": ("0% Hallucination", "Every Claim Linked to Simulator Output"),
+            "kpi": ("0% Hallucination", "Every Claim Linked to Core Banking API Output"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/04_tool_trace.png",
-            "caption": "Tool Trace Rationale Card: Masked Arguments, Status & Retrieved Records"
+            "meta_label": "EXPANDABLE TOOL TRACE & GROUNDING CARD",
+            "meta_route": "http://localhost:5173/support/calls/475b0ac5-...",
+            "meta_tech": "Structured Tool Trace · Masked Arguments · Raw JSON Inspection"
         },
         {
             "num": "08",
@@ -142,9 +159,11 @@ def create_deck():
                 ("Four-Eyes Governance", "Reviewers who initiated or handled a case are cryptographically prevented from approving it."),
                 ("Regulatory Export Ready", "Export entire conversation trails with cryptographic signatures for RBI / SEBI audit compliance.")
             ],
-            "kpi": ("100% Tamper Proof", "Cryptographically Verifiable Hash Chain"),
+            "kpi": ("100% Tamper Proof", "Cryptographically Verifiable Hash Chain with Genesis Root"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/07_audit_chain.png",
-            "caption": "Case Workspace Cryptographic Audit Trail with 'Verify Chain' Banner"
+            "meta_label": "CASE WORKSPACE AUDIT TRAIL & VERIFY PROOF",
+            "meta_route": "http://localhost:5173/cases/475b0ac5-...#audit",
+            "meta_tech": "SHA-256 Chaining · Genesis 0000 Anchor · Four-Eyes Access Guard"
         },
         {
             "num": "09",
@@ -157,14 +176,16 @@ def create_deck():
                 ("Persistent URL Synchronization", "Filter states are preserved across search params (?datePreset=today), bookmarks, and supervisor reloads."),
                 ("3-Second Real-Time Polling", "Automatically detects new cases and audio uploads without requiring manual browser page refreshes.")
             ],
-            "kpi": ("Instant Filtering", "Today, 7D, 30D & Custom Date Bounds"),
+            "kpi": ("Instant Filtering", "Today, Yesterday, 7D, 30D & Custom Date Bounds"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/08_queue_date_filter.png",
-            "caption": "Review Queue with New Date Range Presets & Risk Sorting (localhost:5173/queue)"
+            "meta_label": "REVIEW QUEUE WITH TEMPORAL DATE FILTERS",
+            "meta_route": "http://localhost:5173/queue?datePreset=today",
+            "meta_tech": "Dual Client/SQL Filtering · ISO Bounds · Real-time 3s Polling"
         },
         {
             "num": "10",
             "tag": "BUSINESS VALUE & ROADMAP",
-            "title": "Measurable Business ROI & Next-Step Roadmap",
+            "title": "Measurable Business ROI & Continuous Learning",
             "subtitle": "Production-Ready Conversational AI Tailored for Financial Institutions",
             "points": [
                 ("85% First-Contact Deflection", "Routinely handles tier-1 service requests, statements, and repayment schedules without human intervention."),
@@ -172,58 +193,86 @@ def create_deck():
                 ("Full Regulatory Compliance", "Zero PII leakage, deterministic failovers, and tamper-evident audit logs meet stringent BFSI standards."),
                 ("Continuous Learning Loop", "Turn-level supervisor ratings, test scenario exports, and feedback loops continuously improve model performance.")
             ],
-            "kpi": ("85% Call Deflection", "<850ms Voice Response Time"),
+            "kpi": ("85% Call Deflection", "<850ms Voice Response Time & 100% Audit Compliance"),
             "img": "/Volumes/DiskD/OFFLINEHACK/azentio-csm/presentation_assets/09_insights_analytics.png",
-            "caption": "Support Insights & Quality Review: Ratings, Feedback & Scenario Exports"
+            "meta_label": "SUPPORT INSIGHTS, RATINGS & SCENARIO EXPORTS",
+            "meta_route": "http://localhost:5173/insights",
+            "meta_tech": "Review Queue · Turn Feedback · 1-Click Scenario Export"
         }
     ]
 
     for data in slides_data:
         slide = prs.slides.add_slide(blank_layout)
 
-        # Background Header Bar
-        header_rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.85))
+        # -------------------------------------------------------------
+        # TOP HEADER BAR
+        # -------------------------------------------------------------
+        header_rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(0.82))
         header_rect.fill.solid()
-        header_rect.fill.fore_color.rgb = NAVY
+        header_rect.fill.fore_color.rgb = NAVY_TOPBAR
         header_rect.line.fill.background()
 
-        # Header Title in Bar
-        tx_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.18), Inches(7.0), Inches(0.5))
-        tf = tx_box.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = "AZENTIO-CSM  |  BFSI AUTONOMOUS CONVERSATIONAL AI"
-        p.font.size = Pt(13)
-        p.font.bold = True
-        p.font.color.rgb = CYAN
+        # Branding in Header
+        tx_brand = slide.shapes.add_textbox(Inches(0.8), Inches(0.18), Inches(7.5), Inches(0.45))
+        tf_brand = tx_brand.text_frame
+        tf_brand.word_wrap = True
+        p_brand = tf_brand.paragraphs[0]
+        p_brand.font.name = FONT_FAMILY
+        p_brand.font.size = Pt(12)
+        p_brand.font.bold = True
 
-        # Slide Number / Tag Badge in Header Bar
-        tx_badge = slide.shapes.add_textbox(Inches(10.5), Inches(0.18), Inches(2.0), Inches(0.5))
-        tf_b = tx_badge.text_frame
-        p_b = tf_b.paragraphs[0]
-        p_b.text = f"SLIDE {data['num']} / 10"
-        p_b.alignment = PP_ALIGN.RIGHT
-        p_b.font.size = Pt(12)
-        p_b.font.bold = True
-        p_b.font.color.rgb = WHITE
+        run_brand1 = p_brand.add_run()
+        run_brand1.text = "AZENTIO-CSM  "
+        run_brand1.font.color.rgb = CYAN_ACCENT
 
-        # Left Column: Content Container
-        left_box = slide.shapes.add_textbox(Inches(0.8), Inches(1.05), Inches(5.8), Inches(5.9))
+        run_brand2 = p_brand.add_run()
+        run_brand2.text = "|  BFSI AUTONOMOUS CONVERSATIONAL VOICE PLATFORM"
+        run_brand2.font.color.rgb = WHITE
+        run_brand2.font.size = Pt(11)
+
+        # Slide Number Badge in Header
+        tx_num = slide.shapes.add_textbox(Inches(10.5), Inches(0.18), Inches(2.0), Inches(0.45))
+        tf_num = tx_num.text_frame
+        p_num = tf_num.paragraphs[0]
+        p_num.alignment = PP_ALIGN.RIGHT
+        p_num.font.name = FONT_FAMILY
+        p_num.font.size = Pt(11)
+        p_num.font.bold = True
+        p_num.font.color.rgb = RGBColor(203, 213, 225)
+        p_num.text = f"SLIDE {data['num']} / 10"
+
+        # -------------------------------------------------------------
+        # LEFT COLUMN: Content & Details
+        # -------------------------------------------------------------
+        left_margin = Inches(0.8)
+        content_top = Inches(1.1)
+        content_w = Inches(5.4)
+
+        # Tag Pill Shape
+        tag_pill = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_margin, content_top, Inches(2.2), Inches(0.32))
+        tag_pill.fill.solid()
+        tag_pill.fill.fore_color.rgb = PILL_BG
+        tag_pill.line.fill.background()
+        tf_pill = tag_pill.text_frame
+        p_pill = tf_pill.paragraphs[0]
+        p_pill.text = data["tag"]
+        p_pill.font.name = FONT_FAMILY
+        p_pill.font.size = Pt(9.5)
+        p_pill.font.bold = True
+        p_pill.font.color.rgb = PILL_TEXT
+        p_pill.alignment = PP_ALIGN.CENTER
+
+        # Content Box
+        left_box = slide.shapes.add_textbox(left_margin, content_top + Inches(0.38), content_w, Inches(4.5))
         tf_l = left_box.text_frame
         tf_l.word_wrap = True
         tf_l.margin_left = tf_l.margin_top = tf_l.margin_right = tf_l.margin_bottom = 0
 
-        # Category Tag
-        p_tag = tf_l.paragraphs[0]
-        p_tag.text = data["tag"]
-        p_tag.font.size = Pt(11)
-        p_tag.font.bold = True
-        p_tag.font.color.rgb = ACCENT_BLUE
-
-        # Main Title
-        p_title = tf_l.add_paragraph()
+        # Title
+        p_title = tf_l.paragraphs[0]
         p_title.text = data["title"]
-        p_title.font.size = Pt(20)
+        p_title.font.name = FONT_FAMILY
+        p_title.font.size = Pt(21)
         p_title.font.bold = True
         p_title.font.color.rgb = SLATE_DARK
         p_title.space_after = Pt(4)
@@ -231,76 +280,154 @@ def create_deck():
         # Subtitle
         p_sub = tf_l.add_paragraph()
         p_sub.text = data["subtitle"]
-        p_sub.font.size = Pt(12)
+        p_sub.font.name = FONT_FAMILY
+        p_sub.font.size = Pt(11.5)
         p_sub.font.color.rgb = TEXT_MUTED
         p_sub.space_after = Pt(14)
 
         # Bullet Points
         for bold_lead, body_text in data["points"]:
             p_pt = tf_l.add_paragraph()
-            p_pt.space_after = Pt(8)
+            p_pt.space_after = Pt(7)
+            
+            # Bullet symbol
+            run_sym = p_pt.add_run()
+            run_sym.text = "• "
+            run_sym.font.name = FONT_FAMILY
+            run_sym.font.bold = True
+            run_sym.font.size = Pt(11)
+            run_sym.font.color.rgb = ACCENT_BLUE
+
+            # Bold Heading
             run_b = p_pt.add_run()
-            run_b.text = f"•  {bold_lead}: "
+            run_b.text = f"{bold_lead}: "
+            run_b.font.name = FONT_FAMILY
             run_b.font.bold = True
-            run_b.font.size = Pt(11.5)
+            run_b.font.size = Pt(11)
             run_b.font.color.rgb = SLATE_DARK
             
+            # Body text
             run_t = p_pt.add_run()
             run_t.text = body_text
-            run_t.font.size = Pt(11)
+            run_t.font.name = FONT_FAMILY
+            run_t.font.size = Pt(10.5)
             run_t.font.color.rgb = TEXT_MAIN
 
-        # Bottom KPI Callout Box (Left Column)
-        kpi_rect = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(6.25), Inches(5.6), Inches(0.85))
-        kpi_rect.fill.solid()
-        kpi_rect.fill.fore_color.rgb = BG_CARD
-        kpi_rect.line.color.rgb = CYAN
-        kpi_rect.line.width = Pt(1.5)
+        # Bottom KPI Highlight Box
+        kpi_y = Inches(6.15)
+        kpi_h = Inches(0.95)
+        
+        # Base Card
+        kpi_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left_margin, kpi_y, content_w, kpi_h)
+        kpi_card.fill.solid()
+        kpi_card.fill.fore_color.rgb = BG_CARD
+        kpi_card.line.color.rgb = BORDER_LIGHT
+        kpi_card.line.width = Pt(1.0)
 
-        tx_kpi = slide.shapes.add_textbox(Inches(0.95), Inches(6.32), Inches(5.3), Inches(0.7))
+        # Left Accent Stripe on KPI Card
+        kpi_stripe = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_margin, kpi_y, Inches(0.08), kpi_h)
+        kpi_stripe.fill.solid()
+        kpi_stripe.fill.fore_color.rgb = ACCENT_BLUE
+        kpi_stripe.line.fill.background()
+
+        # Text inside KPI Card
+        tx_kpi = slide.shapes.add_textbox(left_margin + Inches(0.2), kpi_y + Inches(0.12), content_w - Inches(0.4), kpi_h - Inches(0.24))
         tf_k = tx_kpi.text_frame
         tf_k.word_wrap = True
+        tf_k.margin_left = tf_k.margin_top = tf_k.margin_right = tf_k.margin_bottom = 0
+
         p_k1 = tf_k.paragraphs[0]
+        p_k1.font.name = FONT_FAMILY
         p_k1.text = data["kpi"][0]
-        p_k1.font.size = Pt(15)
+        p_k1.font.size = Pt(16)
         p_k1.font.bold = True
         p_k1.font.color.rgb = ACCENT_BLUE
-        
+
         p_k2 = tf_k.add_paragraph()
+        p_k2.font.name = FONT_FAMILY
         p_k2.text = data["kpi"][1]
-        p_k2.font.size = Pt(10)
+        p_k2.font.size = Pt(9.5)
         p_k2.font.color.rgb = TEXT_MUTED
 
-        # Right Column: Actual Screenshot Container
-        img_x = Inches(6.8)
-        img_y = Inches(1.15)
-        img_w = Inches(5.7)
-        img_h = Inches(5.1)
-
-        # Card shadow / border background
-        bg_card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, img_x - Inches(0.08), img_y - Inches(0.08), img_w + Inches(0.16), img_h + Inches(0.85))
-        bg_card.fill.solid()
-        bg_card.fill.fore_color.rgb = WHITE
-        bg_card.line.color.rgb = BORDER_COLOR
-        bg_card.line.width = Pt(1.5)
-
-        # Embed Actual Image
+        # -------------------------------------------------------------
+        # RIGHT COLUMN: Un-Squeezed Screenshot with Exact Aspect Ratio
+        # -------------------------------------------------------------
+        img_col_left = Inches(6.5)
+        img_col_top = Inches(1.1)
+        target_w = Inches(6.1)
+        
         if os.path.exists(data["img"]):
-            slide.shapes.add_picture(data["img"], img_x, img_y, width=img_w, height=img_h)
+            # Inspect actual dimensions using PIL
+            with Image.open(data["img"]) as im:
+                orig_w, orig_h = im.size
+            aspect_ratio = orig_w / orig_h
+            
+            # Compute exact proportional height (zero distortion!)
+            actual_w = target_w
+            actual_h = actual_w / aspect_ratio
+            
+            # Outer Card framing the screenshot
+            card_pad = Inches(0.08)
+            meta_box_h = Inches(0.85)
+            total_card_h = actual_h + meta_box_h + Inches(0.2)
+            
+            outer_card = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE, 
+                img_col_left - card_pad, 
+                img_col_top - card_pad, 
+                actual_w + (card_pad * 2), 
+                total_card_h
+            )
+            outer_card.fill.solid()
+            outer_card.fill.fore_color.rgb = WHITE
+            outer_card.line.color.rgb = BORDER_LIGHT
+            outer_card.line.width = Pt(1.5)
 
-        # Image Caption Below
-        cap_box = slide.shapes.add_textbox(img_x, img_y + img_h + Inches(0.1), img_w, Inches(0.6))
-        tf_c = cap_box.text_frame
-        tf_c.word_wrap = True
-        p_c = tf_c.paragraphs[0]
-        p_c.text = f"📷 {data['caption']}"
-        p_c.font.size = Pt(10)
-        p_c.font.bold = True
-        p_c.font.color.rgb = TEXT_MUTED
+            # Add Image with strictly proportional dimensions (NO SQUEEZING!)
+            slide.shapes.add_picture(
+                data["img"], 
+                img_col_left, 
+                img_col_top, 
+                width=actual_w, 
+                height=actual_h
+            )
+
+            # Lower Card Info (Live URL & Verified Details)
+            meta_y = img_col_top + actual_h + Inches(0.08)
+            tx_meta = slide.shapes.add_textbox(img_col_left + Inches(0.05), meta_y, actual_w - Inches(0.1), meta_box_h)
+            tf_m = tx_meta.text_frame
+            tf_m.word_wrap = True
+            tf_m.margin_left = tf_m.margin_top = tf_m.margin_right = tf_m.margin_bottom = 0
+
+            # Line 1: Live Status & Screen Label
+            p_m1 = tf_m.paragraphs[0]
+            p_m1.font.name = FONT_FAMILY
+            run_dot = p_m1.add_run()
+            run_dot.text = "● "
+            run_dot.font.color.rgb = GREEN_ACCENT
+            run_dot.font.size = Pt(10)
+            
+            run_mlabel = p_m1.add_run()
+            run_mlabel.text = f"{data['meta_label']}  "
+            run_mlabel.font.bold = True
+            run_mlabel.font.size = Pt(9.5)
+            run_mlabel.font.color.rgb = SLATE_DARK
+
+            run_url = p_m1.add_run()
+            run_url.text = f"({data['meta_route']})"
+            run_url.font.size = Pt(8.5)
+            run_url.font.color.rgb = ACCENT_BLUE
+
+            # Line 2: Tech stack & capability
+            p_m2 = tf_m.add_paragraph()
+            p_m2.font.name = FONT_FAMILY
+            p_m2.text = f"Tech Architecture: {data['meta_tech']}"
+            p_m2.font.size = Pt(8.5)
+            p_m2.font.color.rgb = TEXT_MUTED
 
     output_path = "/Volumes/DiskD/OFFLINEHACK/azentio-csm/Azentio_CSM_Project_Pitch_Deck.pptx"
     prs.save(output_path)
-    print(f"Presentation saved successfully to: {output_path}")
+    print(f"Polished Presentation saved successfully to: {output_path}")
 
 if __name__ == "__main__":
     create_deck()
