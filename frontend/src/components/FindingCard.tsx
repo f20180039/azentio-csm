@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import type { Finding, FindingAction } from '../api/types';
 import { formatDateTime, formatInr } from '../format';
+import { FindingStatus } from '../vocab';
 import { FindingStatusPill, SeverityPill } from './StatusPill';
 import { useToast } from './Toasts';
 
@@ -27,7 +28,7 @@ export function FindingCard({
   const [amount, setAmount] = useState(finding.amount?.toString() ?? '');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-  const decided = finding.status !== 'OPEN';
+  const decided = finding.status !== FindingStatus.OPEN;
 
   async function decide(action: FindingAction, e?: FormEvent) {
     e?.preventDefault();

@@ -1,15 +1,15 @@
-import type { CaseStatus, FindingStatus, Severity } from '../api/types';
+import { CaseStatus, FindingStatus, type Severity } from '../api/types';
 import { humanise } from '../format';
 
 const CASE_TONE: Record<CaseStatus, string> = {
-  RECEIVED: 'dim',
-  PROCESSING: 'info pulse',
-  NEEDS_REVIEW: 'warn',
-  AUTO_CLEARED: 'ok',
-  ESCALATED: 'bad',
-  APPROVED: 'ok',
-  REJECTED: 'bad',
-  FAILED: 'bad',
+  [CaseStatus.RECEIVED]: 'dim',
+  [CaseStatus.PROCESSING]: 'info pulse',
+  [CaseStatus.NEEDS_REVIEW]: 'warn',
+  [CaseStatus.AUTO_CLEARED]: 'ok',
+  [CaseStatus.ESCALATED]: 'bad',
+  [CaseStatus.APPROVED]: 'ok',
+  [CaseStatus.REJECTED]: 'bad',
+  [CaseStatus.FAILED]: 'bad',
 };
 
 export function StatusPill({ status }: { status: CaseStatus }) {
@@ -26,7 +26,12 @@ export function SeverityPill({ severity }: { severity: Severity }) {
   return <span className={`pill ${SEV_TONE[severity]}`}>{humanise(severity)}</span>;
 }
 
-const FINDING_TONE: Record<FindingStatus, string> = { OPEN: 'dim', ACCEPTED: 'ok', DISMISSED: 'dim', EDITED: 'neutral' };
+const FINDING_TONE: Record<FindingStatus, string> = {
+  [FindingStatus.OPEN]: 'dim',
+  [FindingStatus.ACCEPTED]: 'ok',
+  [FindingStatus.DISMISSED]: 'dim',
+  [FindingStatus.EDITED]: 'neutral',
+};
 export function FindingStatusPill({ status }: { status: FindingStatus }) {
   return <span className={`pill ${FINDING_TONE[status]}`}>{humanise(status)}</span>;
 }

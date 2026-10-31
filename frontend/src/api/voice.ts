@@ -1,3 +1,4 @@
+import { VoicePath } from './paths/voice';
 import { VOICE_BASE } from './renewals';
 
 export interface VoiceHandlers {
@@ -62,7 +63,7 @@ export async function connectVoice(callId: string, audio: HTMLAudioElement | nul
     },
   });
   try {
-    await client.connect({ webrtcRequestParams: { endpoint: `${VOICE_BASE}/api/offer`, requestData: { callId } } });
+    await client.connect({ webrtcRequestParams: { endpoint: `${VOICE_BASE}${VoicePath.RENEWAL_OFFER}`, requestData: { callId } } });
   } catch (e) {
     void client.disconnect().catch(() => undefined);
     throw new Error(describeVoiceError(e));

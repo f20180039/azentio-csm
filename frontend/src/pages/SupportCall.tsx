@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../api/errors';
 import {
   audioDataUrl,
+  CHANNEL_LABEL,
   connectSupportVoice,
   endCall,
   getCall,
@@ -22,29 +23,30 @@ import {
 import type { VoiceSession } from '../api/voice';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
+import { Route } from '../routes';
+import { TurnRole, Verification } from '../vocab';
 import { CallStatusPill } from './SupportDesk';
 
 const POLL_MS = 1000;
-const CHANNEL_LABEL: Record<string, string> = { VOICE: 'Microphone', SIM_AUDIO: 'Audio files', TEXT: 'Text' };
 const MONEY_KEY = /amount|balance|premium|principal|sum_insured/i;
 
 /* ---------- small pieces ---------- */
 
 export function VerificationBadge({ call }: { call: Pick<SupportCallRecord, 'turns' | 'verified'> | null }) {
-  const { state, failures } = call ? verificationOf(call) : { state: 'NOT_VERIFIED' as const, failures: 0 };
-  const tone = state === 'VERIFIED' ? 'ok' : state === 'LOCKED' ? 'bad' : failures > 0 ? 'warn' : 'dim';
-  const label = state === 'VERIFIED' ? 'Verified' : state === 'LOCKED' ? 'Locked' : 'Not verified';
+  const { state, failures } = call ? verificationOf(call) : { state: Verification.NOT_VERIFIED, failures: 0 };
+  const tone = state === Verification.VERIFIED ? 'ok' : state === Verification.LOCKED ? 'bad' : failures > 0 ? 'warn' : 'dim';
+  const label = state === Verification.VERIFIED ? 'Verified' : state === Verification.LOCKED ? 'Locked' : 'Not verified';
   const note =
-    state === 'LOCKED'
+    state === Verification.LOCKED
       ? 'Three failed checks: personal data stays closed for 15 minutes.'
-      : state === 'NOT_VERIFIED' && failures > 0
+      : state === Verification.NOT_VERIFIED && failures > 0
         ? `${failures} failed check${failures > 1 ? 's' : ''}`
         : undefined;
   return (
     <span className={`pill ${tone} sc-badge`} data-testid="verification" data-state={state} title={note}>
       <span className="dot" aria-hidden="true" />
       {label}
-      {note && state !== 'LOCKED' && <span className="sc-badge-note">· {note}</span>}
+      {note && state !== Verification.LOCKED && <span className="sc-badge-note">· {note}</span>}
     </span>
   );
 }
@@ -180,7 +182,7 @@ function RefPills({ refs }: { refs: string[] }) {
 
 function Turn({ t, audio }: { t: SupportTurn; audio?: string | null }) {
   const m = t.meta;
-  if (t.role === 'customer') {
+  if (t.role === TurnRole.CUSTOMER) {
     return (
       <li className="sc-turn customer">
         <div className="sc-turn-head">
@@ -226,12 +228,12 @@ function turnsFromSim(results: SimTurn[]): SupportTurn[] {
   const out: SupportTurn[] = [];
   for (const r of results) {
     out.push({
-      seq: out.length + 1, role: 'customer', text: r.transcript, at: now,
+      seq: out.length + 1, role: TurnRole.CUSTOMER, text: r.transcript, at: now,
       meta: { intents: r.intents, verified: r.verified, no_speech: r.no_speech },
     });
     if (r.reply_text) {
       const refs = [...new Set(JSON.stringify(r.retrieved ?? {}).match(/\b(?:SR|CMP|RQ|ESC)-\d{5}\b/g) ?? [])];
-      out.push({ seq: out.length + 1, role: 'agent', text: r.reply_text, at: now, meta: { tool_trace: r.tool_trace, retrieved: r.retrieved, refs } });
+      out.push({ seq: out.length + 1, role: TurnRole.AGENT, text: r.reply_text, at: now, meta: { tool_trace: r.tool_trace, retrieved: r.retrieved, refs } });
     }
   }
   return out;
@@ -532,7 +534,7 @@ export function SupportCall() {
   const adopt = useCallback(
     (id: string, state?: { results: SimTurn[] }) => {
       setCreatedId(id);
-      if (!routeId) navigate(`/support/calls/${encodeURIComponent(id)}`, { replace: true, state });
+      if (!routeId) navigate(Route.supportCall(id), { replace: true, state });
     },
     [navigate, routeId],
   );
@@ -600,14 +602,14 @@ export function SupportCall() {
           <button className="btn" onClick={() => void refresh()}>
             Retry
           </button>
-          <Link to="/support">Back to the desk</Link>
+          <Link to={Route.SUPPORT}>Back to the desk</Link>
         </div>
       </div>
     );
   }
   if (routeId && !call && results.length === 0) return <p className="muted">Loading call…</p>;
 
-  const intentsSeen = [...new Set(turns.flatMap((t) => (t.role === 'customer' ? t.meta.intents ?? [] : [])))];
+  const intentsSeen = [...new Set(turns.flatMap((t) => (t.role === TurnRole.CUSTOMER ? t.meta.intents ?? [] : [])))];
   const refsSeen = [...new Set(turns.flatMap((t) => t.meta.refs ?? []))];
   const toolCount = turns.reduce((n, t) => n + (t.meta.tool_trace?.length ?? 0), 0);
   const badgeSource = call ?? { turns, verified: false };
@@ -615,7 +617,7 @@ export function SupportCall() {
   return (
     <>
       <div className="case-head">
-        <Link to="/support" className="small">
+        <Link to={Route.SUPPORT} className="small">
           ← Customer service desk
         </Link>
         <div className="page-head">
@@ -657,7 +659,7 @@ export function SupportCall() {
           </h2>
           <ol className="sc-timeline" role="log" aria-live="polite" aria-label="Conversation history">
             {turns.map((t) => (
-              <Turn key={`${t.role}-${t.seq}`} t={t} audio={t.role === 'agent' ? audioByReply.get(t.text) : null} />
+              <Turn key={`${t.role}-${t.seq}`} t={t} audio={t.role === TurnRole.AGENT ? audioByReply.get(t.text) : null} />
             ))}
           </ol>
           {turns.length === 0 && (

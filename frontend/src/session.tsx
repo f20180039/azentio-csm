@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { api, setCredentials, type Credentials, type Session } from './api/client';
-import type { Role } from './api/types';
+import { Role } from './vocab';
 
 interface SessionCtx {
   session: Session | null;
@@ -38,7 +38,7 @@ export function useSession() {
 }
 
 export function primaryRole(roles: Role[]): Role {
-  if (roles.includes('ADMIN')) return 'ADMIN';
-  if (roles.includes('REVIEWER')) return 'REVIEWER';
-  return 'ANALYST';
+  if (roles.includes(Role.ADMIN)) return Role.ADMIN;
+  if (roles.includes(Role.REVIEWER)) return Role.REVIEWER;
+  return Role.ANALYST;
 }

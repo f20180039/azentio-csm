@@ -1,4 +1,5 @@
 import { MOCK_MODE } from './client';
+import { VoicePath } from './paths/voice';
 import { VOICE_BASE, voicePost } from './renewals';
 
 export interface PhoneNumber {
@@ -17,7 +18,7 @@ const OFF: PhoneAllowed = { configured: false, numbers: [] };
 export async function getPhoneAllowed(): Promise<PhoneAllowed> {
   if (MOCK_MODE) return OFF;
   try {
-    const res = await fetch(`${VOICE_BASE}/v1/phone/allowed`);
+    const res = await fetch(`${VOICE_BASE}${VoicePath.PHONE_ALLOWED}`);
     return res.ok ? ((await res.json()) as PhoneAllowed) : OFF;
   } catch {
     return OFF;
@@ -25,5 +26,5 @@ export async function getPhoneAllowed(): Promise<PhoneAllowed> {
 }
 
 export function placePhoneCall(callId: string, numberId: string): Promise<{ status: string }> {
-  return voicePost('/v1/phone-call', { callId, numberId });
+  return voicePost(VoicePath.PHONE_CALL, { callId, numberId });
 }

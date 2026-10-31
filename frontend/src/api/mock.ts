@@ -4,6 +4,7 @@
  */
 import type { Api, CaseQuery, Credentials, Session } from './client';
 import { ApiError } from './errors';
+import { CaseStatus, FindingStatus, Role as RoleName } from '../vocab';
 import type {
   AuditEvent,
   CaseAction,
@@ -343,7 +344,7 @@ export const mockApi: Api = {
       caseType,
       title: title || `Example upload: ${name}`,
       attributes: attributes ? JSON.parse(attributes) : {},
-      status: 'PROCESSING',
+      status: CaseStatus.PROCESSING,
       riskScore: null,
       amountAtRisk: null,
       findingsCount: 0,
@@ -357,16 +358,16 @@ export const mockApi: Api = {
     cases = [created, ...cases];
     log(id, s.username, 'CASE_CREATED', { files: name });
     setTimeout(() => {
-      created.status = 'NEEDS_REVIEW';
+      created.status = CaseStatus.NEEDS_REVIEW;
       created.riskScore = 0.36;
       created.amountAtRisk = 0;
-      log(id, 'system', 'ROUTED', { status: 'NEEDS_REVIEW' });
+      log(id, 'system', 'ROUTED', { status: CaseStatus.NEEDS_REVIEW });
     }, 4000);
     return { case: summary(created), cache: 'MISS' as const };
   },
 
   async decideFinding(caseId: string, findingId: string, body: { action: FindingAction; reason?: string; amount?: number }) {
-    const s = requireRole('REVIEWER');
+    const s = requireRole(RoleName.REVIEWER);
     await delay();
     const c = find(caseId);
     const f = c.findings.find((x) => x.id === findingId);
@@ -374,7 +375,7 @@ export const mockApi: Api = {
     if (body.action !== 'ACCEPT' && !body.reason?.trim()) {
       throw new ApiError({ status: 400, title: 'Reason required', detail: 'Dismissing or editing a finding needs a reason.' });
     }
-    f.status = body.action === 'ACCEPT' ? 'ACCEPTED' : body.action === 'DISMISS' ? 'DISMISSED' : 'EDITED';
+    f.status = body.action === 'ACCEPT' ? FindingStatus.ACCEPTED : body.action === 'DISMISS' ? FindingStatus.DISMISSED : FindingStatus.EDITED;
     if (body.action === 'EDIT' && body.amount != null) f.amount = body.amount;
     f.decidedBy = s.username;
     f.decisionReason = body.reason ?? null;
@@ -384,13 +385,13 @@ export const mockApi: Api = {
   },
 
   async decideCase(caseId: string, body: { action: CaseAction; reason: string }) {
-    const s = requireRole('REVIEWER');
+    const s = requireRole(RoleName.REVIEWER);
     await delay();
     const c = find(caseId);
     if (c.createdBy === s.username) {
       throw new ApiError({ status: 403, title: 'Four-eyes rule', detail: 'You uploaded this case, so another reviewer must decide it.' });
     }
-    c.status = body.action === 'APPROVE' ? 'APPROVED' : body.action === 'REJECT' ? 'REJECTED' : 'ESCALATED';
+    c.status = body.action === 'APPROVE' ? CaseStatus.APPROVED : body.action === 'REJECT' ? CaseStatus.REJECTED : CaseStatus.ESCALATED;
     log(caseId, s.username, `CASE_${body.action}`, { reason: body.reason });
     return summary(c);
   },
@@ -402,7 +403,7 @@ export const mockApi: Api = {
   },
 
   async verifyAudit() {
-    requireRole('ADMIN');
+    requireRole(RoleName.ADMIN);
     await delay(300);
     return { valid: true, checked: audit.length, brokenAt: null };
   },
@@ -420,7 +421,7 @@ export const mockApi: Api = {
     cases.forEach((c) => (byStatus[c.status] = (byStatus[c.status] ?? 0) + 1));
     return {
       byStatus,
-      jobsPending: cases.filter((c) => c.status === 'PROCESSING').length,
+      jobsPending: cases.filter((c) => c.status === CaseStatus.PROCESSING).length,
       p50Ms: 840,
       p95Ms: 2310,
       cacheHits: audit.filter((e) => e.action === 'UPLOAD_DEDUPED').length,

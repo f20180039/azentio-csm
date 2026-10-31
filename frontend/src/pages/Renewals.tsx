@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/errors';
 import { getQueue, startCall } from '../api/renewals';
-import type { QueueItem, RenewalRoute, Severity } from '../api/types';
+import { RenewalRoute, type QueueItem, type Severity } from '../api/types';
 import { ScoreBar } from '../components/StatusPill';
 import { useToast } from '../components/Toasts';
 import { humanise } from '../format';
+import { Route } from '../routes';
 
 const SEV_TONE: Record<Severity, string> = { HIGH: 'bad', MEDIUM: 'warn', LOW: 'info' };
 
@@ -17,14 +18,14 @@ const REFUSALS: Record<string, string> = {
 
 function RouteCell({ item, busy, onStart }: { item: QueueItem; busy: boolean; onStart: () => void }) {
   const route: RenewalRoute = item.route;
-  if (route === 'AGENT_CALL') {
+  if (route === RenewalRoute.AGENT_CALL) {
     return (
       <button className="btn primary sm" onClick={onStart} disabled={busy}>
         {busy ? 'Starting…' : 'Start agent call'}
       </button>
     );
   }
-  return <span className="muted small">{route === 'HUMAN_ONLY' ? 'Agent may not call' : 'Reminder SMS'}</span>;
+  return <span className="muted small">{route === RenewalRoute.HUMAN_ONLY ? 'Agent may not call' : 'Reminder SMS'}</span>;
 }
 
 export function Renewals() {
@@ -57,7 +58,7 @@ export function Renewals() {
     setStarting(policyId);
     try {
       const c = await startCall(policyId);
-      navigate(`/renewals/calls/${c.callId}`);
+      navigate(Route.renewalCall(c.callId));
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.detail) {
         toast.push('Call not started', REFUSALS[e.detail] ?? e.detail, 'warn');

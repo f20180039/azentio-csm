@@ -1,0 +1,21 @@
+/** System-of-record API (backend/api), relative to API_BASE. */
+export const CoreApiPath = {
+  ME: '/me',
+  PACKS: '/packs',
+  AUDIT_VERIFY: '/audit/verify',
+  STATS: '/stats',
+  CASES: '/cases',
+  case: (id: string) => `/cases/${id}`,
+  casePages: (caseId: string, docId: string) => `/cases/${caseId}/documents/${docId}/pages`,
+  findingDecision: (caseId: string, findingId: string) => `/cases/${caseId}/findings/${findingId}/decision`,
+  caseDecision: (caseId: string) => `/cases/${caseId}/decision`,
+  caseAudit: (caseId: string) => `/cases/${caseId}/audit`,
+  SUPPORT_CALLS: '/support/calls',
+  supportCall: (id: string) => `/support/calls/${encodeURIComponent(id)}`,
+  supportCallEnd: (id: string) => `/support/calls/${encodeURIComponent(id)}/end`,
+  RENEWALS_QUEUE: '/renewals/queue',
+  RENEWALS_CALLS: '/renewals/calls',
+  renewalCall: (callId: string) => `/renewals/calls/${callId}`,
+  renewalCallEnd: (callId: string) => `/renewals/calls/${callId}/end`,
+  RENEWALS_DASHBOARD: '/renewals/dashboard',
+} as const;

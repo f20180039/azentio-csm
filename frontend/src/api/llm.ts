@@ -1,4 +1,5 @@
 import { MOCK_MODE } from './client';
+import { VoicePath } from './paths/voice';
 import { VOICE_BASE } from './renewals';
 
 export interface LlmLink {
@@ -17,7 +18,7 @@ export interface LlmStatus {
 export async function getLlmStatus(): Promise<LlmStatus | null> {
   if (MOCK_MODE) return null;
   try {
-    const res = await fetch(`${VOICE_BASE}/v1/llm/status`);
+    const res = await fetch(`${VOICE_BASE}${VoicePath.LLM_STATUS}`);
     return res.ok ? ((await res.json()) as LlmStatus) : null;
   } catch {
     return null;

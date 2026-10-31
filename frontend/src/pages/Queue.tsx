@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
-import { CASE_STATUSES, type CaseStatus, type CaseSummary, type RulePackInfo, type Stats } from '../api/types';
+import { CASE_STATUSES, CaseStatus, type CaseSummary, type RulePackInfo, type Stats } from '../api/types';
 import { ScoreBar, StatusPill } from '../components/StatusPill';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { UploadDialog } from '../components/UploadDialog';
 import { formatAge, formatInr, humanise } from '../format';
+import { Route } from '../routes';
 
 const REFRESH_MS = 3000;
 
@@ -51,7 +52,7 @@ export function Queue() {
     api.listPacks().then(setPacks).catch(() => setPacks([]));
   }, []);
 
-  const processing = cases?.some((c) => c.status === 'PROCESSING' || c.status === 'RECEIVED') ?? false;
+  const processing = cases?.some((c) => c.status === CaseStatus.PROCESSING || c.status === CaseStatus.RECEIVED) ?? false;
   useEffect(() => {
     if (!processing) return;
     const t = setInterval(load, REFRESH_MS);
@@ -152,8 +153,8 @@ export function Queue() {
                 key={c.id}
                 className="clickable"
                 tabIndex={0}
-                onClick={() => navigate(`/cases/${c.id}`)}
-                onKeyDown={(e) => e.key === 'Enter' && navigate(`/cases/${c.id}`)}
+                onClick={() => navigate(Route.case(c.id))}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(Route.case(c.id))}
               >
                 <td>
                   <StatusPill status={c.status} />
@@ -183,7 +184,7 @@ export function Queue() {
           onClose={() => setUploading(false)}
           onUploaded={(r) => {
             setUploading(false);
-            navigate(`/cases/${r.case.id}`);
+            navigate(Route.case(r.case.id));
           }}
         />
       )}
