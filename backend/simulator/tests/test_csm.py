@@ -95,7 +95,7 @@ def test_ops_records_need_basic_auth(client):
     assert len(items) == 1
     item = items[0]
     assert set(item) == {"ref", "kind", "category", "status", "summary", "customer_ref", "call_id", "created_at",
-                         "escalated", "department", "progress"}
+                         "escalated", "department", "progress", "original_statement", "related_ref", "related_refs"}
     assert item["kind"] == "routed" and item["call_id"] == "c6"
     assert "Weather?" in item["summary"] and "Out of scope" in item["summary"]
 
