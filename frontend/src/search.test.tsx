@@ -58,10 +58,10 @@ describe('turnMatches', () => {
   });
 
   it('searches a reviewer\'s corrected transcript as well as the recognised words', () => {
-    const t = turn('my number is 98765 0002', { transcript_correction: { text: 'my number is 98765 00002', author: 'reviewer', at: '2026-10-31T06:00:00Z' } });
-    expect(turnMatches('00002', t)).toBe(true);
-    expect(turnMatches('0002', t)).toBe(true);
-    expect(turnMatches('00003', t)).toBe(false);
+    const t = turn('my number is 97314 6258', { transcript_correction: { text: 'my number is 97314 62580', author: 'reviewer', at: '2026-10-31T06:00:00Z' } });
+    expect(turnMatches('62580', t)).toBe(true);
+    expect(turnMatches('6258', t)).toBe(true);
+    expect(turnMatches('62581', t)).toBe(false);
   });
 
   it('matches intents by code and label, and references, as before', () => {

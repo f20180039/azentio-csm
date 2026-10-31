@@ -1,10 +1,10 @@
 id: 02-repayment-variants
 title: Four ways to ask about the next EMI
-customer: {mobile: "9876500002", dob: "1985-11-03"}
+customer: {mobile: "9731462580", dob: "1985-11-03"}
 turns:
   - say: "When is my next EMI?"
     expect: {intents: [REPAYMENT]}
-  - say: "My number is 98765 00002 and I was born on the third of November nineteen eighty-five."
+  - say: "My number is 97314 62580 and I was born on the third of November nineteen eighty-five."
     expect: {intents: [IDENTITY], verified: true}
   - say: "When is my next EMI?"
     expect: {intents: [REPAYMENT], tools_any: [get_loans, get_schedule]}
