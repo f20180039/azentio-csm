@@ -12,7 +12,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
 
 ---
 
-- [~] (Anshuman, feat/A1-support-tools) **A1: Simulator client and support tools** (needs: contract)
+- [x] **A1: Simulator client and support tools** (needs: contract)
 
 **Files:** create `backend/voice/app/simulator_client.py` and `backend/voice/app/support_tools.py`; modify `config.py` (`SIMULATOR_BASE`, default `http://localhost:8090/v1`). Test: `tests/test_support_tools.py`.
 - `SimulatorClient(settings, transport=None)` with `verify(mobile, dob, call_id) -> dict`. Each record method takes the session it holds and returns the JSON, or `{"error": CODE}` (no exceptions for 401, 403, 404, 422 or 423). It raises `ApiUnavailable` on connection errors.
@@ -34,7 +34,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
   - three failures map to `LOCKED`, and personal tools keep refusing;
   - `search_faq` with empty items returns `{"no_approved_answer": true}`.
 
-- [ ] **A2: Support prompt, corrections, routing** (needs: A1)
+- [x] **A2: Support prompt, corrections, routing** (needs: A1)
 
 **Files:** create `backend/voice/app/support_prompt.py`; modify `brain.py` to take the tool set from a `Mode` enum (`SUPPORT`, `RENEWAL`). Test: `tests/test_support_prompt.py` and `tests/test_brain.py`.
 - The prompt rules:
