@@ -116,7 +116,7 @@ Tests (`SupportControllerTest`):
   - latency p50/p95.
 - The default is a sample, to protect the shared Groq quota.
 
-- [ ] **A10: Docs and demo** (needs: A9, C3, C4, C5, C6)
+- [x] **A10: Docs and demo** (needs: A9, C3, C4, C5, C6)
 - README sections: the `/sim/audio` JSON, run steps for 4 services, accent/noise results from A9, and the demo script (which seed customer to use for each scenario).
 - A fresh-database run-through of all 12 scenarios.
 

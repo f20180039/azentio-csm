@@ -149,3 +149,26 @@ The seed customers and the scenario each one supports are listed in C2. The voic
 | A11 | Anshuman | Stretch: Renewal Desk handoff with carried-over verification | A2, Level 1 done |
 
 The full task text is in `docs/team/tasks-chirag.md`, `docs/team/tasks-pavan.md` and `docs/team/tasks-anshuman.md`.
+
+---
+
+## Shared contract: ratings, feedback and lessons (added 31 Oct)
+
+The system-of-record API (`http://localhost:8080/api/v1`, HTTP Basic). Roles follow the support-call rules: `voice` writes call data; `analyst`, `reviewer` and `admin` read; review actions need the stated role.
+
+| Request | Body | Who | Returns |
+|---|---|---|---|
+| `POST /support/calls/{id}/rating` | `{"score": 1-5, "comment": str\|null, "source": "VOICE\|PANEL"}` | voice (`VOICE`), any staff (`PANEL`) | 201 `{"score", "comment", "source", "at"}`; a second rating replaces the first; score outside 1–5 is 400 |
+| `POST /support/calls/{id}/turns/{seq}/feedback` | `{"verdict": "GOOD\|BAD", "correction": str\|null}` | reviewer, admin | 201 `{"seq", "verdict", "correction", "author", "at"}`; only agent turns; one per turn per author (replaces) |
+| `GET /support/review?limit=50` | | any staff | `{"items": [{"id", "startedAt", "outcome", "rating", "reasons": ["LOW_RATING" \| "DISSATISFIED" \| "BAD_FEEDBACK"], "resolved": bool}]}`, newest first, unresolved first |
+| `POST /support/review/{id}/resolve` | `{"note": str}` | reviewer, admin | 200; the call leaves the open review list |
+| `GET /support/lessons?active=true` | | any staff and voice | `{"items": [{"id", "text", "status": "PROPOSED\|ACTIVE\|RETIRED", "sourceCallId", "sourceSeq", "author", "approvedBy", "createdAt"}]}` |
+| `POST /support/lessons` | `{"text": 10-300 chars, "sourceCallId": str\|null, "sourceSeq": int\|null}` | reviewer, admin | 201, status `PROPOSED` |
+| `PATCH /support/lessons/{id}` | `{"status": "ACTIVE\|RETIRED"}` | admin only | 200; ACTIVE needs an admin other than the author is NOT required for the demo, but record `approvedBy` |
+| `GET /support/insights` | | any staff | `{"ratings": {"count", "average", "distribution": {"1".."5": n}}, "lowRated": n, "openReviews": n, "badFeedback": n, "activeLessons": n}` |
+
+- `GET /support/calls/{id}` and the call list also carry `"rating": {...} | null`; each turn in `GET /support/calls/{id}` carries `"feedback": [...]`.
+- Every rating, feedback, resolve and lesson status change is written to the audit chain.
+- FAQ gaps come from the simulator: `GET /v1/ops/records?kind=routed` (the panel groups them by similar wording).
+
+**Voice:** the agent reads `GET /support/lessons?active=true` (cached 60 s) and appends at most 10 active lessons (≤ 1,200 characters total) to its system prompt under "Lessons from reviewed calls". Before saying goodbye it asks for a 1–5 rating and calls the `record_rating` tool with the score and any comment.

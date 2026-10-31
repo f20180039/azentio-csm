@@ -2,7 +2,7 @@
 
 A voice agent for a bank's customer service line, built for the Azentio.ai Build Labs hackathon on synthetic data. It is a prototype: it is not certified for any regulatory compliance and has not run against real customers or production systems.
 
-Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
+Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
 ## What it does
 
@@ -64,6 +64,8 @@ If a port is busy, the script names the process. You can also pick other ports w
 
 ## Demo script (seed customers in `backend/simulator/data/seed`)
 
+Every synthetic customer, what to say to verify as them, the answers to expect and the tests that must be refused: [docs/verification-lab.md](docs/verification-lab.md) (interactive version: `docs/verification-lab.html`; regenerate with `python3 scripts/build-verification-lab.py`).
+
 | Scenario | Say | Expect |
 |---|---|---|
 | Loan application status | "I applied for a personal loan last week, what's the status? And when is my first instalment?" then 98765 00001 / 12 April 1990 | Document verification, never "approved". No schedule until disbursal. |
@@ -76,74 +78,83 @@ If a port is busy, the script names the process. You can also pick other ports w
 
 ## Run it
 
-**With Docker**
+**Without Docker (recommended for the demo):** `scripts/dev-up.sh` creates any missing virtualenvs and `node_modules`, then starts all four services and waits for their health checks. `scripts/dev-down.sh` stops them. To run one service by hand:
 
-```bash
-docker compose up --build
-```
-
-| What | Where |
+| Service | Command (from its folder) |
 |---|---|
-| Web app | http://localhost:5173 |
-| API and OpenAPI docs | http://localhost:8080/docs |
-| Agent | http://localhost:8000/health |
-| Voice | http://localhost:7861/health |
-| Bank simulator | http://localhost:8090/health |
+| System-of-record API, 8080 | `backend/api`: `ENFORCE_CALLING_HOURS=false .venv/bin/python -m uvicorn app.main:app --port 8080` (SQLite at `API_DB_PATH`, default `data/runtime/api.db`) |
+| Bank simulator, 8090 | `backend/simulator`: `.venv/bin/python -m uvicorn app.main:app --port 8090` |
+| Voice, 7861 | `backend/voice`: `.venv/bin/python -m uvicorn app.main:app --port 7861` (reads `.env` from the repo root) |
+| Web, 5173 | `frontend`: `npm run dev`, or `npm run dev:mock` for the UI on example data with no backend |
 
-Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
+**With Docker:** `docker compose up --build` (being verified end to end by task C7). Browser microphone calls from a Docker Desktop container on macOS do not connect without host networking or a TURN server, so for spoken calls run the voice service natively.
 
-**Browser voice calls need the voice service run natively.** Compose starts the voice container, which serves typed calls and `/health`, but WebRTC audio from a Docker Desktop container on macOS does not connect without host networking or a TURN server. For a spoken call, keep compose for the API, web app and database, stop the container (`docker compose stop voice`) and run the voice service natively on port 7861 as in step 4 below, with `RENEWALS_API_BASE=http://localhost:8080/api/v1`.
+**Keys and models.** Copy `.env.example` to `.env`.
+- `GROQ_API_KEY` is the one key you need: speech to text (Whisper) and the first model in the chain. It is free at https://console.groq.com/keys.
+- `GEMINI_API_KEY` and `MISTRAL_API_KEY` are optional fallbacks. A local Ollama (`ollama pull llama3.2`) is the last fallback and needs no key or internet.
+- `VOICE_LLM_CHAIN` sets the order; see [Models used at runtime](#declaration-of-reused-components).
+- Anthropic models are refused by the voice agent's configuration.
 
-**Renewal call:** open Renewals in the web app, pick a policy and start the call. The voice agent needs `GROQ_API_KEY` in `.env` (free key at https://console.groq.com/keys) and internet, because speech uses the Edge read-aloud service. The API refuses calls outside calling hours; set `ENFORCE_CALLING_HOURS=false` in `.env` to demo at any time. The voice service logs in to the API as `voice/voice` (`RENEWALS_API_USER`, `RENEWALS_API_PASSWORD`).
+**Escalation settings:** `HUMAN_AGENT_NUMBER` is the number a phone call is transferred to, and `HELPLINE_NUMBER` is spoken to browser callers.
 
-**Models:** copy `.env.example` to `.env` and add whichever keys you have. The supported providers are Anthropic, Gemini, Groq, Mistral, local Ollama and a mock.
-- `LLM_PROVIDER` is tried first, then `LLM_FALLBACK` in order.
-- An error, timeout, rate limit or refusal moves to the next provider. A provider with no key is skipped instantly.
-- A provider that just failed sits out for `LLM_COOLDOWN_S` seconds, so later requests don't wait on it.
-- Without a `.env` everything runs on the mock, which costs nothing and works offline.
-- `.env.example` has ready-made settings for demo day, development and offline use.
+**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic.
+- Set the `TWILIO_*` and `PUBLIC_BASE_URL` values in `.env` (see `.env.example`).
+- Run `cloudflared tunnel --url http://localhost:7861` and put its https URL in `PUBLIC_BASE_URL`.
+- Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there.
+- Details are in `backend/voice/README.md`.
 
-**Without Docker**
+## Safety and guard rails
 
-1. Easiest: `scripts/dev-up.sh` starts everything below. To run services by hand:
-2. Start the agent: `cd backend/agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
-3. Start the API: `cd backend/api && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && ENFORCE_CALLING_HOURS=false .venv/bin/uvicorn app.main:app --port 8080` (SQLite file at `API_DB_PATH`, default `data/runtime/api.db`)
-4. Start the voice service: `cd backend/voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
-5. Start the web app: `cd frontend && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
+Each rule is enforced in code, not only in the prompt, and has tests.
 
-**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `backend/voice/README.md`.
+| Rule | Where |
+|---|---|
+| Nothing personal before verification by registered mobile and date of birth | voice tool layer refuses with no HTTP call; the simulator requires a session token on every personal endpoint |
+| No verification attempt spent on details the caller has not given | voice tool layer (needs a 10-digit mobile and a real date) |
+| 3 wrong attempts lock that customer for 15 minutes, across calls | simulator (`LOCKED`) |
+| One caller failing for 3 different customers, or 6 times in 30 minutes, is blocked, and a security escalation is raised | simulator (`CALLER_BLOCKED`, `SECURITY` escalation on the operator panel) |
+| A verified caller cannot read another customer's record | simulator (`NOT_YOUR_RECORD`) |
+| Figures are spoken only from tool results, with amounts in their `*_spoken` form | prompt, plus spoken copies added by the tool layer |
+| Product questions answered only from the approved FAQ; no match means "no approved information" and a routed query | simulator FAQ search with a score threshold; prompt |
+| Every unsupported request is routed, even if the model forgets | backstop in `SupportBrain`: a turn the intent detector labels unsupported is routed if the model did not route it |
+| The agent never offers what its tools cannot do | prompt |
+| Renewals: date-of-birth lockout, offer and discount limits, hand-off after repeated out-of-policy requests, calling hours | system-of-record API, ported from the earlier Java service with its tests |
+| Tamper-evident audit trail | hash-chained audit log in the system-of-record API (`/api/v1/audit/verify`) |
 
-## Try it
+## Escalation to a person
 
-```bash
-cd samples
-curl -u analyst:analyst -F caseType=demo -F files=@clean_1.pdf -i http://localhost:8080/api/v1/cases                # 201, X-Cache: MISS
-curl -u analyst:analyst -F caseType=demo -F files=@duplicate_of_clean_1.pdf -i http://localhost:8080/api/v1/cases   # 200, X-Cache: HIT
-curl -u analyst:analyst -F caseType=demo -F files=@redteam_hidden_text.pdf -i http://localhost:8080/api/v1/cases    # ends ESCALATED
-curl -u analyst:analyst -F caseType=demo -F 'attributes={"policyNo":"POL-1"}' -F files=@clean_1.pdf -i http://localhost:8080/api/v1/cases   # 201: same file, new attributes
-cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth.json --api http://localhost:8080 --samples ../samples --case-type demo --user analyst:analyst
-```
+- **A first plain request for a person is not a hand-over.** The tool refuses it (`ASK_FIRST`); the agent asks what the caller needs and tries to help. A second request hands over.
+- **The agent hands over unasked** when the caller is unhappy with the help (`DISSATISFIED`), when it could not answer or act after trying (`UNRESOLVED`), and at once for fraud, unauthorised transactions or distress (`SENSITIVE`).
+- **Phone call:** after the agent says it is connecting them, Twilio transfers the live call to `HUMAN_AGENT_NUMBER`. Today this is wired for Renewal Desk phone calls; the support desk runs in the browser.
+- **Browser:** an escalation record with an `ESC-` reference. The caller hears that a colleague will call back, plus the helpline number.
 
 ## Demo-day checklist
 
-- Do not run the simulated evaluation (`python -m eval.simulate`) within 24 hours of the demo: it uses the same Groq daily quota as the live agent.
-- After restarting `cloudflared`, restart the voice service too: the tunnel URL changes, and `PUBLIC_BASE_URL` in `.env` must name the new one (dialling answers 503 `TUNNEL_DOWN` otherwise).
-- Speech-to-text has no fallback: it is Groq Whisper only. If Groq is down, use the typed channel on the call page.
-- A Twilio trial account plays a trial preamble when the phone is answered and waits for a key press before the agent speaks.
-- The dashboard leaves out the evaluator's simulated calls; tick **Include simulated calls** to see them.
+- **Headset:** use one for microphone calls, because the agent can hear itself through laptop speakers.
+- **Reset between runs:** `curl -u ops:ops -X POST http://localhost:8090/v1/ops/reset` clears lockouts, caller blocks and new tickets.
+- **Model quota:**
+  - Groq's free tier allows 8,000 tokens per minute per model. The chain fails over to Gemini, Groq 20b, Mistral and local Ollama, so replies keep coming.
+  - Check `GET http://localhost:7861/v1/llm/status` to see which link is answering.
+  - Don't run `python -m eval.run_scenarios --full` or `eval.simulate` before the demo: they share the quota.
+- **Speech to text is Groq Whisper only.** If Groq is down, use typed turns or recorded audio, which go through the same agent.
+- **Phone calls:** after restarting `cloudflared`, restart the voice service, because `PUBLIC_BASE_URL` changes. A Twilio trial account plays a preamble and waits for a key press.
 
 ## Tests
 
-| Service | Command | Coverage |
-|---|---|---|
-| api | `cd backend/api && .venv/bin/python -m pytest -q` | Support call contract, renewal identity check and lockout, offer limits and handoff, roles, audit hash chain |
-| agent | `.venv/bin/pytest -q` | Hidden text, injection scoring, PII masking, quote verification, schema repair, provider fallback, `/v1/extract` |
-| voice | `.venv/bin/pytest -q` | Tool wiring and refusals, call brain loop, prompt, spoken-number handling, config, HTTP endpoints, pipeline setup |
-| web | `npm test` | API error handling, response shapes, finding card, evidence highlight, mock-mode flow, renewals queue and call screen |
+| Service | Command | Tests | Coverage |
+|---|---|---|---|
+| Voice | `cd backend/voice && .venv/bin/python -m pytest -q` | 369 | support tools and verification gate, support brain and routing backstop, escalation rules, intents, speech front end and reference repair, recorded-audio simulation, barge-in turn gate, model chain, phone transfer, renewal agent |
+| Bank simulator | `cd backend/simulator && .venv/bin/python -m pytest -q` | 108 | verification, cross-call and per-caller lockout, record ownership, loan/account/insurance records, tickets and complaints, ops, FAQ search |
+| System-of-record API | `cd backend/api && .venv/bin/python -m pytest -q` | 91 | support call contract, renewal guard rails, roles, dashboard from data, audit hash chain |
+| Web | `cd frontend && npm test && npx tsc --noEmit` | 94 | operator panel, live call view, uploads, search, dropdowns, sign-in, renewals and dashboard |
+
+The scored scenario evaluation (`backend/voice/eval/run_scenarios.py`) and its results are described in [Recorded-audio simulation](#recorded-audio-simulation). The accent and noise speech-to-text benchmark is in [docs/stt-benchmark.md](docs/stt-benchmark.md).
 
 ## Voice latency
 
-End of customer speech to first agent audio, measured at the client with `backend/voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [backend/voice/README.md](backend/voice/README.md)).
+**Support desk, typed turns through the live agent:** p50 1.7 s, p95 3.4 s from request to reply text (31 Oct, two live scenarios, Groq first in the chain). Speech adds the speech-to-text upload (about 0.25 s, see the benchmark) and the 1 s pause that waits for the caller to finish (`VOICE_TURN_SETTLE_SECS`).
+
+**Renewal Desk**, end of customer speech to first agent audio, measured at the client with `backend/voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [backend/voice/README.md](backend/voice/README.md)):
 
 | Customer says | Latency |
 |---|---|
@@ -151,41 +162,37 @@ End of customer speech to first agent audio, measured at the client with `backen
 | fourteenth March nineteen eighty (verify + get_policy) | 2090 ms |
 | can you give me a discount (quote_renewal check) | 3233 ms |
 
-p50 over those three turns: 2.1 s. A second run with the same settings gave 1490, 3214 and 1732 ms, p50 1.73 s. Greeting audio starts about 0.9 s after the WebRTC connection is up.
-
 ## Declaration of reused components
 
-Rule 3 of Azentio.ai Build Labs asks for this. The rows marked "Before the event" were built as generic scaffolding with no knowledge of the problem statement. The rows marked "During the event" are Renewal Desk work and are not pre-built.
+Rule 3 of Azentio.ai Build Labs asks for this. "Before the event" means built as generic scaffolding with no knowledge of the problem statement. Everything for problem #05 was built during the event (29–31 Oct 2026).
 
 | Component | What it is | Built |
 |---|---|---|
-| `backend/api/` | FastAPI + SQLite system of record (replaced the starter's Spring Boot service on 31 Oct; the document case pipeline was dropped with it): support call records, renewal calls with identity check, offer limits and handoff, case list and decisions, audit hash chain, roles | During the event |
-| `agent/` | FastAPI service: PDF text extraction, hidden-text and injection checks, PII masking, LLM gateway with fallback, quote verification, eval harness | Before the event |
-| `web/` | React reviewer app: queue, case workspace, audit view, rule packs | Before the event |
-| `agent/app/voice/tts.py` | Text to speech (edge-tts, ElevenLabs), copied and trimmed from the team member's own earlier project solarfile-reels (private repo, access on request; `backend/app/pipeline/tts.py`, commit `f089eaa`, Aug 2026) | Before the event, for a different project |
-| `demo` rule pack and `samples/` | Proves the pipeline end to end on generic invoices | Before the event |
-| Topic layer: Renewal Desk | The renewals routes in `backend/api/` (call state, identity check, discount and offer limits, handoff, audit), the `voice/` service, the web Renewals and Call pages, and `agent/datagen/renewals.py` (synthetic policies) | During the event (29 Oct 2026) |
-| `voice/app/edge_tts_service.py` | Pipecat text-to-speech service around edge-tts, ported from a throwaway latency spike written during the event (29 Oct 2026). Event work, not pre-built | During the event (29 Oct 2026) |
-
-**Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`backend/agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `backend/agent/app/pdf.py` and the test fixtures that build PDFs would change.
+| `backend/voice/` support desk | Front-desk agent: tools, verification gate, prompt, intents, speech front end, recorded-audio simulation, escalation, live pipeline | During the event (Anshuman) |
+| `backend/simulator/` | Bank simulator: seed data, verification and lockouts, records, tickets, FAQ search | During the event (Chirag; C3–C5 by Anshuman's agents at the team lead's request) |
+| `backend/voice/eval/` content | FAQ entries, 12 scenarios, 60 labelled utterances, accent and noise renderer | During the event (Pavan) |
+| `backend/api/` | FastAPI + SQLite system of record: support call records, renewal calls with guard rails, audit hash chain. Replaced the starter's Spring Boot service on 31 Oct; the document case pipeline was dropped with it | During the event (Chirag, hardened by Anshuman) |
+| `frontend/` | React operator panel (support desk, live call, search, sign-in). The routing, session and dashboard shell came from the starter | Shell before the event; panel during the event |
+| Renewal Desk (renewal routes in `backend/api/`, the renewal agent in `backend/voice/`, the Renewals and Call pages) | Outbound renewal agent with offer limits and hand-off | During the event (29 Oct 2026) |
+| `frontend/public/favicon-*.png` | The Azentio favicon, copied from azentio.com for the app's tab icon | Copied during the event |
 
 **Third-party libraries in the voice stack** (licences read from the installed package metadata):
 
 | Library | Version | Licence | Used for |
 |---|---|---|---|
-| Pipecat (`pipecat-ai`) | 1.12.0 | BSD-2-Clause | Voice pipeline: WebRTC transport, Groq services, turn handling |
+| Pipecat (`pipecat-ai`) | 1.12.0 | BSD-2-Clause | Voice pipeline: WebRTC transport, Groq services, voice activity detection |
 | `@pipecat-ai/client-js` | 1.13.1 | BSD-2-Clause | Browser client for the voice call |
 | `@pipecat-ai/small-webrtc-transport` | 1.10.8 | BSD-2-Clause | Browser WebRTC transport |
-| edge-tts | 7.3.1 | LGPL-3.0 (one file, `srt_composer.py`, is MIT) | Speech synthesis, used as an unmodified dependency. It calls Microsoft's online Edge read-aloud service, so it needs internet |
-| Silero VAD (`silero_vad.onnx`) | bundled in the pipecat-ai 1.12.0 wheel | The package metadata gives no licence for the weights. Upstream (snakers4/silero-vad) publishes MIT; not verified from the install | Local voice activity detection, Pipecat default |
-| Smart Turn v3.2 (`smart-turn-v3.2-cpu.onnx`) | bundled in the pipecat-ai 1.12.0 wheel | The package metadata gives no licence for the weights. Upstream (pipecat-ai/smart-turn) publishes BSD-2-Clause; not verified from the install | Local end-of-turn detection, Pipecat default |
+| edge-tts | 7.3.1 | LGPL-3.0 (one file, `srt_composer.py`, is MIT) | Speech synthesis, as an unmodified dependency; needs internet |
+| Silero VAD (`silero_vad.onnx`) | bundled in pipecat-ai 1.12.0 | Upstream (snakers4/silero-vad) publishes MIT; not verified from the install | Local voice activity detection |
 
-Both models run locally on CPU through onnxruntime 1.24.4 (MIT).
-
-**AI tools used (rule 6):** Claude Code, used to scaffold and review code. Every design decision is documented in ARCHITECTURE.md and can be explained by the team.
+**AI tools used (rule 6):** Claude Code, to scaffold, review and test code, and to run sub-agents on scoped tasks. The design decisions are documented in `docs/` and `ARCHITECTURE.md`, and the team can explain them.
 
 **Models used at runtime (rule 4):**
-- Document pipeline (`agent/`): an ordered fallback chain set in `.env`: Groq-hosted `gpt-oss-120b`, Google Gemini, Mistral, local `llama3.2` through Ollama, and a deterministic mock. Prompts live in `agent/app/schemas/` and `agent/app/explain.py`.
-- Renewal voice agent (`voice/`): Groq `whisper-large-v3-turbo` (speech to text), an ordered chain of free models for the conversation and tool calls (`VOICE_LLM_CHAIN`, default Groq `openai/gpt-oss-120b` then `openai/gpt-oss-20b` with reasoning effort low, then Gemini and Mistral; a link that hits a rate limit, outage or timeout rests and the next one answers, see `voice/README.md`), edge-tts `en-IN-NeerjaNeural` (speech), and Silero VAD with Smart Turn (local turn detection). Prompts live in `voice/app/prompt.py`. No Anthropic models are used at runtime.
+- **Speech to text:** Groq `whisper-large-v3-turbo` with a banking vocabulary prompt (see `docs/stt-benchmark.md`).
+- **Conversation and tool calls:** an ordered chain of free models, `VOICE_LLM_CHAIN`. The default is Groq `openai/gpt-oss-120b`, then Gemini `gemini-3-flash-preview`, then Groq `openai/gpt-oss-20b`, then Mistral `mistral-small-latest`, then local Ollama `llama3.2`. A link that hits a rate limit, outage or timeout rests and the next one answers.
+- **Intents:** Groq `openai/gpt-oss-20b` in JSON mode, with keyword rules as the fallback.
+- **Speech:** edge-tts `en-IN-NeerjaNeural`.
+- **No Anthropic models are used at runtime.** Prompts live in `backend/voice/app/support_prompt.py` (support desk) and `backend/voice/app/prompt.py` (renewals).
 
 **Data (rule 5):** synthetic only. Nothing here comes from customers, production systems or any employer.

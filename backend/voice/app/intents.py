@@ -74,7 +74,9 @@ _RULES: dict[Intent, re.Pattern] = {
         r"\btenure\b", r"\bprocessing\s+fees?\b", r"\btell\s+me\s+about\b", r"\bfeatures\s+of\b",
         r"\b(?:fixed|recurring)\s+deposit\b", r"\bfd\s+rates?\b", r"\bloan\s+options\b", r"\bwhich\s+loan\b",
         r"\bhow\s+(?:do|can|to)\s+(?:i\s+)?(?:stop|start|set\s+up|cancel|foreclose|prepay|close|activate)\b",
-        r"\b(?:branch|helpline|working|office|customer\s+care)\s+(?:hours|timings?)\b", r"\bgrace\s+period\b"),
+        r"\b(?:branch|helpline|working|office|customer\s+care)\s+(?:hours|timings?)\b", r"\bgrace\s+period\b",
+        r"\bwhat\s+(?:can|do)\s+you\s+(?:do|offer|help)", r"\bcapable\s+of\b", r"\bhow\s+can\s+you\s+help\b",
+        r"\bservices\s+(?:do\s+you|you)\s+offer\b"),
     Intent.COMPLAINT: _rx(
         r"\bcomplain\w*", r"\bgrievance\b", r"\bfraud\w*", r"\bunauthori[sz]ed\b", r"\bdispute\b",
         r"\bfail(?:ed|ing|s)?\b", r"\bdeducted\s+twice\b", r"\bcharged\s+(?:twice|extra|wrongly)\b",

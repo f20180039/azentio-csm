@@ -146,3 +146,8 @@ def test_rules_fallback_on_pavans_labelled_utterances():
         want = want - {"CHITCHAT"} if len(want) > 1 else want
         hits += want <= {str(i) for i in rules_classify(r["text"]).intents}
     assert len(rows) == 60 and hits >= 57, f"{hits}/60"
+
+
+def test_capability_questions_are_product_info_not_unsupported():
+    for t in ("What can you do?", "What are you capable of?", "How can you help me?", "What services do you offer?"):
+        assert rules_classify(t).intents == [Intent.PRODUCT_INFO], t

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { api, setCredentials, type Credentials, type Session } from './api/client';
-import { Role } from './vocab';
+import { Role, StorageKey } from './vocab';
 
 interface SessionCtx {
   session: Session | null;
@@ -11,15 +11,41 @@ interface SessionCtx {
 
 const Ctx = createContext<SessionCtx | null>(null);
 
-/** Credentials live only in memory: a reload signs the user out. */
+function loadStoredSession(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(StorageKey.SESSION);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Session;
+    if (parsed?.username && parsed?.password && Array.isArray(parsed?.roles)) {
+      setCredentials(parsed);
+      return parsed;
+    }
+  } catch {
+    /* storage corrupted or unavailable */
+  }
+  return null;
+}
+
+/** Session is persisted in sessionStorage so page refreshes maintain the logged-in state. */
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(loadStoredSession);
 
   const signIn = useCallback(async (c: Credentials) => {
-    setSession(await api.signIn(c));
+    const s = await api.signIn(c);
+    setSession(s);
+    try {
+      sessionStorage.setItem(StorageKey.SESSION, JSON.stringify(s));
+    } catch {
+      /* storage unavailable */
+    }
   }, []);
 
   const signOut = useCallback(() => {
+    try {
+      sessionStorage.removeItem(StorageKey.SESSION);
+    } catch {
+      /* storage unavailable */
+    }
     setCredentials(null);
     setSession(null);
   }, []);
