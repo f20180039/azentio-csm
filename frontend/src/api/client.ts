@@ -87,6 +87,21 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   ).data;
 }
 
+export async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  return (
+    await request<T>(path, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  ).data;
+}
+
+/** The signed-in username, for mock-mode authorship. */
+export function currentUsername(): string | null {
+  return credentials?.username ?? null;
+}
+
 /* ---------- normalisers: tolerate list vs Spring page, map vs list ---------- */
 
 export function normalisePage<T>(raw: unknown): Page<T> {

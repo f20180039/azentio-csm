@@ -3,10 +3,14 @@
  * invented SAMPLE that mirrors the simulator seed shapes; nothing here is shown outside mock mode.
  */
 import type {
+  CallRating,
+  Insights,
+  Lesson,
   OfferAnswer,
   OfferBody,
   OpsRecord,
   RecordKind,
+  ReviewItem,
   SimAudioResult,
   SimTurn,
   SupportCall,
@@ -15,11 +19,14 @@ import type {
   SupportOutcome,
   SupportTurn,
   SupportVoiceHandlers,
+  TurnFeedback,
   TurnMeta,
 } from './support';
 import type { VoiceSession } from './voice';
-import { SupportChannel as Channel } from '../vocab';
+import { currentUsername } from './client';
+import { FeedbackVerdict, LessonStatus, RatingSource, ReviewReason, SupportChannel as Channel, SupportOutcome as Outcome, TurnRole } from '../vocab';
 import { ApiError } from './errors';
+import { LessonLength } from '../vocab';
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
@@ -131,8 +138,42 @@ function sampleCall(id: string, channel: SupportChannel, steps: Step[], startMin
   };
 }
 
-export const SAMPLE_VERIFIED_CALL = sampleCall('sample-call-repayment', 'VOICE', REPAYMENT_SCRIPT, 42, 'TICKET_CREATED');
-export const SAMPLE_ROUTED_CALL = sampleCall('sample-call-routed', 'SIM_AUDIO', ROUTED_SCRIPT, 18, 'ROUTED');
+export const SAMPLE_VERIFIED_CALL: SupportCall = {
+  ...sampleCall('sample-call-repayment', 'VOICE', REPAYMENT_SCRIPT, 42, 'TICKET_CREATED'),
+  rating: { score: 5, comment: 'Quick, and it caught that I meant the vehicle loan.', source: 'VOICE', at: ago(36) },
+};
+SAMPLE_VERIFIED_CALL.turns[3].feedback = [{ seq: 4, verdict: 'GOOD', correction: null, author: 'reviewer', at: ago(30) }];
+
+export const SAMPLE_ROUTED_CALL: SupportCall = {
+  ...sampleCall('sample-call-routed', 'SIM_AUDIO', ROUTED_SCRIPT, 18, 'ROUTED'),
+  rating: { score: 2, comment: 'It could not tell me anything about gold.', source: 'VOICE', at: ago(16) },
+};
+SAMPLE_ROUTED_CALL.turns[2].feedback = [
+  {
+    seq: 3,
+    verdict: 'BAD',
+    correction: 'Say that live gold prices are not available here, then offer our gold loan interest rates from the FAQ before routing the question.',
+    author: 'reviewer',
+    at: ago(12),
+  },
+];
+
+export const SAMPLE_ESCALATION_CALL = sampleCall('sample-call-escalation', 'VOICE', ESCALATION_SCRIPT, 7, 'ESCALATED');
+
+export const SAMPLE_LESSONS: Lesson[] = [
+  {
+    id: 'LSN-3', text: 'When a caller asks for gold prices, say live rates are not available and offer the gold loan interest rate FAQ before routing.',
+    status: 'PROPOSED', sourceCallId: SAMPLE_ROUTED_CALL.id, sourceSeq: 3, author: 'reviewer', approvedBy: null, createdAt: ago(11),
+  },
+  {
+    id: 'LSN-2', text: 'Repeat the loan type back to the caller before reading out an instalment amount when they have more than one loan.',
+    status: 'PROPOSED', sourceCallId: SAMPLE_VERIFIED_CALL.id, sourceSeq: 4, author: 'reviewer', approvedBy: null, createdAt: ago(60 * 3),
+  },
+  {
+    id: 'LSN-1', text: 'For an unauthorised card debit, register the complaint and escalate in the same turn; do not ask the caller to call back.',
+    status: 'ACTIVE', sourceCallId: 'sample-call-escalation', sourceSeq: 2, author: 'reviewer', approvedBy: 'admin', createdAt: ago(60 * 26),
+  },
+];
 
 export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
   ticket: [
@@ -145,6 +186,12 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
   ],
   routed: [
     { ref: 'RQ-60200', kind: 'routed', category: null, status: null, summary: 'What is the gold rate in Mumbai today? — Gold rate enquiry is outside supported services', customer_ref: null, call_id: SAMPLE_ROUTED_CALL.id, created_at: ago(17), escalated: null },
+    { ref: 'RQ-60199', kind: 'routed', category: null, status: null, summary: 'Can you book me a flight to Dubai? — Travel booking is not a bank service', customer_ref: 'CUST-1002', call_id: null, created_at: ago(55), escalated: null },
+    { ref: 'RQ-60198', kind: 'routed', category: null, status: null, summary: 'What are your gold loan rates? — No approved FAQ answer', customer_ref: null, call_id: null, created_at: ago(90), escalated: null },
+    { ref: 'RQ-60197', kind: 'routed', category: null, status: null, summary: 'Give me some stock tips. — Investment advice is outside supported services', customer_ref: null, call_id: null, created_at: ago(140), escalated: null },
+    { ref: 'RQ-60196', kind: 'routed', category: null, status: null, summary: 'Book flight tickets for me, please! — Travel booking is not a bank service', customer_ref: null, call_id: null, created_at: ago(200), escalated: null },
+    { ref: 'RQ-60195', kind: 'routed', category: null, status: null, summary: 'Which stocks should I buy this week? — Investment advice is outside supported services', customer_ref: null, call_id: null, created_at: ago(260), escalated: null },
+    { ref: 'RQ-60194', kind: 'routed', category: null, status: null, summary: 'Gold loan interest rate? — No approved FAQ answer', customer_ref: null, call_id: null, created_at: ago(320), escalated: null },
   ],
   escalation: [
     { ref: 'ESC-70200', kind: 'escalation', category: null, status: 'OPEN', summary: 'Unauthorised card debit', customer_ref: 'CUST-1008', call_id: 'sample-call-escalation', created_at: ago(6), escalated: null },
@@ -153,13 +200,30 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
 
 const calls = new Map<string, SupportCall>();
 const progress = new Map<string, number>();
+const resolved = new Map<string, string>();
+let lessons: Lesson[] = [];
 let seq = 0;
+let lessonSeq = SAMPLE_LESSONS.length;
 
 function seed() {
   if (calls.size) return;
-  for (const c of [SAMPLE_VERIFIED_CALL, SAMPLE_ROUTED_CALL, sampleCall('sample-call-escalation', 'VOICE', ESCALATION_SCRIPT, 7, 'ESCALATED')]) {
+  for (const c of [SAMPLE_VERIFIED_CALL, SAMPLE_ROUTED_CALL, SAMPLE_ESCALATION_CALL]) {
     calls.set(c.id, structuredClone(c));
   }
+  resolved.set(SAMPLE_ESCALATION_CALL.id, 'Complaint and escalation were correct; the customer was upset about the debit, not the agent.');
+  lessons = structuredClone(SAMPLE_LESSONS);
+}
+
+const LOW_SCORE = 2;
+const UNHAPPY = new Set<SupportOutcome>([Outcome.ESCALATED, Outcome.COMPLAINT_REGISTERED]);
+
+/** Mirrors the API's review rules: low ratings, unhappy endings and BAD feedback. */
+export function reviewReasons(c: SupportCall): ReviewItem['reasons'] {
+  const reasons: ReviewItem['reasons'] = [];
+  if (c.rating && c.rating.score <= LOW_SCORE) reasons.push(ReviewReason.LOW_RATING);
+  if (c.outcome && UNHAPPY.has(c.outcome)) reasons.push(ReviewReason.DISSATISFIED);
+  if (c.turns.some((t) => t.feedback?.some((f) => f.verdict === FeedbackVerdict.BAD))) reasons.push(ReviewReason.BAD_FEEDBACK);
+  return reasons;
 }
 
 function create(channel: SupportChannel): SupportCall {
@@ -211,7 +275,7 @@ function advance(call: SupportCall, fileName: string): SimTurn {
 function summarise(c: SupportCall): SupportCallSummary {
   return {
     id: c.id, channel: c.channel, startedAt: c.startedAt, endedAt: c.endedAt, outcome: c.outcome, verified: c.verified,
-    turnCount: c.turns.length, intents: [...new Set(c.turns.flatMap((t) => t.meta.intents ?? []))],
+    turnCount: c.turns.length, intents: [...new Set(c.turns.flatMap((t) => t.meta.intents ?? []))], rating: c.rating ?? null,
   };
 }
 
@@ -241,6 +305,86 @@ export const mockSupport = {
     c.outcome = outcome;
     c.endedAt = new Date().toISOString();
     return {};
+  },
+
+  async rateCall(id: string, score: number, comment: string | null, source: RatingSource = RatingSource.PANEL): Promise<CallRating> {
+    await delay();
+    if (!Number.isInteger(score) || score < 1 || score > 5) throw new ApiError({ status: 400, title: 'Invalid rating', detail: 'Score must be 1 to 5.' });
+    const rating: CallRating = { score, comment, source, at: new Date().toISOString() };
+    find(id).rating = rating;
+    return structuredClone(rating);
+  },
+
+  async sendFeedback(id: string, turnSeq: number, verdict: FeedbackVerdict, correction: string | null): Promise<TurnFeedback> {
+    await delay();
+    const turn = find(id).turns.find((t) => t.seq === turnSeq);
+    if (!turn || turn.role !== TurnRole.AGENT) throw new ApiError({ status: 400, title: 'Not an agent turn', detail: 'Feedback is for agent turns only.' });
+    const author = currentUsername() ?? 'reviewer';
+    const fb: TurnFeedback = { seq: turnSeq, verdict, correction, author, at: new Date().toISOString() };
+    turn.feedback = [...(turn.feedback ?? []).filter((f) => f.author !== author), fb];
+    return structuredClone(fb);
+  },
+
+  async listReview(): Promise<ReviewItem[]> {
+    await delay();
+    seed();
+    return [...calls.values()]
+      .map((c) => ({ id: c.id, startedAt: c.startedAt, outcome: c.outcome, rating: c.rating?.score ?? null, reasons: reviewReasons(c), resolved: resolved.has(c.id) }))
+      .filter((r) => r.reasons.length > 0)
+      .sort((a, b) => Number(a.resolved) - Number(b.resolved) || b.startedAt.localeCompare(a.startedAt));
+  },
+
+  async resolveReview(id: string, note: string): Promise<unknown> {
+    await delay();
+    find(id);
+    resolved.set(id, note);
+    return {};
+  },
+
+  async listLessons(activeOnly = false): Promise<Lesson[]> {
+    await delay();
+    seed();
+    return structuredClone(lessons.filter((l) => !activeOnly || l.status === LessonStatus.ACTIVE));
+  },
+
+  async proposeLesson(text: string, sourceCallId: string | null = null, sourceSeq: number | null = null): Promise<Lesson> {
+    await delay();
+    seed();
+    const n = text.trim().length;
+    if (n < LessonLength.MIN || n > LessonLength.MAX) throw new ApiError({ status: 400, title: 'Invalid lesson', detail: `A lesson is ${LessonLength.MIN} to ${LessonLength.MAX} characters.` });
+    const lesson: Lesson = {
+      id: `LSN-${++lessonSeq}`, text: text.trim(), status: LessonStatus.PROPOSED, sourceCallId, sourceSeq,
+      author: currentUsername() ?? 'reviewer', approvedBy: null, createdAt: new Date().toISOString(),
+    };
+    lessons = [lesson, ...lessons];
+    return structuredClone(lesson);
+  },
+
+  async setLessonStatus(id: string, status: typeof LessonStatus.ACTIVE | typeof LessonStatus.RETIRED): Promise<Lesson> {
+    await delay();
+    seed();
+    const l = lessons.find((x) => x.id === id);
+    if (!l) throw new ApiError({ status: 404, title: 'Not found', detail: `No lesson ${id}` });
+    l.status = status;
+    if (status === LessonStatus.ACTIVE) l.approvedBy = currentUsername() ?? 'admin';
+    return structuredClone(l);
+  },
+
+  async getInsights(): Promise<Insights> {
+    await delay();
+    seed();
+    const all = [...calls.values()];
+    const scores = all.flatMap((c) => (c.rating ? [c.rating.score] : []));
+    const distribution: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    scores.forEach((n) => (distribution[String(n)] += 1));
+    const bad = all.reduce((n, c) => n + c.turns.reduce((m, t) => m + (t.feedback ?? []).filter((f) => f.verdict === FeedbackVerdict.BAD).length, 0), 0);
+    return {
+      ratings: { count: scores.length, average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null, distribution },
+      lowRated: scores.filter((n) => n <= LOW_SCORE).length,
+      openReviews: all.filter((c) => reviewReasons(c).length > 0 && !resolved.has(c.id)).length,
+      badFeedback: bad,
+      activeLessons: lessons.filter((l) => l.status === LessonStatus.ACTIVE).length,
+    };
   },
 
   async simAudio(files: File[], callId?: string): Promise<SimAudioResult> {
