@@ -121,6 +121,8 @@ class MetaKey(StrEnum):
     RETRIEVED = "retrieved"
     REFS = "refs"
     AUDIO = "audio"
+    TEXT_EN = "text_en"      # English translation of a Kannada or Hindi turn, for display; the turn's text stays the record
+    LANGUAGE = "language"    # SpeechLanguage code of a translated turn (kn, hi)
 
 
 class Route(StrEnum):
