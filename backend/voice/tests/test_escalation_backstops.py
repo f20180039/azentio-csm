@@ -49,6 +49,42 @@ def test_lock_escalates_once():
     assert "Verification is now locked." not in [m.get("content") for m in brain._messages]  # the replaced reply left no trace
 
 
+def test_a_caller_locked_on_an_earlier_call_is_escalated_without_a_count_that_did_not_happen():
+    good = {"mobile": "9876500002", "date_of_birth": "1985-11-03"}
+    llm = Scripted(tool_call("verify_customer", good), text("Verification is locked."),
+                   text("I can't verify you today; a colleague will call you back, reference E S C seven zero two zero zero."))
+    brain, sim, _ = make(llm)
+    sim.failures = 3  # the bank locked this caller on an earlier call: the first attempt here comes back LOCKED
+    turn = asyncio.run(brain.reply("98765 00002, third November 85"))
+    assert turn.locked and turn.verify_failures == 0
+    raised = escalations(sim)
+    assert len(raised) == 1 and raised[0]["category"] == "AUTH_LOCKED"
+    assert "0 failed attempts" not in raised[0]["summary"] and "failed attempts" not in raised[0]["summary"]
+    assert raised[0]["summary"] == "Customer verification is locked; no attempt could be accepted on this call"
+    assert turn.refs == ["ESC-70200"] and "seven zero two zero zero" in turn.text
+
+
+def test_no_second_hand_over_when_the_model_already_tried_this_turn():
+    class EscalationsDown(FakeSimulator):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/csm/escalations":
+                self.requests.append(request)
+                return httpx.Response(503, json={"error": "UNAVAILABLE"})
+            return super().__call__(request)
+
+    sim = EscalationsDown()
+    llm = Scripted(text("Sorry?"), text("Pardon?"),
+                   tool_call("escalate_to_human", {"trigger": "UNRESOLVED", "reason": "cannot follow", "summary": "unclear request"}),
+                   text("I'm sorry, I can't reach a colleague right now."))
+    brain = SupportBrain(llm, SimulatorClient(Settings(), transport=httpx.MockTransport(sim)), None, CallSession(CALL),
+                         classifier(*[["UNCLEAR"]] * UNCLEAR_BEFORE_ESCALATION))
+    turn = None
+    for t in ("the thing", "that thing", "the thing again"):
+        turn = asyncio.run(brain.reply(t))
+    assert len(sim.requests) == 1 and [t.name for t in turn.tool_calls] == ["escalate_to_human"]  # the model's own attempt, no backstop
+    assert "ESC-" not in turn.text and turn.refs == []
+
+
 def test_three_unclear_turns_escalate_with_repeated_misunderstanding():
     llm = Scripted(text("Sorry, which product do you mean?"), text("Could you say that another way?"), text("I'm still not sure I follow."),
                    text("I'm sorry I couldn't follow; a colleague will call you back, reference E S C seven zero two zero zero."))
@@ -98,3 +134,4 @@ def test_backstop_escalation_failure_is_not_claimed():
     trace = turn.tool_calls[0]
     assert trace.name == "escalate_to_human" and "error" in trace.result and op_outcome(trace.result) == "FAILED"
     assert "ESC-" not in json.dumps(llm.seen[-1])  # the model never saw a reference it could read out
+    assert brain.call.unclear_streak == 0  # one attempt per run of misunderstandings, not a retry on every later unclear turn

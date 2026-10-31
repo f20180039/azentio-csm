@@ -222,14 +222,19 @@ class SupportBrain:
         """Backstop for 'escalate on repeated authentication failures' and 'repeated misunderstanding of customer intent':
         one hand-over when verification locked this turn, or when the caller has not been understood for
         UNCLEAR_BEFORE_ESCALATION turns in a row. Runs after the intents are known; True if it ran."""
-        if any(r.startswith(RefPrefix.ESCALATION) for r in self.call.refs):
-            return False
+        if any(r.startswith(RefPrefix.ESCALATION) for r in self.call.refs) or any(t.name == SupportTool.ESCALATE_TO_HUMAN for t in turn.tool_calls):
+            return False  # already with a person, or the model tried this turn and the caller will hear how that went
         if self.call.locked and not locked_before:
+            # The bank may lock on the first attempt (the caller was locked on an earlier call), so the count is stated only when
+            # the failures happened here; a record must never carry a number that did not happen.
+            summary = (f"Verification locked after {self.call.verify_failures} failed attempts" if self.call.verify_failures
+                       else "Customer verification is locked; no attempt could be accepted on this call")
             args = {"trigger": EscalationTrigger.AUTH_LOCKED, "reason": "The caller could not be verified and verification is locked",
-                    "summary": f"Verification locked after {self.call.verify_failures} failed attempts"}
+                    "summary": summary}
         elif self.call.unclear_streak >= UNCLEAR_BEFORE_ESCALATION:
             args = {"trigger": EscalationTrigger.REPEATED_MISUNDERSTANDING, "reason": "The agent kept failing to understand the caller",
                     "summary": f"Request not understood after {self.call.unclear_streak} turns; last words: {self.call.last_caller_text}"}
+            self.call.unclear_streak = 0  # one attempt per run of misunderstandings; a failed hand-over is not retried every turn
         else:
             return False
         return await self._run_backstop(turn, [(SupportTool.ESCALATE_TO_HUMAN, args)])
