@@ -1,8 +1,79 @@
 from datetime import date
 
 from app.identity import digit_run, extract_dob, extract_mobile, unexplained_numbers
+from app.speech import normalise_refs, normalise_spoken_digits
 
 TODAY = date(2026, 10, 31)
+SEED_MOBILE = "9876500002"  # CUST-1002 (backend/simulator/data/seed/customers.json)
+SEED_LAST_DIGITS = range(1, 9)  # every seeded customer's mobile is 98765 0000N; CUST-1009 is the odd one out
+ODD_SEED_MOBILE = "9380939280"
+DIGIT_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+
+
+def heard(said: str) -> str:
+    """The text the brain reads a turn from: the live path's normalise_refs (which expands spoken digits first), then
+    SupportBrain.reply's normalise_spoken_digits, in that order."""
+    return normalise_spoken_digits(normalise_refs(said))
+
+
+def mobile_said(said: str) -> str | None:
+    return extract_mobile(heard(said))
+
+
+def test_repeated_digit_forms_give_the_mobile():
+    for said in ("nine eight seven six five, zero zero zero zero two", "98765, 00002",
+                 "nine eight seven six five double-zero double-zero two",
+                 "nine eight seven six five double o double o two", "nine eight seven six five double oh double oh two"):
+        assert mobile_said(said) == SEED_MOBILE, said
+
+
+def test_still_correct_forms_unchanged():
+    for said in ("nine eight seven six five four times zero two", "98765 0000 2", "98765 00 00 2",
+                 "my number is 9 8 7 6 5 0 0 0 0 2", "9876500002", "+91 98765-00002"):
+        assert mobile_said(said) == SEED_MOBILE, said
+    assert normalise_refs("SR four double zero two zero zero") == "SR-400200"
+
+
+def test_every_seed_mobile_is_heard_in_the_forms_callers_use():
+    for n in SEED_LAST_DIGITS:
+        word, mobile = DIGIT_WORDS[n], f"98765{n:05d}"
+        for said in (f"nine eight seven six five zero zero zero zero {word}",
+                     f"nine eight seven six five, zero zero zero zero {word}",
+                     f"nine eight seven six five zero zero zero zero, {word}",
+                     f"nine eight seven six five, zero zero zero zero, {word}",
+                     f"nine eight seven six five, four zeros, {word}",
+                     f"nine eight seven six five four times zero {word}",
+                     f"nine eight seven six five double zero double zero {word}",
+                     f"nine eight seven six five double oh double oh {word}",
+                     f"98765 0000{n}", f"98765, 0000{n}", f"98765 00 00 {n}", f"98765-0000{n}"):
+            assert mobile_said(said) == mobile, said
+    assert mobile_said("nine three eight zero nine three nine two eight zero") == ODD_SEED_MOBILE
+
+
+def test_an_over_long_number_is_not_cut():
+    said = "98765 double zero triple zero two"
+    assert mobile_said(said) is None
+    assert len(digit_run(heard(said))) == 11
+    assert mobile_said("my account number is 1234567890123456") is None
+
+
+def test_a_collapsed_repeat_is_a_short_attempt():
+    # Whisper sometimes writes "zero zero zero zero" as "zero zero": the digits are gone, so the number is re-asked with its count
+    said = "nine eight seven six five zero zero two"
+    assert mobile_said(said) is None
+    assert digit_run(heard(said)) == "98765002"
+
+
+def test_commas_do_not_merge_unrelated_numbers():
+    assert mobile_said("I paid 500, 2 times") is None
+    assert mobile_said("CMP-98765, 00002") is None  # a reference's digits never start a number
+    text = heard("SR-40102, 98765 00002")
+    assert extract_mobile(text) == SEED_MOBILE and "SR-40102" in text
+
+
+def test_oh_outside_a_number_stays_a_word():
+    text = heard("oh, okay, my number is nine eight seven six five double oh double oh two")
+    assert "oh, okay" in text and extract_mobile(text) == SEED_MOBILE
 
 
 def test_extract_mobile_forms():

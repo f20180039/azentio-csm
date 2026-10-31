@@ -127,6 +127,34 @@ def test_a_short_mobile_is_asked_for_again_alone():
     assert brain.call.heard_dob == "1985-11-03" and brain.call.heard_mobile is None
 
 
+def test_repeated_zeros_said_with_a_pause_are_verified():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "98765", "date_of_birth": "1985-11-03"}), text("Thanks Rahul, you are verified."))
+    brain, sim = make(llm)
+    turn = asyncio.run(brain.reply("my number is nine eight seven six five, zero zero zero zero two, born 3rd November 1985"))
+    assert sim.verify_bodies() == [{"mobile": "9876500002", "dob": "1985-11-03", "call_id": CALL}]
+    assert verify_result(turn)["verified"] is True and brain.call.heard_mobile == "9876500002"
+
+
+def test_an_over_long_mobile_is_asked_for_again_not_cut():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500000", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("98765 double zero triple zero two, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS
+    assert out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert out["note"].endswith("The number heard had 11 digits.")
+    assert sim.verify_bodies() == [] and brain.call.heard_mobile is None and brain.call.heard_dob == "1985-11-03"
+
+
+def test_a_collapsed_repeat_is_asked_for_again_with_its_count():
+    # Whisper wrote "zero zero zero zero" as "zero zero": the code cannot recover the digits, so the mobile is re-asked alone
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("nine eight seven six five zero zero two, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert out["note"].endswith("The number heard had 8 digits.")
+    assert sim.verify_bodies() == [] and brain.call.heard_mobile is None
+
+
 def test_first_mismatch_does_not_say_which_field():
     llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-01-01"}), text("Those details don't match. Could you confirm both?"))
     brain, sim = make(llm)

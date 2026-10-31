@@ -2,7 +2,10 @@ from pipecat.frames.frames import TranscriptionFrame
 
 from app.config import Settings
 from app.speech import (
+    BILINGUAL_PROMPT,
     DOMAIN_PROMPT,
+    MOBILE_EXAMPLE,
+    MULTILINGUAL_PROMPT,
     build_stt,
     build_vad,
     is_invented_segment,
@@ -27,12 +30,38 @@ def test_spoken_digit_multipliers_are_expanded():
 def test_caller_digit_words_become_digits():
     # a run of three or more digit words is a number the caller spelled out (a mobile, a reference), stored as digits
     assert normalise_spoken_digits("my number is nine eight seven six five zero zero zero zero two") == "my number is 9876500002"
-    assert normalise_spoken_digits("it is nine eight seven six five, oh oh oh oh two") == "it is 98765, 00002"
+    # a pause inside a number ("five, oh oh…") no longer splits it when the two halves make one mobile (task R1; was "98765, 00002")
+    assert normalise_spoken_digits("it is nine eight seven six five, oh oh oh oh two") == "it is 9876500002"
     assert normalise_spoken_digits("Nine Eight Seven six five double zero zero zero two") == "9876500002"
     # one or two digit words are ordinary words
     assert normalise_spoken_digits("I want one statement for two loans") == "I want one statement for two loans"
     assert normalise_spoken_digits("one two") == "one two"
     assert normalise_spoken_digits("double five") == "55"
+
+
+def test_repeated_digits_survive_hyphens_and_oh():
+    assert normalise_spoken_digits("nine eight seven six five double-zero double-zero two") == "9876500002"
+    assert normalise_spoken_digits("nine eight seven six five double o double o two") == "9876500002"
+    assert normalise_spoken_digits("triple-5") == "555"
+    assert normalise_spoken_digits("double o") == "00"
+    assert normalise_spoken_digits("triple oh") == "000"
+    assert normalise_spoken_digits("oh, okay") == "oh, okay"  # 'oh' is a digit only inside a number or after a multiplier
+
+
+def test_a_pause_inside_a_mobile_is_bridged_only_when_it_makes_one():
+    assert normalise_spoken_digits("98765, 00002") == "9876500002"
+    assert normalise_spoken_digits("98765. 00002") == "9876500002"
+    assert normalise_spoken_digits("nine eight seven six five, four zeros, one") == "9876500001"
+    assert normalise_spoken_digits("+91 98765, 00002") == "+919876500002"
+    for text in ("I paid 500, 2 times", "SR-40102, 98765", "CMP-98765, 00002", "98765, 0002", "555, 555, 55"):
+        assert normalise_spoken_digits(text) == text, text
+
+
+def test_prompts_show_whisper_the_mobile_format():
+    # unbenchmarked (docs/stt-benchmark.md): the example is there so repeated zeros come back as digits, not collapsed words
+    assert MOBILE_EXAMPLE == "Mobile 98765 00001, date of birth 1985-11-03."
+    for prompt in (DOMAIN_PROMPT, BILINGUAL_PROMPT, MULTILINGUAL_PROMPT):
+        assert prompt.endswith(MOBILE_EXAMPLE) and prompt.count(MOBILE_EXAMPLE) == 1, prompt
 
 
 def test_references_survive_accented_transcription():
