@@ -1,8 +1,113 @@
+import json
 from datetime import date
+from pathlib import Path
 
-from app.identity import digit_run, extract_dob, extract_mobile, unexplained_numbers
+import pytest
+
+from app.identity import digit_run, extract_dob, extract_mobile, unexplained_fields, unexplained_numbers
+from app.speech import normalise_refs, normalise_spoken_digits
+from app.vocab import VerifyField
 
 TODAY = date(2026, 10, 31)
+REPEATED_MOBILE = "9876500002"  # the owner's report: four repeated zeros are where transcription broke (no seeded customer has it)
+DIGIT_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+SEED_CUSTOMERS = Path(__file__).resolve().parents[2] / "simulator" / "data" / "seed" / "customers.json"
+MOBILE_GROUP = 5  # callers say a mobile as two groups of five
+
+
+def heard(said: str) -> str:
+    """The text the brain reads a turn from: the live path's normalise_refs (which expands spoken digits first), then
+    SupportBrain.reply's normalise_spoken_digits, in that order."""
+    return normalise_spoken_digits(normalise_refs(said))
+
+
+def mobile_said(said: str) -> str | None:
+    return extract_mobile(heard(said))
+
+
+def test_repeated_digit_forms_give_the_mobile():
+    for said in ("nine eight seven six five, zero zero zero zero two", "98765, 00002",
+                 "nine eight seven six five double-zero double-zero two",
+                 "nine eight seven six five double o double o two", "nine eight seven six five double oh double oh two"):
+        assert mobile_said(said) == REPEATED_MOBILE, said
+
+
+def test_still_correct_forms_unchanged():
+    for said in ("nine eight seven six five four times zero two", "98765 0000 2", "98765 00 00 2",
+                 "my number is 9 8 7 6 5 0 0 0 0 2", "9876500002", "+91 98765-00002"):
+        assert mobile_said(said) == REPEATED_MOBILE, said
+    assert normalise_refs("SR four double zero two zero zero") == "SR-400200"
+
+
+def spoken(digits: str) -> str:
+    return " ".join(DIGIT_WORDS[int(d)] for d in digits)
+
+
+def test_every_seed_mobile_is_heard_in_the_forms_callers_use():
+    # every customer in the simulator's seed, in the spoken and written forms callers and Whisper produce
+    if not SEED_CUSTOMERS.exists():
+        pytest.skip("simulator seed not checked out beside the voice service")
+    customers = json.loads(SEED_CUSTOMERS.read_text())
+    assert len(customers) > 1
+    for mobile in (c["mobile"] for c in customers):
+        head, tail = mobile[:MOBILE_GROUP], mobile[MOBILE_GROUP:]
+        for said in (spoken(mobile), f"{spoken(head)}, {spoken(tail)}", f"my number is {spoken(head)} {spoken(tail)}",
+                     f"{head} {tail}", f"{head}, {tail}", f"{head}-{tail}", f"{head} {tail[:2]} {tail[2:4]} {tail[4:]}",
+                     f"+91 {head} {tail}", mobile, f"{mobile}, born 3rd November 1985"):
+            assert mobile_said(said) == mobile, said
+
+
+def test_an_over_long_number_is_not_cut():
+    said = "98765 double zero triple zero two"
+    assert mobile_said(said) is None
+    assert len(digit_run(heard(said))) == 11
+    assert mobile_said("my account number is 1234567890123456") is None
+
+
+def test_a_collapsed_repeat_is_a_short_attempt():
+    # Whisper sometimes writes "zero zero zero zero" as "zero zero": the digits are gone, so the number is re-asked with its count
+    said = "nine eight seven six five zero zero two"
+    assert mobile_said(said) is None
+    assert digit_run(heard(said)) == "98765002"
+
+
+def test_commas_do_not_merge_unrelated_numbers():
+    assert mobile_said("I paid 500, 2 times") is None
+    assert mobile_said("CMP-98765, 00002") is None  # a reference's digits never start a number
+    text = heard("SR-40102, 98765 00002")
+    assert extract_mobile(text) == REPEATED_MOBILE and "SR-40102" in text
+
+
+def test_a_date_after_a_short_number_keeps_its_day():
+    # a pause then "5 December 1995": the 5 is the day, never the short number's missing digit (fix round 1, item 1)
+    for said in ("98765 0006, 5 December 1995", "987650006, 5 December 1995",
+                 "nine eight seven six five zero zero zero six, five december nineteen ninety five"):
+        text = heard(said)
+        assert extract_mobile(text) is None and digit_run(text) == "987650006" and extract_dob(text, TODAY) == "1995-12-05", said
+    text = heard("98765 0002, 3 November 1985")
+    assert extract_mobile(text) is None and digit_run(text) == "987650002" and extract_dob(text, TODAY) == "1985-11-03"
+    text = heard("98765 0006, 5/12/1995")
+    assert extract_mobile(text) is None and digit_run(text) == "987650006" and extract_dob(text, TODAY) == "1995-12-05"
+    # a lone digit after nine digits is never the number's last digit, with or without a date around it (ruling, fix round 2)
+    text = heard("1995-12-05, 98765 0006, 5")
+    assert extract_mobile(text) is None and digit_run(text) == "987650006" and extract_dob(text, TODAY) == "1995-12-05"
+    assert mobile_said("98765 0006, 5 November") is None and mobile_said("98765 0006, 5") is None
+    text = heard("98765 0006, 5, December 1995")
+    assert extract_mobile(text) is None and extract_dob(text, TODAY) == "1995-12-05"
+    assert mobile_said("98765 000, 02") == "9876500002" and mobile_said("98765, 00, 002") == "9876500002"  # not a lone digit
+
+
+def test_leftover_digits_the_code_read_do_not_open_the_model():
+    assert unexplained_fields("9282, 766, 0006") == set()  # read, just not a mobile: the model may not send its own guess
+    assert not unexplained_numbers("98765 0006, 5 December 1995")
+    for said in ("987650006. Date of birth 1995-1205.", "98765 0006, 1995 1205", "987650006, 19951205"):
+        assert unexplained_fields(said) == {VerifyField.DOB}, said  # a broken date: the model's date may be taken, never a mobile
+    assert unexplained_fields("ನನ್ನ ಸಂಖ್ಯೆ ಒಂಬತ್ತು ಎಂಟು") == set(VerifyField) and unexplained_numbers("1 Jan 90")
+
+
+def test_oh_outside_a_number_stays_a_word():
+    text = heard("oh, okay, my number is nine eight seven six five double oh double oh two")
+    assert "oh, okay" in text and extract_mobile(text) == REPEATED_MOBILE
 
 
 def test_extract_mobile_forms():
@@ -48,6 +153,8 @@ def test_extract_dob_forms():
         assert extract_dob(said, TODAY) == "1985-11-03", said
     assert extract_dob("the ninth of March nineteen eighty-two", TODAY) == "1982-03-09"
     assert extract_dob("November third nineteen eighty five", TODAY) == "1985-11-03"  # month first, in words
+    assert extract_dob("five December nineteen ninety five", TODAY) == "1995-12-05"  # the day as a cardinal word
+    assert extract_dob("twenty five of December 1995", TODAY) == "1995-12-25"
     assert extract_dob("twelfth April two thousand", TODAY) == "2000-04-12"
     assert extract_dob("twelfth April two thousand and five", TODAY) == "2005-04-12"
     assert extract_dob("12th April 1990", TODAY) == "1990-04-12"

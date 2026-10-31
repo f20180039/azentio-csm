@@ -11,7 +11,7 @@ from loguru import logger
 from . import recordings
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
-from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_numbers
+from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_fields
 from .intents import Intent
 from .simulator_client import SimulatorClient
 from .speech import normalise_refs, normalise_spoken_digits, script_language
@@ -224,8 +224,7 @@ class SupportBrain:
         if dob := extract_dob(text, call.today):
             call.heard_dob = dob
             filled.add(VerifyField.DOB)
-        if unexplained_numbers(text):
-            call.model_may_fill.update(VerifyField)
+        call.model_may_fill.update(unexplained_fields(text))  # only the detail the unread numbers may hold
         return filled
 
     async def apply_correction(self, seq: int, text: str) -> dict[str, bool]:

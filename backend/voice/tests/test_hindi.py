@@ -5,8 +5,8 @@ import asyncio
 from app import support_pipeline
 from app.config import Settings
 from app.intents import SYSTEM_PROMPT
-from app.speech import (BILINGUAL_PROMPT, CODE_MIX_SHARE, HINDI_PROMPT, KANNADA_PROMPT, KANNADA_VOICE, VOICES, CallLanguage,
-                        is_mostly_hindi, is_mostly_kannada, normalise_refs, script_language, voice_for)
+from app.speech import (BILINGUAL_PROMPT, CODE_MIX_SHARE, HINDI_PROMPT, KANNADA_PROMPT, KANNADA_VOICE, MOBILE_EXAMPLE, VOICES,
+                        CallLanguage, is_mostly_hindi, is_mostly_kannada, normalise_refs, script_language, voice_for)
 from app.support_pipeline import HINDI_LINES, KANNADA_LINES, LINES, STILL_THERE
 from app.support_prompt import GREETING, GREETING_HINDI, GREETING_KANNADA, LANGUAGE_RULE, language_rule, support_prompt
 from app.vocab import SpeechLanguage
@@ -128,7 +128,8 @@ def test_stt_prompt_follows_the_call():
     lang = CallLanguage(ALL)
     assert "ಬ್ಯಾಂಕ್" in lang.stt_prompt() and "बैंक" in lang.stt_prompt() and lang.stt_prompt().startswith("Bank customer call.")
     lang.heard("मेरी अगली EMI कब है")
-    assert lang.stt_prompt() == HINDI_PROMPT == "बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102."
+    # the pinned literal gained the mobile example in task R1 (fix round 1): the same example as the English prompts
+    assert lang.stt_prompt() == HINDI_PROMPT == f"बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102. {MOBILE_EXAMPLE}"
     lang.heard("ನನ್ನ ಸಾಲದ ಕಂತು")
     assert lang.stt_prompt() == KANNADA_PROMPT
     assert CallLanguage((EN, KN)).stt_prompt() == BILINGUAL_PROMPT

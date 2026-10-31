@@ -27,14 +27,24 @@ LANGUAGE = SpeechLanguage.ENGLISH.value
 # Groq's turbo always reports no_speech_prob 0, so log-probability carries the filter (removed 5/20 false transcripts, 0 speech lost)
 NO_SPEECH_PROB_MAX = 0.5
 AVG_LOGPROB_MIN = -0.7
+# A mobile and date of birth in the format Whisper should copy: with a bare "zero zero zero zero" it sometimes collapses the
+# repeats to "zero zero" (task R1). Unbenchmarked: docs/stt-benchmark.md has the method, this example was not measured with it.
+# The values belong to no seeded customer (backend/simulator/data/seed/customers.json), and a transcript that carries them is
+# Whisper echoing the prompt on noise, dropped by is_phantom before it can be heard as the caller's details.
+MOBILE_EXAMPLE_DIGITS = "9876543210"
+MOBILE_EXAMPLE_DOB = "1980-01-01"
+MOBILE_EXAMPLE_SPLIT = 5  # "98765 43210": written as two groups, the way callers say it and Whisper writes it
+MOBILE_EXAMPLE = (f"Mobile {MOBILE_EXAMPLE_DIGITS[:MOBILE_EXAMPLE_SPLIT]} {MOBILE_EXAMPLE_DIGITS[MOBILE_EXAMPLE_SPLIT:]}, "
+                  f"date of birth {MOBILE_EXAMPLE_DOB}.")
 # The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
-DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001."
+DOMAIN_PROMPT = f"Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001. {MOBILE_EXAMPLE}"
 # Kannada (docs/stt-benchmark.md, "Kannada"): with the English prompt and no pinned language, Whisper wrote Kannada speech
 # romanised or in Telugu script; Kannada words in the prompt keep it in Kannada script. Groq's detected-language field named
 # the Kannada clips English, Tamil or Hindi, so the call's language is read from the transcript's script instead.
-BILINGUAL_PROMPT = "Bank customer call. ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, NACH, KYC, statement, SR-40102."
-KANNADA_PROMPT = "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102."
-HINDI_PROMPT = "बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102."
+# The benchmarked literals, plus the mobile example (R1) that multilingual_prompt also appends; tests pin en,kn and BILINGUAL equal.
+BILINGUAL_PROMPT = f"Bank customer call. ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, NACH, KYC, statement, SR-40102. {MOBILE_EXAMPLE}"
+KANNADA_PROMPT = f"ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102. {MOBILE_EXAMPLE}"
+HINDI_PROMPT = f"बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102. {MOBILE_EXAMPLE}"
 # The prompt once the call is in a script language; the words that keep Whisper in that script while the call is still English
 STT_PROMPTS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: KANNADA_PROMPT, SpeechLanguage.HINDI: HINDI_PROMPT}
 # ("bank customer call" in that script, the domain words in that script); the English terms (EMI, NACH, KYC...) are said once
@@ -60,7 +70,7 @@ def multilingual_prompt(enabled: tuple[SpeechLanguage, ...]) -> str:
     if not parts:
         return DOMAIN_PROMPT
     headers, words = " ".join(h for h, _ in parts), " ".join(w for _, w in parts)
-    return f"Bank customer call. {headers} EMI, {words} NACH, KYC, statement, SR-40102."
+    return f"Bank customer call. {headers} EMI, {words} NACH, KYC, statement, SR-40102. {MOBILE_EXAMPLE}"
 
 
 MULTILINGUAL_PROMPT = multilingual_prompt((SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))
@@ -74,67 +84,136 @@ _DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "to": "2", "too"
                 "five": "5", "six": "6", "seven": "7", "eight": "8", "ate": "8", "nine": "9"}
 HOMOPHONES = frozenset({"to", "too", "for", "ate"})  # digits inside a reference, plain words in a sentence
 _PLAIN_DIGIT_WORDS = {w: d for w, d in _DIGIT_WORDS.items() if w not in HOMOPHONES}
+LETTER_O = "o"  # "double o", "triple o": the letter name said for a zero, a digit only right after a multiplier
+_MULTIPLIED_DIGIT_WORDS = {**_PLAIN_DIGIT_WORDS, LETTER_O: "0"}
 MIN_DIGIT_WORD_RUN = 3  # this many digit words in a row is a number spelled out (a mobile, a reference); fewer are words
-_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
-           "double": 2, "triple": 3, "quadruple": 4}
+MAX_REPEAT = 10  # "4 times 0" expands; "40 times 0" is not a number
+_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
+_MULTIPLIERS = {"double": 2, "triple": 3, "quadruple": 4}
 _PLURALS = {"zeros": "0", "zeroes": "0", "ones": "1", "twos": "2", "threes": "3", "fours": "4",
             "fives": "5", "sixes": "6", "sevens": "7", "eights": "8", "nines": "9"}
 
-_TOKEN = r"(?:\d+|" + "|".join(sorted(_DIGIT_WORDS, key=len, reverse=True)) + r")\b"
-_PLAIN_TOKEN = r"(?:\d+|" + "|".join(sorted(_PLAIN_DIGIT_WORDS, key=len, reverse=True)) + r")"
-_DIGIT_WORD_RUN = re.compile(r"\b" + _PLAIN_TOKEN + r"(?:[ \t-]+" + _PLAIN_TOKEN + r")+\b", re.I)
+# The shape of an Indian mobile number, shared with identity.py: it is what tells a pause inside one number ("98765, 00002")
+# from two numbers in a list ("I paid 500, 2 times")
+MOBILE_LEN = 10
+COUNTRY_CODE = "91"
+TRUNK_PREFIX = "0"
+MOBILE_FIRST_DIGITS = "6789"
+PAUSE = r"[,.]\s+"  # a comma or full stop and a space: a breath inside a number, or the gap between two numbers
+MONTH_NAMES = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+MONTHS = {name: i for i, name in enumerate(MONTH_NAMES, 1)} | {name[:3]: i for i, name in enumerate(MONTH_NAMES, 1)} | {"sept": 9}
+
+
+def alt(words) -> str:
+    """A regex alternation of the words, longest first so 'nineteen' wins over 'nine'."""
+    return "|".join(sorted(words, key=len, reverse=True))
+
+
+_TOKEN = r"(?:\d+|" + alt(_DIGIT_WORDS) + r")\b"
+_PLAIN_TOKEN = r"(?:\d+|" + alt(_PLAIN_DIGIT_WORDS) + r")"
+_SEPARATOR = r"[ \t-]+"
+_DIGIT_WORD_RUN = re.compile(r"\b" + _PLAIN_TOKEN + r"(?:" + _SEPARATOR + _PLAIN_TOKEN + r")+\b", re.I)
 _SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
 _REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
+_COUNT = r"(?:\d+|" + alt(_COUNTS) + r")"
+_MULTIPLIED_DIGIT = r"(?:\d+|" + alt(_MULTIPLIED_DIGIT_WORDS) + r")"
+_TIMES = re.compile(rf"\b({_COUNT})\s+times\s+({_MULTIPLIED_DIGIT})\b", re.I)  # '4 times 0'
+_MULTIPLIED = re.compile(rf"\b({alt(_MULTIPLIERS)}){_SEPARATOR}({_MULTIPLIED_DIGIT})\b", re.I)  # 'double zero', 'triple-5', 'double o'
+_PLURAL = re.compile(rf"\b({_COUNT})\s+({alt(_PLURALS)})\b", re.I)  # '4 zeros'
+# Digit groups separated by pauses ('98765, 00002'): joined when together they make one mobile, left alone otherwise.
+# A group that starts a date ('98765 0006, 5 December 1995', '…, 5/12/1995') is never the number's tail: the date keeps its day.
+_DATE_AHEAD = rf"(?!\s+(?:of\s+)?(?:{alt(MONTHS)})\b|[/-]\d)"
+_SEGMENT = r"\+?" + _PLAIN_TOKEN + r"(?:" + _SEPARATOR + _PLAIN_TOKEN + r")*"
+_PAUSED_NUMBER = re.compile(r"(?<![\w-])" + _SEGMENT + r"(?:" + PAUSE + _SEGMENT + r")+(?!\w)" + _DATE_AHEAD, re.I)
+_PAUSE_SPLIT = re.compile(r"(" + PAUSE + r")")
+_NOT_DIGIT = re.compile(r"\D")
+
+
+def without_prefix(d: str) -> str:
+    """The digits with a leading country code (91) and trunk zero dropped when a full mobile number follows them."""
+    for prefix in (COUNTRY_CODE, TRUNK_PREFIX):
+        if len(d) > MOBILE_LEN and d.startswith(prefix):
+            d = d[len(prefix):]
+    return d
+
+
+def is_mobile(digits: str) -> bool:
+    """Exactly ten digits starting 6-9, optionally after +91/91/0: the only shape a mobile number has."""
+    d = without_prefix(digits)
+    return len(d) == MOBILE_LEN and d[0] in MOBILE_FIRST_DIGITS
+
+
+LONE_DIGIT = 1
+
+
+def bridged_mobile_end(digits: list[str], i: int) -> int:
+    """The index of the last pause-separated digit group that, joined to group i and those between, makes one mobile
+    ('98765' + '00002', '98765' + '00' + '002'); i when none does. A single digit after a head of MOBILE_LEN - 1 digits is
+    a day ('98765 0006, 5 December'), a count or a list item, never the number's last digit, so it ends the search."""
+    head = digits[i]
+    for j in range(i + 1, len(digits)):
+        if len(head) == MOBILE_LEN - 1 and len(digits[j]) == LONE_DIGIT:
+            return i
+        head += digits[j]
+        if is_mobile(head):
+            return j
+    return i
 
 
 def _to_digit(s: str) -> str:
     s = s.lower()
-    return _DIGIT_WORDS.get(s, s if s.isdigit() else "")
+    return _MULTIPLIED_DIGIT_WORDS.get(s, s if s.isdigit() else "")
 
 
 def _to_count(s: str) -> int:
     s = s.lower()
-    return int(s) if s.isdigit() else _COUNTS.get(s, 1)
+    return int(s) if s.isdigit() else (_COUNTS | _MULTIPLIERS).get(s, 1)
+
+
+def _repeated(m: re.Match, digit: str) -> str:
+    count = _to_count(m.group(1))
+    return (digit * count) if digit and 1 <= count <= MAX_REPEAT else m.group(0)
 
 
 def normalise_spoken_digits(text: str) -> str:
-    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' -> '000', 'double 5' -> '55', then a run of
-    MIN_DIGIT_WORD_RUN or more digit words ('nine eight seven six five zero zero zero zero two', digits already expanded in
-    between included) into one number, so the transcript stores '9876500002'. 'one statement for two loans' stays words."""
+    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' / 'double-zero' / 'double o' -> '000' / '00',
+    then a run of MIN_DIGIT_WORD_RUN or more digit words ('nine eight seven six five zero zero zero zero two', digits already
+    expanded in between included) into one number, so the transcript stores '9876500002'. A pause inside the number
+    ('nine eight seven six five, zero zero zero zero two') is bridged when the parts make one mobile; 'one statement for two
+    loans' and 'I paid 500, 2 times' stay as they are."""
     if not text:
         return text
-
-    def repl_times(m: re.Match) -> str:
-        count = _to_count(m.group(1))
-        d = _to_digit(m.group(2))
-        return (d * count) if d and 1 <= count <= 10 else m.group(0)
-
-    def repl_mult(m: re.Match) -> str:
-        count = _to_count(m.group(1))
-        d = _to_digit(m.group(2))
-        return (d * count) if d and 1 <= count <= 10 else m.group(0)
-
-    def repl_plural(m: re.Match) -> str:
-        count = _to_count(m.group(1))
-        d = _PLURALS.get(m.group(2).lower(), "")
-        return (d * count) if d and 1 <= count <= 10 else m.group(0)
-
-    p_count = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine)"
-    p_digit = r"(?:\d+|zero|oh|one|two|three|four|five|six|seven|eight|nine)"
-    p_mult = r"(?:double|triple|quadruple)"
-    p_plural = r"(?:zeroes|zeros|ones|twos|threes|fours|fives|sixes|sevens|eights|nines)"
-
-    text = re.sub(rf"\b({p_count})\s+times\s+({p_digit})\b", repl_times, text, flags=re.I)
-    text = re.sub(rf"\b({p_mult})\s+({p_digit})\b", repl_mult, text, flags=re.I)
-    text = re.sub(rf"\b({p_count})\s+({p_plural})\b", repl_plural, text, flags=re.I)
-    return _DIGIT_WORD_RUN.sub(_join_digit_words, text)
+    text = _TIMES.sub(lambda m: _repeated(m, _to_digit(m.group(2))), text)
+    text = _MULTIPLIED.sub(lambda m: _repeated(m, _to_digit(m.group(2))), text)
+    text = _PLURAL.sub(lambda m: _repeated(m, _PLURALS.get(m.group(2).lower(), "")), text)
+    return _PAUSED_NUMBER.sub(_bridge_pauses, _DIGIT_WORD_RUN.sub(_join_digit_words, text))
 
 
 def _join_digit_words(m: re.Match) -> str:
-    tokens = [t for t in re.split(r"[ \t-]+", m.group(0)) if t]
+    tokens = [t for t in re.split(_SEPARATOR, m.group(0)) if t]
     if sum(1 for t in tokens if not t.isdigit()) < MIN_DIGIT_WORD_RUN:
         return m.group(0)
-    return "".join(t if t.isdigit() else _PLAIN_DIGIT_WORDS[t.lower()] for t in tokens)
+    return _segment_digits(m.group(0))
+
+
+def _segment_digits(segment: str) -> str:
+    return "".join(t if t.isdigit() else _PLAIN_DIGIT_WORDS[t.lower()] for t in re.split(_SEPARATOR, segment.lstrip("+")) if t)
+
+
+def _bridge_pauses(m: re.Match) -> str:
+    """'98765, 00002' -> '9876500002' and '98765, 00, 002' -> '9876500002': the fewest pause-separated groups from each
+    start that make one mobile are joined; groups that never do ('500, 2', '555, 555, 55') and a lone digit after nine
+    ('98765 0006, 5') keep their pauses and words."""
+    parts = _PAUSE_SPLIT.split(m.group(0))
+    segments, pauses = parts[::2], parts[1::2]
+    digits = [_segment_digits(s) for s in segments]
+    out, i = "", 0
+    while i < len(segments):
+        end = bridged_mobile_end(digits, i)
+        piece = segments[i] if end == i else ("+" if segments[i].startswith("+") else "") + "".join(digits[i:end + 1])
+        out += piece + (pauses[end] if end < len(pauses) else "")
+        i = end + 1
+    return out
 
 
 KANNADA_DIGITS = str.maketrans("೦೧೨೩೪೫೬೭೮೯", "0123456789")
@@ -267,9 +346,16 @@ def build_stt(settings, call_language: CallLanguage | None = None) -> GroqSTTSer
                                                              language=Language(call_language.stt_language() or LANGUAGE)))
 
 
+def is_prompt_echo(text: str) -> bool:
+    """Whisper repeating the prompt's mobile example on noise: the example digits (as one run, however spaced) or its date
+    of birth appear in the text. No seeded customer has them, so nothing a real caller says is lost."""
+    digits = _NOT_DIGIT.sub("", normalise_spoken_digits(text))
+    return MOBILE_EXAMPLE_DIGITS in digits or MOBILE_EXAMPLE_DOB in text
+
+
 def is_phantom(text: str) -> bool:
     words = _PUNCT.sub("", text).strip().lower()
-    return not words or words in PHANTOMS
+    return not words or words in PHANTOMS or is_prompt_echo(text)
 
 
 def is_invented_segment(segment: dict) -> bool:
