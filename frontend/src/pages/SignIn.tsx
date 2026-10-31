@@ -33,8 +33,8 @@ export function SignIn() {
     <div className="signin-wrap">
       <form className="signin" onSubmit={submit}>
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">CI</span>
-          <span>Case Intelligence</span>
+          <span className="brand-mark" aria-hidden="true">AC</span>
+          <span>Azentio-CSM</span>
         </div>
         <div>
           <h1>Sign in</h1>
