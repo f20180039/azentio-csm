@@ -16,7 +16,9 @@ import type {
   Stats,
   UploadResult,
 } from './types';
+import { Role as RoleName } from '../vocab';
 import { mockApi } from './mock';
+import { CoreApiPath } from './paths/core';
 import { ApiError, toApiError } from './errors';
 
 export const API_BASE: string =
@@ -132,21 +134,21 @@ const liveApi = {
     try {
       // /me is optional on the API; fall back to probing role-gated endpoints.
       try {
-        const me = await get<{ username?: string; roles?: string[] }>('/me');
+        const me = await get<{ username?: string; roles?: string[] }>(CoreApiPath.ME);
         if (me?.roles?.length) {
           return { ...c, roles: me.roles.map((r) => r.replace(/^ROLE_/, '')) as Role[] };
         }
       } catch (e) {
         if (e instanceof ApiError && e.isUnauthorized) throw e;
       }
-      await get('/packs');
-      const roles: Role[] = ['ANALYST'];
+      await get(CoreApiPath.PACKS);
+      const roles: Role[] = [RoleName.ANALYST];
       try {
-        await get('/audit/verify');
-        roles.push('REVIEWER', 'ADMIN');
+        await get(CoreApiPath.AUDIT_VERIFY);
+        roles.push(RoleName.REVIEWER, RoleName.ADMIN);
       } catch (e) {
         if (!(e instanceof ApiError && e.isForbidden)) throw e;
-        if (c.username.toLowerCase().includes('review')) roles.push('REVIEWER');
+        if (c.username.toLowerCase().includes('review')) roles.push(RoleName.REVIEWER);
       }
       return { ...c, roles };
     } catch (e) {
@@ -161,12 +163,12 @@ const liveApi = {
     if (q.caseType) params.set('caseType', q.caseType);
     params.set('page', String(q.page ?? 0));
     params.set('size', String(q.size ?? 50));
-    const page = normalisePage<CaseSummary>(await get(`/cases?${params}`));
+    const page = normalisePage<CaseSummary>(await get(`${CoreApiPath.CASES}?${params}`));
     return { ...page, items: page.items.map(normaliseCase) };
   },
 
   async getCase(id: string): Promise<CaseDetail> {
-    const c = await get<CaseDetail>(`/cases/${id}`);
+    const c = await get<CaseDetail>(CoreApiPath.case(id));
     return normaliseCase({
       ...c,
       documents: c.documents ?? [],
@@ -176,7 +178,7 @@ const liveApi = {
   },
 
   async getPages(caseId: string, docId: string): Promise<PageText[]> {
-    const raw = await get<PageText[] | { pages: PageText[] }>(`/cases/${caseId}/documents/${docId}/pages`);
+    const raw = await get<PageText[] | { pages: PageText[] }>(CoreApiPath.casePages(caseId, docId));
     return Array.isArray(raw) ? raw : raw?.pages ?? [];
   },
 
@@ -186,36 +188,36 @@ const liveApi = {
     form.append('caseType', caseType);
     if (title) form.append('title', title);
     if (attributes) form.append('attributes', attributes);
-    const { data, res } = await request<CaseSummary>('/cases', { method: 'POST', body: form });
+    const { data, res } = await request<CaseSummary>(CoreApiPath.CASES, { method: 'POST', body: form });
     const header = res.headers.get('X-Cache');
     const cache = header === 'HIT' || (header === null && res.status === 200) ? 'HIT' : 'MISS';
     return { case: normaliseCase(data), cache };
   },
 
   decideFinding(caseId: string, findingId: string, body: { action: FindingAction; reason?: string; amount?: number }) {
-    return postJson<Finding>(`/cases/${caseId}/findings/${findingId}/decision`, body);
+    return postJson<Finding>(CoreApiPath.findingDecision(caseId, findingId), body);
   },
 
   decideCase(caseId: string, body: { action: CaseAction; reason: string }) {
-    return postJson<CaseSummary>(`/cases/${caseId}/decision`, body);
+    return postJson<CaseSummary>(CoreApiPath.caseDecision(caseId), body);
   },
 
   async getAudit(caseId: string): Promise<AuditEvent[]> {
-    return normalisePage<AuditEvent>(await get(`/cases/${caseId}/audit`)).items;
+    return normalisePage<AuditEvent>(await get(CoreApiPath.caseAudit(caseId))).items;
   },
 
   verifyAudit() {
-    return get<AuditVerifyResult>('/audit/verify');
+    return get<AuditVerifyResult>(CoreApiPath.AUDIT_VERIFY);
   },
 
   async listPacks(): Promise<RulePackInfo[]> {
-    const raw = await get<unknown>('/packs');
+    const raw = await get<unknown>(CoreApiPath.PACKS);
     const list = Array.isArray(raw) ? raw : normalisePage<Record<string, unknown>>(raw).items;
     return (list as Record<string, unknown>[]).map(normalisePack);
   },
 
   getStats() {
-    return get<Stats>('/stats');
+    return get<Stats>(CoreApiPath.STATS);
   },
 };
 

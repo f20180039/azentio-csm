@@ -1,28 +1,10 @@
-export type Role = 'ANALYST' | 'REVIEWER' | 'ADMIN';
+import { CallOutcome, CaseStatus, FindingStatus, RenewalRoute, Role } from '../vocab';
 
-export type CaseStatus =
-  | 'RECEIVED'
-  | 'PROCESSING'
-  | 'NEEDS_REVIEW'
-  | 'AUTO_CLEARED'
-  | 'ESCALATED'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'FAILED';
+export { CallOutcome, CaseStatus, FindingStatus, RenewalRoute, Role };
 
-export const CASE_STATUSES: CaseStatus[] = [
-  'RECEIVED',
-  'PROCESSING',
-  'NEEDS_REVIEW',
-  'AUTO_CLEARED',
-  'ESCALATED',
-  'APPROVED',
-  'REJECTED',
-  'FAILED',
-];
+export const CASE_STATUSES: CaseStatus[] = Object.values(CaseStatus);
 
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH';
-export type FindingStatus = 'OPEN' | 'ACCEPTED' | 'DISMISSED' | 'EDITED';
 export type FindingSource = 'RULE' | 'MODEL' | 'LLM' | 'SECURITY';
 
 export interface CaseSummary {
@@ -161,9 +143,6 @@ export interface Page<T> {
 }
 
 /* ---------- renewals (Renewal Desk voice agent) ---------- */
-
-export type RenewalRoute = 'AGENT_CALL' | 'HUMAN_ONLY' | 'REMINDER_SMS';
-export type CallOutcome = 'HANDED_OFF' | 'RENEWAL_PENDING_PAYMENT' | 'NO_DECISION';
 
 export interface RenewalSignal {
   code: string;

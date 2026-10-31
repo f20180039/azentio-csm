@@ -18,6 +18,7 @@ import type {
   TurnMeta,
 } from './support';
 import type { VoiceSession } from './voice';
+import { SupportChannel as Channel } from '../vocab';
 import { ApiError } from './errors';
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
@@ -215,7 +216,7 @@ function summarise(c: SupportCall): SupportCallSummary {
 }
 
 export const mockSupport = {
-  async startCall(channel: SupportChannel = 'VOICE'): Promise<{ id: string }> {
+  async startCall(channel: SupportChannel = Channel.VOICE): Promise<{ id: string }> {
     await delay();
     return { id: create(channel).id };
   },
@@ -244,13 +245,13 @@ export const mockSupport = {
 
   async simAudio(files: File[], callId?: string): Promise<SimAudioResult> {
     await delay(500);
-    const call = callId ? find(callId) : create('SIM_AUDIO');
+    const call = callId ? find(callId) : create(Channel.SIM_AUDIO);
     return { call_id: call.id, turns: files.map((f) => advance(call, f.name)) };
   },
 
   async supportOffer(_body: OfferBody): Promise<OfferAnswer> {
     await delay();
-    return { sdp: '', type: 'answer', pc_id: 'sample-pc', call_id: create('VOICE').id };
+    return { sdp: '', type: 'answer', pc_id: 'sample-pc', call_id: create(Channel.VOICE).id };
   },
 
   async listRecords(kind: RecordKind): Promise<OpsRecord[]> {
@@ -261,7 +262,7 @@ export const mockSupport = {
   /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s. */
   async connectSupportVoice(callId: string | undefined, _audio: HTMLAudioElement | null, h: SupportVoiceHandlers): Promise<VoiceSession> {
     await delay(300);
-    const call = callId ? find(callId) : create('VOICE');
+    const call = callId ? find(callId) : create(Channel.VOICE);
     h.onCallId(call.id);
     const timer = setInterval(() => {
       if (call.endedAt || (progress.get(call.id) ?? 0) >= REPAYMENT_SCRIPT.length) {

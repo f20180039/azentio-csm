@@ -8,7 +8,9 @@ import { ScoreBar, StatusPill } from '../components/StatusPill';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise } from '../format';
+import { Route } from '../routes';
 import { useSession } from '../session';
+import { CaseStatus, FindingStatus, Role } from '../vocab';
 
 type Tab = 'findings' | 'audit';
 
@@ -48,7 +50,7 @@ export function CaseWorkspace() {
     load();
   }, [load]);
 
-  const processing = kase?.status === 'PROCESSING' || kase?.status === 'RECEIVED';
+  const processing = kase?.status === CaseStatus.PROCESSING || kase?.status === CaseStatus.RECEIVED;
   useEffect(() => {
     if (!processing) return;
     const t = setInterval(load, 3000);
@@ -106,7 +108,7 @@ export function CaseWorkspace() {
     return (
       <div className="empty">
         <strong>This case could not be loaded</strong>
-        <Link to="/queue">Back to the queue</Link>
+        <Link to={Route.QUEUE}>Back to the queue</Link>
       </div>
     );
   }
@@ -116,13 +118,13 @@ export function CaseWorkspace() {
   const hidden = security.hidden_text ?? [];
   const injection = security.injection?.suspected ? security.injection : null;
   const piiTotal = Object.values(security.pii?.masked ?? {}).reduce((a, b) => a + b, 0);
-  const open = kase.findings.filter((f) => f.status === 'OPEN').length;
+  const open = kase.findings.filter((f) => f.status === FindingStatus.OPEN).length;
   const findings = [...kase.findings].sort((a, b) => sevRank(b) - sevRank(a) || (b.amount ?? 0) - (a.amount ?? 0));
 
   return (
     <>
       <div className="case-head">
-        <Link to="/queue" className="small">
+        <Link to={Route.QUEUE} className="small">
           ← Queue
         </Link>
         <div className="page-head">
@@ -153,7 +155,7 @@ export function CaseWorkspace() {
               </dl>
             )}
           </div>
-          <CaseActions kase={kase} canDecide={can('REVIEWER')} onDone={load} />
+          <CaseActions kase={kase} canDecide={can(Role.REVIEWER)} onDone={load} />
         </div>
       </div>
 
@@ -188,7 +190,7 @@ export function CaseWorkspace() {
         <div className="workspace">
           <div className="findings">
             {processing && <div className="banner info">Extraction and scoring are running. This page refreshes on its own.</div>}
-            {kase.status === 'FAILED' && <div className="banner bad">Processing failed after retries. Check the audit trail for the error.</div>}
+            {kase.status === CaseStatus.FAILED && <div className="banner bad">Processing failed after retries. Check the audit trail for the error.</div>}
             {!processing && findings.length === 0 && (
               <div className="panel empty">
                 <strong>No findings</strong>
@@ -196,7 +198,7 @@ export function CaseWorkspace() {
               </div>
             )}
             {findings.map((f) => (
-              <FindingCard key={f.id} caseId={kase.id} finding={f} canDecide={can('REVIEWER')} onDecided={onFindingDecided} onShowEvidence={showEvidence} />
+              <FindingCard key={f.id} caseId={kase.id} finding={f} canDecide={can(Role.REVIEWER)} onDecided={onFindingDecided} onShowEvidence={showEvidence} />
             ))}
           </div>
 
@@ -225,7 +227,7 @@ export function CaseWorkspace() {
           </aside>
         </div>
       ) : (
-        <AuditTab caseId={kase.id} canVerify={can('ADMIN')} />
+        <AuditTab caseId={kase.id} canVerify={can(Role.ADMIN)} />
       )}
     </>
   );
@@ -240,10 +242,10 @@ export function CaseActions({ kase, canDecide, onDone }: { kase: CaseDetail; can
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
-  const final = kase.status === 'APPROVED' || kase.status === 'REJECTED';
+  const final = kase.status === CaseStatus.APPROVED || kase.status === CaseStatus.REJECTED;
 
   if (!canDecide) return <span className="small muted">Read-only: reviewers decide cases</span>;
-  if (final || kase.status === 'PROCESSING' || kase.status === 'RECEIVED') return null;
+  if (final || kase.status === CaseStatus.PROCESSING || kase.status === CaseStatus.RECEIVED) return null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -271,7 +273,7 @@ export function CaseActions({ kase, canDecide, onDone }: { kase: CaseDetail; can
         <button className="btn danger" onClick={() => setAction('REJECT')}>
           Reject
         </button>
-        {kase.status !== 'ESCALATED' && (
+        {kase.status !== CaseStatus.ESCALATED && (
           <button className="btn" onClick={() => setAction('ESCALATE')}>
             Escalate
           </button>

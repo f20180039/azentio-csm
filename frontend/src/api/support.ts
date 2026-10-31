@@ -3,15 +3,28 @@ import { get, MOCK_MODE, postJson } from './client';
 import { VOICE_BASE } from './renewals';
 import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
+import { CoreApiPath } from './paths/core';
+import { SimulatorPath } from './paths/simulator';
+import { VoicePath } from './paths/voice';
+import {
+  Intent,
+  IntentSource,
+  LegacyIntent,
+  RecordKind,
+  SupportChannel,
+  SupportOutcome,
+  TurnRole,
+  Verification,
+} from '../vocab';
+
+export { RecordKind, SupportChannel, SupportOutcome, Verification };
 
 export const SIMULATOR_BASE: string =
   (import.meta.env.VITE_SIMULATOR_BASE as string | undefined) ?? 'http://localhost:8090/v1';
 
 /* ---------- shared contract types (docs/superpowers/plans/2026-10-31-csm-voice-agent.md) ---------- */
 
-export type SupportChannel = 'VOICE' | 'SIM_AUDIO' | 'TEXT';
-export type SupportOutcome = 'RESOLVED' | 'TICKET_CREATED' | 'COMPLAINT_REGISTERED' | 'ROUTED' | 'ESCALATED' | 'ABANDONED';
-export const SUPPORT_OUTCOMES: SupportOutcome[] = ['RESOLVED', 'TICKET_CREATED', 'COMPLAINT_REGISTERED', 'ROUTED', 'ESCALATED', 'ABANDONED'];
+export const SUPPORT_OUTCOMES: SupportOutcome[] = Object.values(SupportOutcome);
 
 export interface ToolTrace {
   name: string;
@@ -21,7 +34,7 @@ export interface ToolTrace {
 
 export interface TurnMeta {
   intents?: string[];
-  intent_source?: 'llm' | 'rules';
+  intent_source?: IntentSource;
   verified?: boolean;
   verify_failures?: number;
   locked?: boolean;
@@ -34,7 +47,7 @@ export interface TurnMeta {
 
 export interface SupportTurn {
   seq: number;
-  role: 'customer' | 'agent';
+  role: TurnRole;
   text: string;
   at: string;
   meta: TurnMeta;
@@ -93,8 +106,6 @@ export interface OfferAnswer {
   call_id: string;
 }
 
-export type RecordKind = 'ticket' | 'complaint' | 'routed' | 'escalation';
-
 export interface OpsRecord {
   ref: string;
   kind: RecordKind;
@@ -119,23 +130,23 @@ function normaliseCall(c: SupportCall): SupportCall {
 }
 
 const liveSupport = {
-  startCall(channel: SupportChannel = 'VOICE'): Promise<{ id: string }> {
-    return postJson('/support/calls', { channel });
+  startCall(channel: SupportChannel = SupportChannel.VOICE): Promise<{ id: string }> {
+    return postJson(CoreApiPath.SUPPORT_CALLS, { channel });
   },
 
   async getCall(id: string): Promise<SupportCall> {
-    return normaliseCall(await get<SupportCall>(`/support/calls/${encodeURIComponent(id)}`));
+    return normaliseCall(await get<SupportCall>(CoreApiPath.supportCall(id)));
   },
 
   async listCalls(outcome?: SupportOutcome): Promise<SupportCallSummary[]> {
     const params = new URLSearchParams({ limit: '50' });
     if (outcome) params.set('outcome', outcome);
-    const r = await get<{ items?: SupportCallSummary[] }>(`/support/calls?${params}`);
+    const r = await get<{ items?: SupportCallSummary[] }>(`${CoreApiPath.SUPPORT_CALLS}?${params}`);
     return (r?.items ?? []).map((c) => ({ ...c, intents: c.intents ?? [] }));
   },
 
   endCall(id: string, outcome: SupportOutcome): Promise<unknown> {
-    return postJson(`/support/calls/${encodeURIComponent(id)}/end`, { outcome });
+    return postJson(CoreApiPath.supportCallEnd(id), { outcome });
   },
 
   /* ---------- voice service ---------- */
@@ -144,13 +155,13 @@ const liveSupport = {
     const form = new FormData();
     files.forEach((f) => form.append('files', f, f.name));
     if (callId) form.append('call_id', callId);
-    const res = await reach('voice service', VOICE_BASE, () => fetch(`${VOICE_BASE}/sim/audio`, { method: 'POST', body: form }));
+    const res = await reach('voice service', VOICE_BASE, () => fetch(`${VOICE_BASE}${VoicePath.SIM_AUDIO}`, { method: 'POST', body: form }));
     return (await res.json()) as SimAudioResult;
   },
 
   async supportOffer(body: OfferBody, fetchImpl: typeof fetch = fetch): Promise<OfferAnswer> {
     const res = await reach('voice service', VOICE_BASE, () =>
-      fetchImpl(`${VOICE_BASE}/support/offer`, {
+      fetchImpl(`${VOICE_BASE}${VoicePath.SUPPORT_OFFER}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -163,7 +174,7 @@ const liveSupport = {
 
   async listRecords(kind: RecordKind): Promise<OpsRecord[]> {
     const res = await reach('bank simulator', SIMULATOR_BASE, () =>
-      fetch(`${SIMULATOR_BASE}/ops/records?kind=${kind}`, {
+      fetch(`${SIMULATOR_BASE}${SimulatorPath.OPS_RECORDS}?kind=${kind}`, {
         headers: { Accept: 'application/json', Authorization: 'Basic ' + btoa('ops:ops') },
       }),
     );
@@ -223,7 +234,7 @@ async function liveConnectSupportVoice(
       onError: (m) => h.onError(typeof m?.data === 'string' ? m.data : 'The voice connection reported an error.'),
     },
   });
-  const endpoint = `${VOICE_BASE}/support/offer`;
+  const endpoint = `${VOICE_BASE}${VoicePath.SUPPORT_OFFER}`;
   const nativeFetch = window.fetch;
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : null;
@@ -263,75 +274,82 @@ export const connectSupportVoice = (callId: string | undefined, audio: HTMLAudio
 
 /* ---------- presentation helpers shared by the desk and the call view ---------- */
 
-const INTENT_LABEL: Record<string, string> = {
-  LOAN_APPLICATION: 'Loan application',
-  REPAYMENT: 'Repayment',
-  ACCOUNT: 'Account',
-  TRANSACTION: 'Transaction',
-  SERVICE_REQUEST: 'Service request',
-  SERVICE_REQUEST_STATUS: 'Service request status',
-  PRODUCT_QUESTION: 'Product question',
-  PRODUCT_INFO: 'Product question',
-  FAQ: 'Product question',
-  COMPLAINT: 'Complaint',
-  INSURANCE: 'Insurance',
-  STATEMENT: 'Statement',
-  ESCALATION: 'Escalation',
-  UNSUPPORTED: 'Unsupported',
-  UNCLEAR: 'Unclear',
-  GREETING: 'Greeting',
+const INTENT_LABEL: Record<Intent | LegacyIntent, string> = {
+  [Intent.LOAN_APPLICATION]: 'Loan application',
+  [Intent.REPAYMENT]: 'Repayment',
+  [Intent.ACCOUNT]: 'Account',
+  [Intent.SERVICE_REQUEST]: 'Service request',
+  [Intent.PRODUCT_INFO]: 'Product question',
+  [Intent.COMPLAINT]: 'Complaint',
+  [Intent.INSURANCE]: 'Insurance',
+  [Intent.IDENTITY]: 'Identity',
+  [Intent.HUMAN_AGENT]: 'Human agent',
+  [Intent.UNSUPPORTED]: 'Unsupported',
+  [Intent.UNCLEAR]: 'Unclear',
+  [Intent.CHITCHAT]: 'Chitchat',
+  [LegacyIntent.TRANSACTION]: 'Transaction',
+  [LegacyIntent.SERVICE_REQUEST_STATUS]: 'Service request status',
+  [LegacyIntent.PRODUCT_QUESTION]: 'Product question',
+  [LegacyIntent.FAQ]: 'Product question',
+  [LegacyIntent.STATEMENT]: 'Statement',
+  [LegacyIntent.ESCALATION]: 'Escalation',
+  [LegacyIntent.GREETING]: 'Greeting',
 };
 
 export function intentLabel(intent: string): string {
   const key = intent.toUpperCase();
-  return INTENT_LABEL[key] ?? key.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+  return INTENT_LABEL[key as Intent | LegacyIntent] ?? key.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
 
 export function intentTone(intent: string): string {
   const key = intent.toUpperCase();
-  if (key === 'UNSUPPORTED') return 'warn';
-  if (key === 'UNCLEAR') return 'dim';
-  if (key === 'COMPLAINT' || key === 'ESCALATION') return 'bad';
+  if (key === Intent.UNSUPPORTED) return 'warn';
+  if (key === Intent.UNCLEAR) return 'dim';
+  if (key === Intent.COMPLAINT || key === LegacyIntent.ESCALATION) return 'bad';
   return 'neutral';
 }
 
 export const OUTCOME_LABEL: Record<SupportOutcome, string> = {
-  RESOLVED: 'Resolved',
-  TICKET_CREATED: 'Ticket created',
-  COMPLAINT_REGISTERED: 'Complaint registered',
-  ROUTED: 'Routed',
-  ESCALATED: 'Escalated',
-  ABANDONED: 'Abandoned',
+  [SupportOutcome.RESOLVED]: 'Resolved',
+  [SupportOutcome.TICKET_CREATED]: 'Ticket created',
+  [SupportOutcome.COMPLAINT_REGISTERED]: 'Complaint registered',
+  [SupportOutcome.ROUTED]: 'Routed',
+  [SupportOutcome.ESCALATED]: 'Escalated',
+  [SupportOutcome.ABANDONED]: 'Abandoned',
 };
 
 export const OUTCOME_TONE: Record<SupportOutcome, string> = {
-  RESOLVED: 'ok',
-  TICKET_CREATED: 'info',
-  COMPLAINT_REGISTERED: 'warn',
-  ROUTED: 'warn',
-  ESCALATED: 'bad',
-  ABANDONED: 'dim',
+  [SupportOutcome.RESOLVED]: 'ok',
+  [SupportOutcome.TICKET_CREATED]: 'info',
+  [SupportOutcome.COMPLAINT_REGISTERED]: 'warn',
+  [SupportOutcome.ROUTED]: 'warn',
+  [SupportOutcome.ESCALATED]: 'bad',
+  [SupportOutcome.ABANDONED]: 'dim',
 };
 
-export type Verification = 'NOT_VERIFIED' | 'VERIFIED' | 'LOCKED';
+export const CHANNEL_LABEL: Record<SupportChannel, string> = {
+  [SupportChannel.VOICE]: 'Microphone',
+  [SupportChannel.SIM_AUDIO]: 'Audio files',
+  [SupportChannel.TEXT]: 'Text',
+};
 
 /** From the latest customer turn's meta; the call-level flag covers calls whose turns carry no meta yet. */
 export function verificationOf(call: Pick<SupportCall, 'turns' | 'verified'>): { state: Verification; failures: number } {
-  const last = [...call.turns].reverse().find((t) => t.role === 'customer' && (t.meta.verified !== undefined || t.meta.locked !== undefined));
+  const last = [...call.turns].reverse().find((t) => t.role === TurnRole.CUSTOMER && (t.meta.verified !== undefined || t.meta.locked !== undefined));
   const failures = last?.meta.verify_failures ?? 0;
-  if (last?.meta.locked) return { state: 'LOCKED', failures };
-  if (last?.meta.verified || call.verified) return { state: 'VERIFIED', failures };
-  return { state: 'NOT_VERIFIED', failures };
+  if (last?.meta.locked) return { state: Verification.LOCKED, failures };
+  if (last?.meta.verified || call.verified) return { state: Verification.VERIFIED, failures };
+  return { state: Verification.NOT_VERIFIED, failures };
 }
 
 /** The outcome an operator most likely wants, from the references the agent created. */
 export function suggestOutcome(call: Pick<SupportCall, 'turns'>): SupportOutcome {
   const refs = call.turns.flatMap((t) => t.meta.refs ?? []);
-  if (refs.some((r) => r.startsWith('ESC-'))) return 'ESCALATED';
-  if (refs.some((r) => r.startsWith('CMP-'))) return 'COMPLAINT_REGISTERED';
-  if (refs.some((r) => r.startsWith('SR-'))) return 'TICKET_CREATED';
-  if (refs.some((r) => r.startsWith('RQ-'))) return 'ROUTED';
-  return call.turns.length ? 'RESOLVED' : 'ABANDONED';
+  if (refs.some((r) => r.startsWith('ESC-'))) return SupportOutcome.ESCALATED;
+  if (refs.some((r) => r.startsWith('CMP-'))) return SupportOutcome.COMPLAINT_REGISTERED;
+  if (refs.some((r) => r.startsWith('SR-'))) return SupportOutcome.TICKET_CREATED;
+  if (refs.some((r) => r.startsWith('RQ-'))) return SupportOutcome.ROUTED;
+  return call.turns.length ? SupportOutcome.RESOLVED : SupportOutcome.ABANDONED;
 }
 
 /** A data: URL for reply audio, with the type sniffed from the base64 header. */

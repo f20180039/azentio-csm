@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, NavLink, Navigate, Outlet, Route as RouterRoute, Routes } from 'react-router-dom';
 import { MOCK_MODE } from './api/client';
 import { Select } from './components/Select';
 import { ToastProvider } from './components/Toasts';
@@ -15,10 +15,9 @@ import { SupportDesk } from './pages/SupportDesk';
 import { displayName } from './demoUsers';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
+import { Route } from './routes';
+import { StorageKey, Theme } from './vocab';
 
-const Theme = { LIGHT: 'light', DARK: 'dark' } as const;
-type Theme = (typeof Theme)[keyof typeof Theme];
-const THEME_KEY = 'ci-theme';
 const THEME_OPTIONS = [
   { value: Theme.LIGHT, label: 'Light' },
   { value: Theme.DARK, label: 'Dark' },
@@ -26,7 +25,7 @@ const THEME_OPTIONS = [
 
 function storedTheme(): Theme {
   try {
-    return localStorage.getItem(THEME_KEY) === Theme.DARK ? Theme.DARK : Theme.LIGHT;
+    return localStorage.getItem(StorageKey.THEME) === Theme.DARK ? Theme.DARK : Theme.LIGHT;
   } catch {
     return Theme.LIGHT;
   }
@@ -50,7 +49,7 @@ function ThemeToggle() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     try {
-      localStorage.setItem(THEME_KEY, theme);
+      localStorage.setItem(StorageKey.THEME, theme);
     } catch {
       /* storage unavailable */
     }
@@ -79,11 +78,11 @@ function Shell() {
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
-          <NavLink to="/support">Support desk</NavLink>
-          <NavLink to="/dashboard">Dashboard</NavLink>
-          <NavLink to="/queue">Queue</NavLink>
-          <NavLink to="/renewals">Renewals</NavLink>
-          <NavLink to="/packs">Rule packs</NavLink>
+          <NavLink to={Route.SUPPORT}>Support desk</NavLink>
+          <NavLink to={Route.DASHBOARD}>Dashboard</NavLink>
+          <NavLink to={Route.QUEUE}>Queue</NavLink>
+          <NavLink to={Route.RENEWALS}>Renewals</NavLink>
+          <NavLink to={Route.PACKS}>Rule packs</NavLink>
         </nav>
         <div className="topbar-right">
           <ThemeToggle />
@@ -108,19 +107,19 @@ export function App() {
       <SessionProvider>
         <BrowserRouter>
           <Routes>
-            <Route element={<Shell />}>
-              <Route index element={<Navigate to="/support" replace />} />
-              <Route path="support" element={<SupportDesk />} />
-              <Route path="support/new" element={<SupportCall />} />
-              <Route path="support/calls/:callId" element={<SupportCall />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="queue" element={<Queue />} />
-              <Route path="cases/:id" element={<CaseWorkspace />} />
-              <Route path="renewals" element={<Renewals />} />
-              <Route path="renewals/calls/:callId" element={<Call />} />
-              <Route path="packs" element={<Packs />} />
-              <Route path="*" element={<Navigate to="/support" replace />} />
-            </Route>
+            <RouterRoute element={<Shell />}>
+              <RouterRoute index element={<Navigate to={Route.SUPPORT} replace />} />
+              <RouterRoute path={Route.SUPPORT} element={<SupportDesk />} />
+              <RouterRoute path={Route.SUPPORT_NEW} element={<SupportCall />} />
+              <RouterRoute path={Route.SUPPORT_CALL} element={<SupportCall />} />
+              <RouterRoute path={Route.DASHBOARD} element={<Dashboard />} />
+              <RouterRoute path={Route.QUEUE} element={<Queue />} />
+              <RouterRoute path={Route.CASE} element={<CaseWorkspace />} />
+              <RouterRoute path={Route.RENEWALS} element={<Renewals />} />
+              <RouterRoute path={Route.RENEWAL_CALL} element={<Call />} />
+              <RouterRoute path={Route.PACKS} element={<Packs />} />
+              <RouterRoute path="*" element={<Navigate to={Route.SUPPORT} replace />} />
+            </RouterRoute>
           </Routes>
         </BrowserRouter>
       </SessionProvider>

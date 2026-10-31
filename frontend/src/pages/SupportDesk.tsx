@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  CHANNEL_LABEL,
   intentLabel,
   intentTone,
   listCalls,
@@ -8,23 +9,22 @@ import {
   OUTCOME_LABEL,
   OUTCOME_TONE,
   SUPPORT_OUTCOMES,
+  RecordKind,
   type OpsRecord,
-  type RecordKind,
   type SupportCallSummary,
   type SupportOutcome,
 } from '../api/support';
 import { formatDateTime, humanise } from '../format';
+import { Route } from '../routes';
 
 const REFRESH_MS = 5000;
 
 const RECORD_TABS: { kind: RecordKind; label: string; empty: string }[] = [
-  { kind: 'ticket', label: 'Tickets', empty: 'No service requests yet.' },
-  { kind: 'complaint', label: 'Complaints', empty: 'No complaints registered yet.' },
-  { kind: 'routed', label: 'Routed queries', empty: 'No unsupported questions routed yet.' },
-  { kind: 'escalation', label: 'Escalations', empty: 'No calls escalated yet.' },
+  { kind: RecordKind.TICKET, label: 'Tickets', empty: 'No service requests yet.' },
+  { kind: RecordKind.COMPLAINT, label: 'Complaints', empty: 'No complaints registered yet.' },
+  { kind: RecordKind.ROUTED, label: 'Routed queries', empty: 'No unsupported questions routed yet.' },
+  { kind: RecordKind.ESCALATION, label: 'Escalations', empty: 'No calls escalated yet.' },
 ];
-
-const CHANNEL_LABEL: Record<string, string> = { VOICE: 'Microphone', SIM_AUDIO: 'Audio files', TEXT: 'Text' };
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -76,7 +76,7 @@ function CallsPanel() {
     return () => clearInterval(t);
   }, [load, filter]);
 
-  const open = (id: string) => navigate(`/support/calls/${encodeURIComponent(id)}`);
+  const open = (id: string) => navigate(Route.supportCall(id));
   const onRowKey = (e: KeyboardEvent, id: string) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -166,7 +166,7 @@ function CallsPanel() {
 }
 
 function RecordsPanel() {
-  const [kind, setKind] = useState<RecordKind>('ticket');
+  const [kind, setKind] = useState<RecordKind>(RecordKind.TICKET);
   const [rows, setRows] = useState<OpsRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const kindRef = useRef(kind);
@@ -264,7 +264,7 @@ function RecordsPanel() {
                     {r.call_id && (
                       <>
                         {r.customer_ref && ' · '}
-                        <Link to={`/support/calls/${encodeURIComponent(r.call_id)}`}>Open call</Link>
+                        <Link to={Route.supportCall(r.call_id)}>Open call</Link>
                       </>
                     )}
                   </div>
@@ -302,7 +302,7 @@ export function SupportDesk() {
           <h1>Customer service desk</h1>
           <span className="muted small">Every call the voice agent takes, and the tickets, complaints and routed queries it raised.</span>
         </div>
-        <Link to="/support/new" className="btn primary">
+        <Link to={Route.SUPPORT_NEW} className="btn primary">
           Start a call
         </Link>
       </div>

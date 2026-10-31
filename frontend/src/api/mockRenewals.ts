@@ -2,7 +2,8 @@
  * Dev-only scripted renewals backend (VITE_MOCK=1). Every policy, holder and amount is an invented SAMPLE;
  * "Lotusleaf General Insurance" is a fictional insurer.
  */
-import type { CallOutcome, CallView, QueueItem, StartedCall, TextTurnResult, TranscriptTurn } from './types';
+import { CallOutcome, CallTurnRole, RenewalRoute } from '../vocab';
+import type { CallView, QueueItem, StartedCall, TextTurnResult, TranscriptTurn } from './types';
 import { ApiError } from './errors';
 import { logRenewalEvent, seedRenewalCase } from './mock';
 
@@ -53,7 +54,7 @@ function build(callId: string, policyId: string, holderName: string): MockCall {
     callId, caseId: callId, policyId, holderName, greeting,
     identityVerified: false, verifyFailures: 0, outOfPlaybookRequests: 0, mustHandoff: false, outcome: null,
     lastQuote: null, paymentLinkSent: false, handoffReason: null, callbackAt: null,
-    transcript: [turn('agent', greeting)], summary: [],
+    transcript: [turn(CallTurnRole.AGENT, greeting)], summary: [],
   };
   seedRenewalCase(callId, `Sample: renewal call for ${policyId}`);
   logRenewalEvent(callId, 'AGENT_GREETED', { disclosure: 'ai_and_recording' });
@@ -79,8 +80,8 @@ export const mockRenewals = {
   async startCall(policyId: string): Promise<StartedCall> {
     await delay();
     const item = QUEUE.find((q) => q.policyId === policyId);
-    if (item && item.route !== 'AGENT_CALL') {
-      throw new ApiError({ status: 409, title: 'Conflict', detail: item.route === 'HUMAN_ONLY' ? 'HUMAN_ONLY' : 'DO_NOT_CALL' });
+    if (item && item.route !== RenewalRoute.AGENT_CALL) {
+      throw new ApiError({ status: 409, title: 'Conflict', detail: item.route === RenewalRoute.HUMAN_ONLY ? RenewalRoute.HUMAN_ONLY : 'DO_NOT_CALL' });
     }
     const callId = `sample-call-${policyId.toLowerCase()}`;
     const call = build(callId, policyId, item?.holderName ?? 'Sample: Meera Iyer');
@@ -97,15 +98,15 @@ export const mockRenewals = {
     await delay();
     const c = ensure(callId);
     const v = c.view;
-    const outcome: CallOutcome = v.mustHandoff ? 'HANDED_OFF' : v.paymentLinkSent ? 'RENEWAL_PENDING_PAYMENT' : 'NO_DECISION';
+    const outcome: CallOutcome = v.mustHandoff ? CallOutcome.HANDED_OFF : v.paymentLinkSent ? CallOutcome.RENEWAL_PENDING_PAYMENT : CallOutcome.NO_DECISION;
     v.outcome = outcome;
-    if (outcome === 'RENEWAL_PENDING_PAYMENT') {
+    if (outcome === CallOutcome.RENEWAL_PENDING_PAYMENT) {
       v.summary = [
         { statement: 'Customer confirmed identity with date of birth.', quote: '12 March 1984' },
         { statement: 'Customer dropped roadside assistance and chose quarterly payment.', quote: 'Drop roadside assistance and pay quarterly' },
         { statement: 'Payment link sent to the mobile number on file.', quote: 'I have sent the link ending 4417' },
       ];
-    } else if (outcome === 'HANDED_OFF') {
+    } else if (outcome === CallOutcome.HANDED_OFF) {
       v.summary = [{ statement: 'Agent handed the call to a person.', quote: v.handoffReason ?? 'Handing you to a colleague' }];
     }
     logRenewalEvent(callId, 'CALL_ENDED', { outcome });
@@ -122,7 +123,7 @@ export const mockRenewals = {
     const c = ensure(callId);
     const v = c.view;
     c.turns += 1;
-    v.transcript.push(turn('user', text));
+    v.transcript.push(turn(CallTurnRole.USER, text));
     let reply: string;
     const toolCalls: TextTurnResult['toolCalls'] = [];
     if (/\b(50|40|30)\s*%/.test(text)) {
@@ -142,7 +143,7 @@ export const mockRenewals = {
       toolCalls.push({ name: 'quote', args: { dropAddons: ['ROADSIDE'], paymentPlan: 'QUARTERLY' }, result: v.lastQuote });
       toolCalls.push({ name: 'send_payment_link', args: {}, result: { sent: true } });
     }
-    v.transcript.push(turn('agent', reply));
+    v.transcript.push(turn(CallTurnRole.AGENT, reply));
     logRenewalEvent(callId, 'TURN', { user: text, tools: toolCalls.map((t) => t.name) });
     return { reply, toolCalls };
   },

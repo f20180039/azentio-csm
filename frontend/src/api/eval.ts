@@ -1,6 +1,7 @@
 import { MOCK_MODE } from './client';
 import { ApiError } from './errors';
 import { sampleEvalReport } from './mockEval';
+import { VoicePath } from './paths/voice';
 import { VOICE_BASE } from './renewals';
 
 export interface EvalTotals {
@@ -48,7 +49,7 @@ export async function getEvalLatest(): Promise<EvalReport | null> {
   if (MOCK_MODE) return sampleEvalReport();
   let res: Response;
   try {
-    res = await fetch(`${VOICE_BASE}/v1/eval/latest`);
+    res = await fetch(`${VOICE_BASE}${VoicePath.EVAL_LATEST}`);
   } catch {
     throw new ApiError({ status: 0, title: 'Cannot reach the voice service', detail: `Check that it is running at ${VOICE_BASE}.` });
   }

@@ -9,6 +9,8 @@ import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatCallback, formatInr } from '../format';
 import { useSession } from '../session';
+import { Route } from '../routes';
+import { CallOutcome as Outcome, CallTurnRole, Role } from '../vocab';
 import { AuditTab, CaseActions } from './CaseWorkspace';
 
 const POLL_MS = 1000;
@@ -17,11 +19,15 @@ export const PHONE_RING_TIMEOUT_MS = 120_000;
 export const PHONE_END_HINT = 'Hang up on the phone (or let the agent end the call)';
 
 export const OUTCOME_LABEL: Record<CallOutcome, string> = {
-  HANDED_OFF: 'Handed to a person',
-  RENEWAL_PENDING_PAYMENT: 'Renewed with changes · payment pending',
-  NO_DECISION: 'No decision',
+  [Outcome.HANDED_OFF]: 'Handed to a person',
+  [Outcome.RENEWAL_PENDING_PAYMENT]: 'Renewed with changes · payment pending',
+  [Outcome.NO_DECISION]: 'No decision',
 };
-const OUTCOME_TONE: Record<CallOutcome, string> = { HANDED_OFF: 'warn', RENEWAL_PENDING_PAYMENT: 'ok', NO_DECISION: 'dim' };
+const OUTCOME_TONE: Record<CallOutcome, string> = {
+  [Outcome.HANDED_OFF]: 'warn',
+  [Outcome.RENEWAL_PENDING_PAYMENT]: 'ok',
+  [Outcome.NO_DECISION]: 'dim',
+};
 
 type GuardState = 'idle' | 'ok' | 'warn' | 'bad';
 interface Guard {
@@ -41,7 +47,7 @@ export function guardrails(c: CallView | null): Guard[] {
       : c.verifyFailures > 0
         ? { key: 'identity', label: 'Identity verified', state: 'warn', note: `${c.verifyFailures} failed check${c.verifyFailures > 1 ? 's' : ''}; not verified yet.` }
         : { key: 'identity', label: 'Identity verified', state: 'idle', note: 'Not yet asked.' };
-  const disclosed = c.transcript.some((t) => t.role === 'agent');
+  const disclosed = c.transcript.some((t) => t.role === CallTurnRole.AGENT);
   return [
     {
       key: 'disclosure',
@@ -196,8 +202,8 @@ export function Call() {
     setVoice('connecting');
     try {
       const s = await connectVoice(callId, audio.current, {
-        onUserText: (text) => setLive((l) => [...l, { role: 'user', text }]),
-        onBotText: (text) => setLive((l) => [...l, { role: 'agent', text }]),
+        onUserText: (text) => setLive((l) => [...l, { role: CallTurnRole.USER, text }]),
+        onBotText: (text) => setLive((l) => [...l, { role: CallTurnRole.AGENT, text }]),
         onDisconnected: () => setVoice('off'),
         onError: (m) => toast.push('Voice connection problem', m, 'warn'),
       });
@@ -255,7 +261,7 @@ export function Call() {
     return (
       <div className="empty">
         <strong>This call could not be loaded</strong>
-        <Link to="/renewals">Back to renewals</Link>
+        <Link to={Route.RENEWALS}>Back to renewals</Link>
       </div>
     );
   }
@@ -268,7 +274,7 @@ export function Call() {
   return (
     <>
       <div className="case-head">
-        <Link to="/renewals" className="small">
+        <Link to={Route.RENEWALS} className="small">
           ← Renewals
         </Link>
         <div className="page-head">
@@ -357,8 +363,8 @@ export function Call() {
         <section className="panel call-transcript" aria-label="Transcript">
           <div className="transcript" role="log" aria-live="polite">
             {lines.map((t, i) => (
-              <div key={i} className={`turn ${t.role === 'agent' ? 'agent' : 'user'}`}>
-                <span className="who">{t.role === 'agent' ? 'Agent' : 'Customer'}</span>
+              <div key={i} className={`turn ${t.role === CallTurnRole.AGENT ? 'agent' : 'user'}`}>
+                <span className="who">{t.role === CallTurnRole.AGENT ? 'Agent' : 'Customer'}</span>
                 <p>{t.text}</p>
               </div>
             ))}
@@ -423,13 +429,13 @@ export function Call() {
           </div>
           <div className="panel guard-panel">
             <h2>Audit chain</h2>
-            <AuditTab caseId={call.caseId} canVerify={can('ADMIN')} />
+            <AuditTab caseId={call.caseId} canVerify={can(Role.ADMIN)} />
           </div>
           <div className="panel guard-panel">
             <h2>Decision</h2>
             <p className="small muted">The person who started this call cannot decide it: sign in as the reviewer to approve.</p>
             {kase ? (
-              <CaseActions kase={kase} canDecide={can('REVIEWER')} onDone={() => api.getCase(call.caseId).then(setKase)} />
+              <CaseActions kase={kase} canDecide={can(Role.REVIEWER)} onDone={() => api.getCase(call.caseId).then(setKase)} />
             ) : (
               <span className="muted small">Loading the case…</span>
             )}

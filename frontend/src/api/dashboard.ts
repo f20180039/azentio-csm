@@ -1,5 +1,6 @@
 import { get, MOCK_MODE } from './client';
 import { sampleDashboard } from './mock';
+import { CoreApiPath } from './paths/core';
 import type { CallOutcome } from './types';
 
 export interface DashboardKpis {
@@ -66,7 +67,7 @@ export interface Dashboard {
 /** Calls the evaluator's AI customer made are left out unless `includeSimulated`. */
 export async function getDashboard(includeSimulated = false): Promise<Dashboard> {
   if (MOCK_MODE) return sampleDashboard();
-  const d = await get<Dashboard>(`/renewals/dashboard${includeSimulated ? '?includeSimulated=true' : ''}`);
+  const d = await get<Dashboard>(`${CoreApiPath.RENEWALS_DASHBOARD}${includeSimulated ? '?includeSimulated=true' : ''}`);
   return {
     ...d,
     outcomesByDay: d.outcomesByDay ?? [],

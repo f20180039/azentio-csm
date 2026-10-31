@@ -4,18 +4,19 @@ import { getDashboard, type Dashboard as DashboardData, type GuardrailAction, ty
 import { MOCK_MODE } from '../api/client';
 import { getEvalLatest, type EvalReport } from '../api/eval';
 import { getLlmStatus, type LlmStatus } from '../api/llm';
-import type { CallOutcome } from '../api/types';
+import { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useToast } from '../components/Toasts';
 import { formatAge, formatDateTime, formatInr, humanise, personaLabel } from '../format';
+import { Route } from '../routes';
 
 const POLL_MS = 3000;
 
 const OUTCOME: Record<CallOutcome, { label: string; tone: string }> = {
-  RENEWAL_PENDING_PAYMENT: { label: 'Renewed · payment pending', tone: 'ok' },
-  HANDED_OFF: { label: 'Handed to a person', tone: 'warn' },
-  NO_DECISION: { label: 'No decision', tone: 'dim' },
+  [CallOutcome.RENEWAL_PENDING_PAYMENT]: { label: 'Renewed · payment pending', tone: 'ok' },
+  [CallOutcome.HANDED_OFF]: { label: 'Handed to a person', tone: 'warn' },
+  [CallOutcome.NO_DECISION]: { label: 'No decision', tone: 'dim' },
 };
 
 const GUARD: Record<GuardrailAction, { label: string; tone: 'warn' | 'bad' | 'grey' }> = {
@@ -296,7 +297,7 @@ export function Dashboard() {
             <div className="panel empty">
               <strong>No calls yet</strong>
               <span>
-                Start one from <Link to="/renewals">Renewals</Link> or run the simulated test. Figures appear here as soon as a call begins.
+                Start one from <Link to={Route.RENEWALS}>Renewals</Link> or run the simulated test. Figures appear here as soon as a call begins.
               </span>
             </div>
           ) : (
@@ -354,8 +355,8 @@ export function Dashboard() {
                           key={c.callId}
                           className="clickable"
                           tabIndex={0}
-                          onClick={() => navigate(`/renewals/calls/${c.callId}`)}
-                          onKeyDown={(e) => e.key === 'Enter' && navigate(`/renewals/calls/${c.callId}`)}
+                          onClick={() => navigate(Route.renewalCall(c.callId))}
+                          onKeyDown={(e) => e.key === 'Enter' && navigate(Route.renewalCall(c.callId))}
                         >
                           <td>
                             <strong>{c.holderName}</strong>
@@ -392,7 +393,7 @@ export function Dashboard() {
                         const g = GUARD[e.action] ?? { label: e.action, tone: 'grey' as const };
                         return (
                           <li key={`${e.callId}-${e.at}-${i}`}>
-                            <button className={`feed-item ${g.tone}`} onClick={() => navigate(`/renewals/calls/${e.callId}`)}>
+                            <button className={`feed-item ${g.tone}`} onClick={() => navigate(Route.renewalCall(e.callId))}>
                               <span className="feed-top">
                                 <strong>{g.label}</strong>
                                 <span className="small muted num">{ago(e.at)}</span>
