@@ -1,10 +1,10 @@
 id: 04-statement-request
 title: Request a statement and track the new reference
-customer: {mobile: "9876500002", dob: "1985-11-03"}
+customer: {mobile: "9731462580", dob: "1985-11-03"}
 turns:
   - say: "Could you send me my loan statement?"
     expect: {intents: [SERVICE_REQUEST]}
-  - say: "My number is 98765 00002, date of birth third November nineteen eighty-five."
+  - say: "My number is 97314 62580, date of birth third November nineteen eighty-five."
     expect: {intents: [IDENTITY], verified: true}
   - say: "Please request the statement."
     expect: {intents: [SERVICE_REQUEST], creates: {ticket: STATEMENT}, tools_any: [create_service_request]}

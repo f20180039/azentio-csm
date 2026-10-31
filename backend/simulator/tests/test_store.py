@@ -41,7 +41,7 @@ def test_seeds_load_9_customers(tmp_path: Path):
     asha = store.get_customer("CUST-1001")
     assert asha is not None
     assert asha["first_name"] == "Asha"
-    assert asha["mobile"] == "9876500001"
+    assert asha["mobile"] == "9845213076"
     assert asha["dob"] == "1990-04-12"
 
 

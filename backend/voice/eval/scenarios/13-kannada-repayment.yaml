@@ -1,10 +1,10 @@
 id: 13-kannada-repayment
 title: Kannada caller asks for the next EMI
-customer: {mobile: "9876500002", dob: "1985-11-03"}
+customer: {mobile: "9731462580", dob: "1985-11-03"}
 turns:
   - say: "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?"
     expect: {intents: [REPAYMENT]}
-  - say: "ನನ್ನ ಮೊಬೈಲ್ ನಂಬರ್ 98765 00002, ಹುಟ್ಟಿದ ದಿನಾಂಕ 3 ನವೆಂಬರ್ 1985."
+  - say: "ನನ್ನ ಮೊಬೈಲ್ ನಂಬರ್ 97314 62580, ಹುಟ್ಟಿದ ದಿನಾಂಕ 3 ನವೆಂಬರ್ 1985."
     expect: {intents: [IDENTITY], verified: true}
   - say: "ನನ್ನ ಮುಂದಿನ EMI ಎಷ್ಟು, ಯಾವಾಗ ಕಟ್ಟಬೇಕು?"
     expect: {intents: [REPAYMENT], tools_any: [get_loans, get_schedule], must_say_any: ["12,450", "twelve thousand four hundred fifty", "9,800", "nine thousand eight hundred"]}

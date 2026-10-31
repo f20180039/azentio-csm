@@ -13,7 +13,7 @@ def test_correct_details_give_a_session(client):
 
 
 def test_mobile_is_normalised(client):
-    for mobile in ("+919876500002", "09876500002", "+91 98765 00002"):
+    for mobile in ("+919731462580", "09731462580", "+91 97314 62580"):
         res = client.post("/v1/verify", json={"mobile": mobile, "dob": RAHUL["dob"], "call_id": "c1"})
         assert res.status_code == 200, mobile
 

@@ -4,8 +4,8 @@ import uuid
 from conftest import ADMIN, ANALYST, REVIEWER, VOICE, audit
 from test_support import BASE, end, start, turn
 
-HEARD = "my number is 98765 0002"
-CORRECTED = "my number is 98765 00002"
+HEARD = "my number is 97314 6258"
+CORRECTED = "my number is 97314 62580"
 META_KEY = "transcript_correction"
 
 

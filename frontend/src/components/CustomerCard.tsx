@@ -3,7 +3,7 @@ import type { CustomerProfile } from '../api/support';
 import { formatInr, humanise } from '../format';
 import { TxnDirection } from '../vocab';
 
-/** '9876500002' → '98765 00002', the way callers say it. */
+/** '9731462580' → '97314 62580', the way callers say it. */
 export function formatMobile(mobile: string): string {
   return /^\d{10}$/.test(mobile) ? `${mobile.slice(0, 5)} ${mobile.slice(5)}` : mobile;
 }
