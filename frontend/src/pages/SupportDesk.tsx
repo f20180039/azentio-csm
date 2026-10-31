@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   CHANNEL_LABEL,
@@ -14,8 +14,10 @@ import {
   type SupportCallSummary,
   type SupportOutcome,
 } from '../api/support';
+import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { formatDateTime, humanise } from '../format';
 import { Route } from '../routes';
+import { Highlight, matches, SearchParam } from '../search';
 
 const REFRESH_MS = 5000;
 
@@ -26,16 +28,36 @@ const RECORD_TABS: { kind: RecordKind; label: string; empty: string }[] = [
   { kind: RecordKind.ESCALATION, label: 'Escalations', empty: 'No calls escalated yet.' },
 ];
 
+const ALL_RECORD_KINDS = RECORD_TABS.map((t) => t.kind);
+
+function callMatches(q: string, c: SupportCallSummary): boolean {
+  return matches(
+    q,
+    c.id,
+    c.intents,
+    c.intents.map(intentLabel),
+    c.outcome,
+    c.outcome ? OUTCOME_LABEL[c.outcome] : c.endedAt ? 'Ended' : 'Live',
+    c.channel,
+    CHANNEL_LABEL[c.channel],
+    c.verified ? 'Verified' : 'Not verified',
+  );
+}
+
+function recordMatches(q: string, r: OpsRecord): boolean {
+  return matches(q, r.ref, r.category, r.category && humanise(r.category), r.status, r.status && humanise(r.status), r.summary, r.customer_ref, r.call_id);
+}
+
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function CallStatusPill({ c }: { c: Pick<SupportCallSummary, 'endedAt' | 'outcome'> }) {
+export function CallStatusPill({ c, query = '' }: { c: Pick<SupportCallSummary, 'endedAt' | 'outcome'>; query?: string }) {
   if (!c.endedAt) {
     return (
       <span className="pill info pulse">
         <span className="dot" aria-hidden="true" />
-        Live
+        <Highlight text="Live" query={query} />
       </span>
     );
   }
@@ -43,7 +65,7 @@ export function CallStatusPill({ c }: { c: Pick<SupportCallSummary, 'endedAt' | 
   return (
     <span className={`pill ${o ? OUTCOME_TONE[o] : 'dim'}`}>
       <span className="dot" aria-hidden="true" />
-      {o ? OUTCOME_LABEL[o] : 'Ended'}
+      <Highlight text={o ? OUTCOME_LABEL[o] : 'Ended'} query={query} />
     </span>
   );
 }
@@ -53,6 +75,8 @@ function CallsPanel() {
   const [filter, setFilter] = useState<SupportOutcome | ''>('');
   const [calls, setCalls] = useState<SupportCallSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useUrlQuery(SearchParam.QUERY);
+  const shown = useMemo(() => calls?.filter((c) => callMatches(query, c)) ?? null, [calls, query]);
   const filterRef = useRef(filter);
   filterRef.current = filter;
 
@@ -102,6 +126,16 @@ function CallsPanel() {
           ))}
         </div>
       </div>
+      <div className="search-bar">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search calls"
+          placeholder="Search calls by intent, outcome, channel or id"
+          shown={shown?.length}
+          total={calls?.length}
+        />
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -122,24 +156,30 @@ function CallsPanel() {
                 </td>
               </tr>
             )}
-            {calls?.map((c) => (
+            {shown?.map((c) => (
               <tr key={c.id} className="clickable" tabIndex={0} onClick={() => open(c.id)} onKeyDown={(e) => onRowKey(e, c.id)} aria-label={`Open call started ${formatDateTime(c.startedAt)}`}>
                 <td className="num">{formatDateTime(c.startedAt)}</td>
-                <td>{CHANNEL_LABEL[c.channel] ?? humanise(c.channel)}</td>
-                <td>{c.verified ? <span className="pill ok">Verified</span> : <span className="pill dim">Not verified</span>}</td>
+                <td>
+                  <Highlight text={CHANNEL_LABEL[c.channel] ?? humanise(c.channel)} query={query} />
+                </td>
+                <td>
+                  <span className={`pill ${c.verified ? 'ok' : 'dim'}`}>
+                    <Highlight text={c.verified ? 'Verified' : 'Not verified'} query={query} />
+                  </span>
+                </td>
                 <td className="sd-wrap">
                   <div className="row" style={{ gap: 4 }}>
                     {c.intents.length === 0 && <span className="muted small">—</span>}
                     {c.intents.map((i) => (
                       <span key={i} className={`pill ${intentTone(i)}`} title={i}>
-                        {intentLabel(i)}
+                        <Highlight text={intentLabel(i)} query={query} />
                       </span>
                     ))}
                   </div>
                 </td>
                 <td className="num r">{c.turnCount}</td>
                 <td>
-                  <CallStatusPill c={c} />
+                  <CallStatusPill c={c} query={query} />
                 </td>
               </tr>
             ))}
@@ -161,38 +201,51 @@ function CallsPanel() {
           <span>Start a call to talk to the agent or replay recorded audio.</span>
         </div>
       )}
+      {!!calls?.length && shown?.length === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
     </section>
   );
 }
 
 function RecordsPanel() {
   const [kind, setKind] = useState<RecordKind>(RecordKind.TICKET);
-  const [rows, setRows] = useState<OpsRecord[] | null>(null);
+  const [byKind, setByKind] = useState<Partial<Record<RecordKind, OpsRecord[]>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useUrlQuery(SearchParam.RECORDS_QUERY);
+  const searching = query.trim() !== '';
   const kindRef = useRef(kind);
   kindRef.current = kind;
+  const searchingRef = useRef(searching);
+  searchingRef.current = searching;
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const load = useCallback(async (quiet = false) => {
-    const wanted = kindRef.current;
-    if (!quiet) setRows(null);
+  const loadKind = useCallback(async (wanted: RecordKind) => {
     try {
       const items = await listRecords(wanted);
-      if (kindRef.current !== wanted) return;
-      setRows(items);
-      setError(null);
+      setByKind((m) => ({ ...m, [wanted]: items }));
+      if (kindRef.current === wanted) setError(null);
     } catch (e) {
       if (kindRef.current !== wanted) return;
       setError(errorText(e));
-      setRows((r) => r ?? []);
+      setByKind((m) => (m[wanted] ? m : { ...m, [wanted]: [] }));
     }
   }, []);
 
+  /** The active tab always; every tab while searching, so the tab labels can show their match counts. */
+  const load = useCallback(async () => {
+    const active = kindRef.current;
+    const others = searchingRef.current ? ALL_RECORD_KINDS.filter((k) => k !== active) : [];
+    await Promise.all([active, ...others].map(loadKind));
+  }, [loadKind]);
+
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(true), REFRESH_MS);
+    const t = setInterval(() => void load(), REFRESH_MS);
     return () => clearInterval(t);
-  }, [load, kind]);
+  }, [load, kind, searching]);
+
+  const rows = byKind[kind] ?? null;
+  const shown = useMemo(() => rows?.filter((r) => recordMatches(query, r)) ?? null, [rows, query]);
+  const countFor = (k: RecordKind) => byKind[k]?.filter((r) => recordMatches(query, r)).length;
 
   const tab = RECORD_TABS.find((t) => t.kind === kind)!;
   const onTabKey = (e: KeyboardEvent, i: number) => {
@@ -209,6 +262,17 @@ function RecordsPanel() {
         <h2 id="records-title">Bank records</h2>
         <span className="small muted">From the bank simulator, newest first</span>
       </div>
+      <div className="search-bar">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search bank records"
+          placeholder="Search records by reference, category, status or summary"
+          shown={shown?.length}
+          total={rows?.length}
+          shortcut={false}
+        />
+      </div>
       <div className="tabs sd-tabs" role="tablist" aria-label="Record type">
         {RECORD_TABS.map((t, i) => (
           <button
@@ -223,6 +287,7 @@ function RecordsPanel() {
             onKeyDown={(e) => onTabKey(e, i)}
           >
             {t.label}
+            {searching && countFor(t.kind) != null && <span className="tab-count">{countFor(t.kind)}</span>}
           </button>
         ))}
       </div>
@@ -245,22 +310,32 @@ function RecordsPanel() {
                 </td>
               </tr>
             )}
-            {rows?.map((r) => (
+            {shown?.map((r) => (
               <tr key={r.ref}>
                 <td>
-                  <span className="ref-pill">{r.ref}</span>
+                  <span className="ref-pill">
+                    <Highlight text={r.ref} query={query} />
+                  </span>
                   {r.escalated && (
                     <span className="pill bad" style={{ marginLeft: 6 }}>
                       Escalated
                     </span>
                   )}
                 </td>
-                <td>{r.category ? <span title={r.category}>{humanise(r.category)}</span> : <span className="muted">—</span>}</td>
-                <td>{r.status ? <span className="pill dim">{humanise(r.status)}</span> : <span className="muted">—</span>}</td>
+                <td>{r.category ? <span title={r.category}>
+                      <Highlight text={humanise(r.category)} query={query} />
+                    </span> : <span className="muted">—</span>}</td>
+                <td>{r.status ? <span className="pill dim">
+                      <Highlight text={humanise(r.status)} query={query} />
+                    </span> : <span className="muted">—</span>}</td>
                 <td className="sd-wrap sd-summary">
-                  {r.summary}
+                  <Highlight text={r.summary} query={query} />
                   <div className="small muted">
-                    {r.customer_ref && <span className="mono">{r.customer_ref}</span>}
+                    {r.customer_ref && (
+                      <span className="mono">
+                        <Highlight text={r.customer_ref} query={query} />
+                      </span>
+                    )}
                     {r.call_id && (
                       <>
                         {r.customer_ref && ' · '}
@@ -290,6 +365,7 @@ function RecordsPanel() {
           <span>{tab.empty}</span>
         </div>
       )}
+      {!!rows?.length && shown?.length === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
     </section>
   );
 }

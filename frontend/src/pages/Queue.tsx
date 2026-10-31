@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { CASE_STATUSES, CaseStatus, type CaseSummary, type RulePackInfo, type Stats } from '../api/types';
 import { ScoreBar, StatusPill } from '../components/StatusPill';
+import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { UploadDialog } from '../components/UploadDialog';
 import { formatAge, formatInr, humanise } from '../format';
 import { Route } from '../routes';
+import { Highlight, matches, SearchParam } from '../search';
 
 const REFRESH_MS = 3000;
 
@@ -30,6 +32,12 @@ export function Queue() {
   const navigate = useNavigate();
   const toast = useToast();
   const errorShown = useRef(false);
+  const [query, setQuery] = useUrlQuery();
+  const typeLabel = useCallback((t: string) => packs.find((p) => p.caseType === t)?.label ?? humanise(t), [packs]);
+  const shown = useMemo(
+    () => cases?.filter((c) => matches(query, c.title, c.id, c.caseType, typeLabel(c.caseType), c.status, humanise(c.status))) ?? null,
+    [cases, query, typeLabel],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -95,6 +103,14 @@ export function Queue() {
       </div>
 
       <div className="filters">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search cases"
+          placeholder="Search cases by title, id, type or status"
+          shown={shown?.length}
+          total={cases?.length}
+        />
         <label className="sr-only" htmlFor="filter-status">
           Status
         </label>
@@ -121,7 +137,10 @@ export function Queue() {
           options={[{ value: '', label: 'All case types' }, ...packs.map((p) => ({ value: p.caseType, label: p.label ?? humanise(p.caseType) }))]}
         />
         {(status || caseType) && (
-          <button className="btn ghost sm" onClick={() => setParams({}, { replace: true })}>
+          <button
+            className="btn ghost sm"
+            onClick={() => setParams(query ? { [SearchParam.QUERY]: query } : {}, { replace: true })}
+          >
             Clear filters
           </button>
         )}
@@ -148,7 +167,7 @@ export function Queue() {
                 </td>
               </tr>
             )}
-            {cases?.map((c) => (
+            {shown?.map((c) => (
               <tr
                 key={c.id}
                 className="clickable"
@@ -159,8 +178,12 @@ export function Queue() {
                 <td>
                   <StatusPill status={c.status} />
                 </td>
-                <td className="small">{packs.find((p) => p.caseType === c.caseType)?.label ?? humanise(c.caseType)}</td>
-                <td className="title-cell">{c.title}</td>
+                <td className="small">
+                  <Highlight text={typeLabel(c.caseType)} query={query} />
+                </td>
+                <td className="title-cell">
+                  <Highlight text={c.title} query={query} />
+                </td>
                 <td>
                   <ScoreBar score={c.riskScore} />
                 </td>
@@ -177,6 +200,7 @@ export function Queue() {
             <span>{status || caseType ? 'Clear the filters, or upload a document.' : 'Upload a document with New case to start.'}</span>
           </div>
         )}
+        {!!cases?.length && shown?.length === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
       </div>
 
       {uploading && (
