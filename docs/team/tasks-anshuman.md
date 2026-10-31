@@ -58,7 +58,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
 - It runs as `asyncio.create_task` on each final transcription, never awaited before the reply.
 - Tests: the rules map the four EMI phrasings to `REPAYMENT`, "weather" to `UNSUPPORTED` and "the thing from last time" to `UNCLEAR`; a fake LLM timeout falls back to rules.
 
-- [~] (Anshuman, feat/A4-support-calls) **A4: Spring V4: support calls and turn metadata** (needs: none)
+- [x] **A4: Spring V4: support calls and turn metadata** (needs: none)
 
 **Files:**
 - `backend/api/src/main/resources/db/migration/V4__support_calls.sql`: `calls.policy_id` nullable; add `kind` (`SUPPORT` | `RENEWAL`, default `RENEWAL`), `outcome` and `turns.meta jsonb`.
@@ -83,7 +83,7 @@ Tests (`SupportControllerTest`):
 - `GROQ_API_KEYS` rotation on 429.
 - Tests: noise-only audio yields no transcription frame; a phantom "Thank you." with high `no_speech_prob` is dropped; the domain prompt is sent.
 
-- [ ] **A7: Audio-file simulation** (needs: A5, A6)
+- [x] **A7: Audio-file simulation** (needs: A5, A6)
 
 **Files:** add `POST /sim/audio` to `main.py` (multipart, files in turn order, optional `call_id` to continue a call); create `backend/voice/scripts/simulate_audio.py <dir|files> [--out report.md]`.
 - It uses the same `speech.py` path as live. It returns per turn `{transcript, intents, verified, tool_trace, retrieved, reply_text, reply_audio_b64}` and records a `SUPPORT` call in Spring.
