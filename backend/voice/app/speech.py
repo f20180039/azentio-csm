@@ -37,8 +37,11 @@ KANNADA_PROMPT = "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, �
 HINDI_PROMPT = "बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102."
 # The prompt once the call is in a script language; the words that keep Whisper in that script while the call is still English
 STT_PROMPTS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: KANNADA_PROMPT, SpeechLanguage.HINDI: HINDI_PROMPT}
-_SCRIPT_WORDS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು,",
-                                            SpeechLanguage.HINDI: "बैंक ग्राहक कॉल. EMI, लोन, खाता, स्टेटमेंट, किस्त,"}
+# ("bank customer call" in that script, the domain words in that script); the English terms (EMI, NACH, KYC...) are said once
+_SCRIPT_WORDS: dict[SpeechLanguage, tuple[str, str]] = {
+    SpeechLanguage.KANNADA: ("ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ.", "ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು,"),
+    SpeechLanguage.HINDI: ("बैंक ग्राहक कॉल।", "लोन, खाता, स्टेटमेंट, किस्त,"),
+}
 VOICES: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: "kn-IN-SapnaNeural", SpeechLanguage.HINDI: "hi-IN-SwaraNeural"}
 KANNADA_VOICE = VOICES[SpeechLanguage.KANNADA]
 _SCRIPTS: dict[SpeechLanguage, re.Pattern] = {SpeechLanguage.KANNADA: re.compile(r"[ಀ-೿]"), SpeechLanguage.HINDI: re.compile(r"[ऀ-ॿ]")}
@@ -51,9 +54,13 @@ _MARK_CATEGORIES = ("Mn", "Mc")
 
 
 def multilingual_prompt(enabled: tuple[SpeechLanguage, ...]) -> str:
-    """The English domain prompt plus the Kannada and/or Hindi words of the enabled languages (BILINGUAL_PROMPT for en,kn)."""
-    words = [_SCRIPT_WORDS[lang] for lang in _SCRIPT_WORDS if lang in enabled]
-    return ("Bank customer call. " + " ".join(words) + " NACH, KYC, statement, SR-40102.") if words else DOMAIN_PROMPT
+    """The English domain prompt plus the Kannada and/or Hindi words of the enabled languages (BILINGUAL_PROMPT for en,kn).
+    Only the en,kn form is benchmarked (docs/stt-benchmark.md); task H2 measures the three-language one."""
+    parts = [_SCRIPT_WORDS[lang] for lang in _SCRIPT_WORDS if lang in enabled]
+    if not parts:
+        return DOMAIN_PROMPT
+    headers, words = " ".join(h for h, _ in parts), " ".join(w for _, w in parts)
+    return f"Bank customer call. {headers} EMI, {words} NACH, KYC, statement, SR-40102."
 
 
 MULTILINGUAL_PROMPT = multilingual_prompt((SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))

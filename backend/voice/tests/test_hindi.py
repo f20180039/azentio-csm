@@ -15,6 +15,13 @@ EN, KN, HI = SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HIND
 ALL = (EN, KN, HI)
 DEFAULT_VOICE = "en-IN-NeerjaNeural"
 HINDI_VOICE = "hi-IN-SwaraNeural"
+# The en,kn LANGUAGE rule exactly as it was before Hindi (C8): language_rule() must keep reproducing it
+PRE_HINDI_LANGUAGE_RULE = (
+    "reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
+    "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
+    "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
+    "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Every line quoted in these instructions (the rating question, the reference read-back, "
+    "the goodbye) is said in the caller's language. Tool calls and their arguments are always in English.")
 
 
 def test_hindi_is_a_speech_language_with_its_own_voice():
@@ -90,6 +97,9 @@ def test_fixed_lines_follow_a_hindi_call():
     assert r.line(STILL_THERE) == KANNADA_LINES[STILL_THERE]
 
 
+CALL_ID = FakeBrain().call.call_id
+
+
 def test_greeting_offers_each_enabled_language():
     from tests.test_pipeline import FakeTransport
 
@@ -101,12 +111,11 @@ def test_greeting_offers_each_enabled_language():
         async def record(frames, queued=queued):
             queued.extend(frames)
         task.queue_frames = record
-        run(transport._call_event_handler("on_client_connected", None))
-        assert [f.text for f in queued] == expected
-        support_pipeline.LIVE.pop(CALL_ID, None)
-
-
-CALL_ID = FakeBrain().call.call_id
+        try:
+            run(transport._call_event_handler("on_client_connected", None))
+            assert [f.text for f in queued] == expected
+        finally:
+            support_pipeline.LIVE.pop(CALL_ID, None)
 
 
 def test_stt_prompt_follows_the_call():
@@ -119,6 +128,8 @@ def test_stt_prompt_follows_the_call():
     assert CallLanguage((EN, KN)).stt_prompt() == BILINGUAL_PROMPT
     en_hi = CallLanguage((EN, HI)).stt_prompt()
     assert "बैंक" in en_hi and "ಬ್ಯಾಂಕ್" not in en_hi
+    for prompt in (CallLanguage(ALL).stt_prompt(), en_hi):  # the English terms once, the Hindi header with its own danda
+        assert prompt.count("EMI") == 1 and "।" in prompt and "कॉल." not in prompt, prompt
     assert CallLanguage((HI,)).stt_prompt() == HINDI_PROMPT and CallLanguage((HI,)).stt_language() == "hi"
 
 
@@ -126,7 +137,7 @@ def test_prompt_language_rule_names_only_enabled_languages():
     en_hi = language_rule((EN, HI))
     assert "Hindi in Devanagari script (Hindi-English mixing is fine)" in en_hi and "Kannada" not in en_hi
     assert "शून्य 0, एक 1, दो 2, तीन 3, चार 4, पाँच 5, छह 6, सात 7, आठ 8, नौ 9" in en_hi
-    assert language_rule((EN, KN)) == LANGUAGE_RULE and "Hindi" not in LANGUAGE_RULE
+    assert LANGUAGE_RULE == PRE_HINDI_LANGUAGE_RULE and language_rule((EN, KN)) == LANGUAGE_RULE and "Hindi" not in LANGUAGE_RULE
     assert language_rule((EN,)) == "reply in English."
     all_three = language_rule(ALL)
     assert "Kannada" in all_three and "Hindi" in all_three and "always in English" in all_three
