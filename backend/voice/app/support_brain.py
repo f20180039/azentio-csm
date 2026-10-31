@@ -20,6 +20,7 @@ from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Ou
                     ToolError, TurnRole)
 
 MAX_TOOL_ROUNDS = 6
+UNCLEAR_BEFORE_ESCALATION = 3  # customer turns in a row understood as nothing but UNCLEAR before a person takes over
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
 RETRIEVED_LIMIT = 4000  # characters of a tool result kept for the panel
 HISTORY_TURNS = 6  # caller turns of history sent to the model (free tiers cap tokens per minute)
@@ -167,13 +168,15 @@ class SupportBrain:
             has_audio = self._keep_audio(customer_seq, audio, audio_suffix)
             self._messages.append({"role": "user", "content": user_text})
             self.call.last_caller_text = user_text  # a complaint raised this turn keeps the caller's own words
+            locked_before = self.call.locked
             turn = await self._loop()
-            if await self._act_on_fraud_if_missed(user_text, turn):
-                again = await self._loop()  # the reply the caller hears now carries the complaint and escalation references
-                turn = SupportTurn(again.text, turn.tool_calls + again.tool_calls, model=again.model or turn.model, ended=self.ended)
-            self._messages.append({"role": "assistant", "content": turn.text})
-            found = await intents  # usually done long before the reply; needed here for the routing backstop
-            turn.intents, turn.intent_source = found
+            turn.intents, turn.intent_source = await intents  # usually done long before the reply; the backstops need them
+            self.call.unclear_streak = self.call.unclear_streak + 1 if turn.intents == [Intent.UNCLEAR] else 0
+            acted = await self._act_on_fraud_if_missed(user_text, turn)
+            if await self._escalate_if_stuck(turn, locked_before=locked_before) or acted:
+                again = await self._loop()  # the reply the caller hears now carries the references raised, or the failure
+                turn.text, turn.tool_calls, turn.model, turn.ended = again.text, turn.tool_calls + again.tool_calls, again.model or turn.model, self.ended
+            self._messages.append({"role": "assistant", "content": turn.text})  # after the backstops: a replaced reply leaves no trace
             await self._route_if_missed(user_text, turn)
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
             turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
@@ -213,6 +216,27 @@ class SupportBrain:
         if SupportTool.ESCALATE_TO_HUMAN not in done and not has(RefPrefix.ESCALATION):
             needed.append((SupportTool.ESCALATE_TO_HUMAN, {"trigger": EscalationTrigger.SENSITIVE, "summary": user_text,
                                                            "reason": "The caller reports a transaction they did not authorise"}))
+        return await self._run_backstop(turn, needed)
+
+    async def _escalate_if_stuck(self, turn: SupportTurn, *, locked_before: bool = False) -> bool:
+        """Backstop for 'escalate on repeated authentication failures' and 'repeated misunderstanding of customer intent':
+        one hand-over when verification locked this turn, or when the caller has not been understood for
+        UNCLEAR_BEFORE_ESCALATION turns in a row. Runs after the intents are known; True if it ran."""
+        if any(r.startswith(RefPrefix.ESCALATION) for r in self.call.refs):
+            return False
+        if self.call.locked and not locked_before:
+            args = {"trigger": EscalationTrigger.AUTH_LOCKED, "reason": "The caller could not be verified and verification is locked",
+                    "summary": f"Verification locked after {self.call.verify_failures} failed attempts"}
+        elif self.call.unclear_streak >= UNCLEAR_BEFORE_ESCALATION:
+            args = {"trigger": EscalationTrigger.REPEATED_MISUNDERSTANDING, "reason": "The agent kept failing to understand the caller",
+                    "summary": f"Request not understood after {self.call.unclear_streak} turns; last words: {self.call.last_caller_text}"}
+        else:
+            return False
+        return await self._run_backstop(turn, [(SupportTool.ESCALATE_TO_HUMAN, args)])
+
+    async def _run_backstop(self, turn: SupportTurn, needed: list[tuple[SupportTool, dict]]) -> bool:
+        """Runs tools the model should have called, as if it had: the calls and their results join the history, so the
+        next `_loop()` speaks from them. True if any ran."""
         if not needed:
             return False
         calls = [{"id": f"backstop-{len(self._messages)}-{i}", "type": "function", "function": {"name": str(n), "arguments": json.dumps(a)}}
