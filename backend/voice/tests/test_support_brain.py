@@ -183,7 +183,7 @@ def test_a_verified_caller_is_not_asked_again_once_the_verify_turn_leaves_the_wi
                    *[text(f"Reply {n}.") for n in range(10)])
     brain, _, _ = make(llm)
     for n in range(9):
-        asyncio.run(brain.reply(f"Question {n}"))
+        asyncio.run(brain.reply(f"{'My number is 98765 00002, born 3 November 1985. ' if n == 0 else ''}Question {n}"))
     seen = llm.seen
     system = seen[-1][0]["content"]
     assert "verify_customer" not in json.dumps(seen[-1][1:])  # the verification itself is out of the window
