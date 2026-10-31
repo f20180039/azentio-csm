@@ -21,8 +21,10 @@ import {
   type SupportTurn,
   type ToolTrace,
 } from '../api/support';
+import { getPhoneAllowed, placeSupportPhoneCall, type PhoneAllowed } from '../api/phone';
 import type { VoiceSession } from '../api/voice';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
 import { Route } from '../routes';
@@ -486,6 +488,56 @@ function UploadPanel({ callId, disabled, onCallId, onResults, results }: UploadP
   );
 }
 
+/** "Call a phone": the desk rings an allowed number and the answered call becomes this support call. Shown only when
+ * the voice service has Twilio set up; the browser only ever sees masked numbers. */
+function PhoneDial({ onCallId }: { onCallId: (id: string) => void }) {
+  const toast = useToast();
+  const [allowed, setAllowed] = useState<PhoneAllowed>({ configured: false, numbers: [] });
+  const [numberId, setNumberId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void getPhoneAllowed().then((a) => {
+      if (!live) return;
+      setAllowed(a);
+      setNumberId(a.numbers[0]?.id ?? '');
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  if (!allowed.configured) return null;
+
+  async function dial() {
+    setBusy(true);
+    try {
+      const { call_id } = await placeSupportPhoneCall(numberId);
+      toast.push('Phone ringing', 'Answer it to talk to the agent; turns appear here.');
+      onCallId(call_id);
+    } catch (e) {
+      toast.push('Could not place the phone call', e instanceof Error ? e.message : String(e), 'bad');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="row sc-phone-dial">
+      <Select
+        aria-label="Phone number"
+        value={numberId}
+        onChange={setNumberId}
+        disabled={busy}
+        options={allowed.numbers.map((n) => ({ value: n.id, label: n.masked }))}
+      />
+      <button className="btn" onClick={dial} disabled={busy || !numberId}>
+        {busy ? 'Dialling…' : 'Call a phone'}
+      </button>
+    </div>
+  );
+}
+
 /* ---------- the page ---------- */
 
 export function SupportCall() {
@@ -768,6 +820,7 @@ export function SupportCall() {
                         </button>
                       )}
                     </div>
+                    {!callId && voice === 'off' && <PhoneDial onCallId={(id) => adopt(id)} />}
                   </div>
                 ) : (
                   <div id="mode-panel-upload" role="tabpanel" aria-labelledby="mode-upload">
