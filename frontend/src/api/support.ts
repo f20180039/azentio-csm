@@ -205,8 +205,15 @@ const liveSupport = {
     return (r?.items ?? []).map((c) => ({ ...c, intents: c.intents ?? [], rating: c.rating ?? null }));
   },
 
-  endCall(id: string, outcome: SupportOutcome): Promise<unknown> {
-    return postJson(CoreApiPath.supportCallEnd(id), { outcome });
+  async endCall(id: string, outcome: SupportOutcome): Promise<unknown> {
+    try {
+      return await postJson(CoreApiPath.supportCallEnd(id), { outcome });
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 409 || e.detail === 'CALL_ALREADY_ENDED')) {
+        return { id, outcome, alreadyEnded: true };
+      }
+      throw e;
+    }
   },
 
   /* ---------- ratings, feedback, review and lessons ---------- */

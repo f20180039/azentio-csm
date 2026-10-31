@@ -671,14 +671,22 @@ export function SupportCall() {
     if (!callId) return;
     setEnding('busy');
     try {
-      await stopMic();
       await endCall(callId, outcome);
+    } catch (e) {
+      if (!(e instanceof ApiError && (e.status === 409 || e.detail === 'CALL_ALREADY_ENDED'))) {
+        toast.error(e);
+        setEnding('open');
+        return;
+      }
+    }
+    try {
+      await stopMic();
       await refresh();
       setEnding('closed');
-      toast.push('Call ended', OUTCOME_LABEL[outcome]);
+      toast.push('Call ended', call?.outcome ? OUTCOME_LABEL[call.outcome] : OUTCOME_LABEL[outcome]);
     } catch (e) {
       toast.error(e);
-      setEnding('open');
+      setEnding('closed');
     }
   }
 
