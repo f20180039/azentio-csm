@@ -1,0 +1,185 @@
+"""Scores the agent against the scripted #05 scenarios (eval/scenarios/*.yaml): intents, verification, what it says and
+must never say, which tools it used, and the tickets, complaints, routed queries and escalations each call raised.
+
+    python -m eval.run_scenarios                         # typed turns: fast, no speech-to-text quota
+    python -m eval.run_scenarios --audio --accent in     # rendered audio (eval/audio/out) through /sim/audio, one accent, clean
+    python -m eval.run_scenarios --audio --full          # every accent, clean and noisy (uses a lot of Groq quota)
+
+The simulator is reset first so every run starts from the same seed data.
+"""
+import argparse
+import json
+import statistics
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import httpx
+import yaml
+
+HERE = Path(__file__).resolve().parent
+SCENARIOS = HERE / "scenarios"
+AUDIO_OUT = HERE / "audio" / "out"
+PREFIX = {"tickets": "SR-", "complaints": "CMP-", "routed": "RQ-", "escalations": "ESC-"}
+ACCENTS, CONDITIONS = ("in", "gb", "ng", "us"), ("clean", "noisy")
+
+
+@dataclass
+class Result:
+    scenario: str
+    accent: str = "text"
+    condition: str = "typed"
+    checks: list[tuple[str, bool, str]] = field(default_factory=list)
+    intent_hits: int = 0
+    intent_total: int = 0
+    disclosures_before_verify: int = 0
+    latencies: list[int] = field(default_factory=list)
+
+    @property
+    def passed(self) -> bool:
+        return all(ok for _, ok, _ in self.checks)
+
+    def check(self, name: str, ok: bool, detail: str = "") -> None:
+        self.checks.append((name, bool(ok), detail))
+
+
+def load(paths: list[Path] | None = None) -> list[dict]:
+    files = paths or sorted(SCENARIOS.glob("*.yaml"))
+    return [yaml.safe_load(p.read_text()) for p in files]
+
+
+def score_turn(res: Result, i: int, expect: dict, turn: dict) -> None:
+    said = (turn.get("reply_text") or "").lower()
+    if "intents" in expect:
+        want, got = set(expect["intents"]), set(turn.get("intents") or [])
+        res.intent_total += 1
+        hit = want <= got
+        res.intent_hits += hit
+        res.check(f"t{i} intents", hit, f"want {sorted(want)} got {sorted(got)}")
+    if "verified" in expect:
+        res.check(f"t{i} verified", turn.get("verified") == expect["verified"], f"got {turn.get('verified')}")
+    if expect.get("must_say_any"):
+        res.check(f"t{i} says", any(s.lower() in said for s in expect["must_say_any"]), said[:120])
+    for bad in expect.get("must_not_say") or []:
+        res.check(f"t{i} never '{bad}'", bad.lower() not in said, said[:120])
+    if expect.get("tools_any"):
+        used = {t["name"] for t in turn.get("tool_trace") or []}
+        res.check(f"t{i} tools", bool(used & set(expect["tools_any"])), f"used {sorted(used)}")
+    for kind, category in (expect.get("creates") or {}).items():
+        made = [t for t in turn.get("tool_trace") or [] if t["name"] in {"create_service_request", "register_complaint"}
+                and (t.get("result") or {}).get("ref") and (t.get("args") or {}).get("category") == category]
+        res.check(f"t{i} creates {kind} {category}", bool(made))
+    if not turn.get("verified"):  # personal data must not appear before verification
+        personal = {"get_loans", "get_schedule", "get_accounts", "get_transactions", "get_ticket", "get_tickets",
+                    "get_policies", "get_claims", "get_loan_applications"}
+        leaked = [t for t in turn.get("tool_trace") or [] if t["name"] in personal and "error" not in (t.get("result") or {})]
+        res.disclosures_before_verify += len(leaked)
+
+
+def score_outcome(res: Result, outcome: dict, turns: list[dict]) -> None:
+    refs = {r for t in turns for r in t.get("refs") or []}
+    for kind, prefix in PREFIX.items():
+        if kind in outcome:
+            n = sum(1 for r in refs if r.startswith(prefix))
+            res.check(f"outcome {kind}", n == outcome[kind], f"want {outcome[kind]} got {n}")
+    everything = " ".join((t.get("reply_text") or "") for t in turns).lower()
+    for bad in outcome.get("never_say") or []:
+        res.check(f"never says '{bad}'", bad.lower() not in everything)
+    res.check("no disclosure before verification", res.disclosures_before_verify == 0, str(res.disclosures_before_verify))
+
+
+def run_typed(voice: httpx.Client, sc: dict) -> Result:
+    res = Result(sc["id"])
+    call = voice.post("/support/text-call").json()["call_id"]
+    turns = []
+    for i, t in enumerate(sc["turns"], 1):
+        started = time.monotonic()
+        r = voice.post("/support/text-turn", json={"call_id": call, "text": t["say"]})
+        r.raise_for_status()
+        turn = r.json()
+        res.latencies.append(round((time.monotonic() - started) * 1000))
+        turns.append(turn)
+        score_turn(res, i, t.get("expect") or {}, turn)
+    voice.post("/support/end", json={"call_id": call})
+    score_outcome(res, sc.get("outcome") or {}, turns)
+    return res
+
+
+def run_audio(voice: httpx.Client, sc: dict, accent: str, condition: str) -> Result | None:
+    folder = AUDIO_OUT / "scenarios" / accent / condition
+    files = sorted(folder.glob(f"{sc['id']}_t*.wav"))
+    if len(files) != len(sc["turns"]):
+        return None
+    res = Result(sc["id"], accent, condition)
+    r = voice.post("/sim/audio", files=[("files", (f.name, f.read_bytes(), "audio/wav")) for f in files], data={"speak": "false"})
+    r.raise_for_status()
+    turns = r.json()["turns"]
+    for i, (t, turn) in enumerate(zip(sc["turns"], turns), 1):
+        res.latencies.append(turn.get("latency_ms", 0))
+        score_turn(res, i, t.get("expect") or {}, turn)
+    score_outcome(res, sc.get("outcome") or {}, turns)
+    return res
+
+
+def reset(sim_base: str) -> None:
+    httpx.post(f"{sim_base}/ops/reset", auth=("ops", "ops"), timeout=10).raise_for_status()
+
+
+def report(results: list[Result]) -> str:
+    def pct(a, b):
+        return f"{100 * a / b:.0f}% ({a}/{b})" if b else "n/a"
+    lat = [x for r in results for x in r.latencies]
+    lines = ["# Scenario evaluation", "",
+             f"- Scenarios passed: {pct(sum(r.passed for r in results), len(results))}",
+             f"- Intent accuracy: {pct(sum(r.intent_hits for r in results), sum(r.intent_total for r in results))}",
+             f"- Disclosures before verification: {sum(r.disclosures_before_verify for r in results)} (target 0)",
+             f"- Latency per turn: p50 {statistics.median(lat):.0f} ms, p95 {sorted(lat)[int(0.95 * (len(lat) - 1))]:.0f} ms" if lat else "- Latency: n/a",
+             ""]
+    groups = sorted({(r.accent, r.condition) for r in results})
+    if len(groups) > 1:
+        lines += ["| Accent | Condition | Passed | Intent accuracy |", "|---|---|---|---|"]
+        for a, c in groups:
+            g = [r for r in results if (r.accent, r.condition) == (a, c)]
+            lines.append(f"| {a} | {c} | {pct(sum(r.passed for r in g), len(g))} | "
+                         f"{pct(sum(r.intent_hits for r in g), sum(r.intent_total for r in g))} |")
+        lines.append("")
+    for r in results:
+        lines.append(f"## {'PASS' if r.passed else 'FAIL'} · {r.scenario} · {r.accent}/{r.condition}")
+        lines += [f"- {'✓' if ok else '✗'} {name}" + (f": {detail}" if detail and not ok else "") for name, ok, detail in r.checks]
+        lines.append("")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--voice", default="http://localhost:7861")
+    ap.add_argument("--simulator", default="http://localhost:8090/v1")
+    ap.add_argument("--audio", action="store_true")
+    ap.add_argument("--accent", default="in", choices=ACCENTS)
+    ap.add_argument("--condition", default="clean", choices=CONDITIONS)
+    ap.add_argument("--full", action="store_true", help="every accent and condition (audio only)")
+    ap.add_argument("--only", nargs="*", help="scenario ids")
+    ap.add_argument("--out", type=Path, default=HERE / "out" / "scenarios-report.md")
+    args = ap.parse_args()
+    scenarios = [s for s in load() if not args.only or s["id"] in args.only]
+    results: list[Result] = []
+    with httpx.Client(base_url=args.voice, timeout=120) as voice:
+        combos = [(a, c) for a in ACCENTS for c in CONDITIONS] if args.full else [(args.accent, args.condition)]
+        for sc in scenarios:
+            for accent, condition in (combos if args.audio else [("text", "typed")]):
+                reset(args.simulator)
+                r = run_audio(voice, sc, accent, condition) if args.audio else run_typed(voice, sc)
+                if r is None:
+                    print(f"skip {sc['id']} {accent}/{condition}: audio not rendered (run eval/audio/render.py)")
+                    continue
+                results.append(r)
+                print(f"{'PASS' if r.passed else 'FAIL'} {sc['id']} {accent}/{condition}")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(report(results))
+    print(f"→ {args.out}")
+    return 0 if results and all(r.passed for r in results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
