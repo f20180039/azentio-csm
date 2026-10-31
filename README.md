@@ -64,6 +64,8 @@ If a port is busy, the script names the process. You can also pick other ports w
 
 ## Demo script (seed customers in `backend/simulator/data/seed`)
 
+Every synthetic customer, what to say to verify as them, the answers to expect and the tests that must be refused: [docs/verification-lab.md](docs/verification-lab.md) (interactive version: `docs/verification-lab.html`; regenerate with `python3 scripts/build-verification-lab.py`).
+
 | Scenario | Say | Expect |
 |---|---|---|
 | Loan application status | "I applied for a personal loan last week, what's the status? And when is my first instalment?" then 98765 00001 / 12 April 1990 | Document verification, never "approved". No schedule until disbursal. |
