@@ -8,13 +8,18 @@ import {
   listRecords,
   OUTCOME_LABEL,
   OUTCOME_TONE,
+  RECORD_STATUS_TONE,
   SUPPORT_OUTCOMES,
+  TICKET_STATUSES,
   RecordKind,
+  TicketStatus,
+  updateTicket,
   type OpsRecord,
   type SupportCallSummary,
   type SupportOutcome,
 } from '../api/support';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
+import { Select, type SelectOption } from '../components/Select';
 import { Stars } from '../components/Stars';
 import { formatDateTime, humanise } from '../format';
 import { Route } from '../routes';
@@ -31,6 +36,10 @@ const RECORD_TABS: { kind: RecordKind; label: string; empty: string }[] = [
 
 const ALL_RECORD_KINDS = RECORD_TABS.map((t) => t.kind);
 
+const TICKET_STATUS_OPTIONS: SelectOption[] = TICKET_STATUSES.map((s) => ({ value: s, label: humanise(s) }));
+
+const failedOpsText = (n: number | undefined) => (n ? `${n} failed` : null);
+
 function callMatches(q: string, c: SupportCallSummary): boolean {
   return matches(
     q,
@@ -42,11 +51,113 @@ function callMatches(q: string, c: SupportCallSummary): boolean {
     c.channel,
     CHANNEL_LABEL[c.channel],
     c.verified ? 'Verified' : 'Not verified',
+    failedOpsText(c.failedOps),
   );
 }
 
 function recordMatches(q: string, r: OpsRecord): boolean {
-  return matches(q, r.ref, r.category, r.category && humanise(r.category), r.status, r.status && humanise(r.status), r.summary, r.customer_ref, r.call_id);
+  return matches(
+    q,
+    r.ref,
+    r.category,
+    r.category && humanise(r.category),
+    r.status,
+    r.status && humanise(r.status),
+    r.summary,
+    r.customer_ref,
+    r.call_id,
+    r.department,
+    r.progress,
+    r.original_statement,
+    r.related_ref,
+    r.related_refs ?? [],
+  );
+}
+
+function isTicketStatus(s: string | null): s is TicketStatus {
+  return (TICKET_STATUSES as string[]).includes(s ?? '');
+}
+
+/** Moves a service request to a new status, with the note the caller then hears about its progress. */
+function TicketControls({ r, onUpdated }: { r: OpsRecord; onUpdated: (updated: OpsRecord) => void }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const status = isTicketStatus(r.status) ? r.status : TicketStatus.OPEN;
+
+  async function move(to: TicketStatus) {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateTicket(r.ref, to, note.trim() || null);
+      onUpdated(updated);
+      setNote('');
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="sd-ticket-controls">
+      <Select aria-label={`Status of ${r.ref}`} value={status} options={TICKET_STATUS_OPTIONS} onChange={(v) => void move(v as TicketStatus)} disabled={busy} />
+      <input
+        type="text"
+        aria-label={`Progress note for ${r.ref}`}
+        placeholder="Progress note the caller will hear"
+        value={note}
+        disabled={busy}
+        onChange={(e) => setNote(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && note.trim()) {
+            e.preventDefault();
+            void move(status);
+          }
+        }}
+      />
+      {error && (
+        <span className="small bad-text" role="alert">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RefPills({ refs, query }: { refs: string[]; query: string }) {
+  return (
+    <>
+      {refs.map((ref) => (
+        <span key={ref} className="ref-pill">
+          <Highlight text={ref} query={query} />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** What a record adds beneath its summary: where a ticket stands, a complaint in the caller's words, what an escalation concerns. */
+function RecordDetail({ r, query }: { r: OpsRecord; query: string }) {
+  return (
+    <>
+      {r.progress && (
+        <div className="small">
+          <Highlight text={r.progress} query={query} />
+        </div>
+      )}
+      {r.original_statement && (
+        <div className="small sd-quote">
+          <Highlight text={`“${r.original_statement}”`} query={query} />
+        </div>
+      )}
+      {(r.related_ref || !!r.related_refs?.length) && (
+        <div className="row small muted" style={{ gap: 4 }}>
+          About <RefPills refs={r.related_ref ? [r.related_ref] : r.related_refs ?? []} query={query} />
+        </div>
+      )}
+    </>
+  );
 }
 
 function errorText(e: unknown): string {
@@ -182,7 +293,14 @@ function CallsPanel() {
                 <td className="num r">{c.turnCount}</td>
                 <td>{c.rating ? <Stars score={c.rating.score} /> : <span className="muted small">—</span>}</td>
                 <td>
-                  <CallStatusPill c={c} query={query} />
+                  <div className="row" style={{ gap: 4 }}>
+                    <CallStatusPill c={c} query={query} />
+                    {failedOpsText(c.failedOps) && (
+                      <span className="pill bad" title="Tool calls that failed on this call">
+                        <Highlight text={failedOpsText(c.failedOps)!} query={query} />
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -250,7 +368,19 @@ function RecordsPanel() {
   const shown = useMemo(() => rows?.filter((r) => recordMatches(query, r)) ?? null, [rows, query]);
   const countFor = (k: RecordKind) => byKind[k]?.filter((r) => recordMatches(query, r)).length;
 
+  /** The simulator answers with the ticket's own fields; the row keeps what the list knew (call, customer, time) until the next refresh. */
+  const replaceRecord = useCallback((updated: OpsRecord) => {
+    setByKind((m) => ({
+      ...m,
+      [updated.kind]: (m[updated.kind] ?? []).map((r) =>
+        r.ref === updated.ref ? { ...r, status: updated.status, progress: updated.progress ?? r.progress, department: updated.department ?? r.department } : r,
+      ),
+    }));
+  }, []);
+
   const tab = RECORD_TABS.find((t) => t.kind === kind)!;
+  const editable = kind === RecordKind.TICKET;
+  const columns = editable ? 6 : 5;
   const onTabKey = (e: KeyboardEvent, i: number) => {
     const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!d) return;
@@ -303,12 +433,13 @@ function RecordsPanel() {
               <th>Status</th>
               <th>Summary</th>
               <th>Created</th>
+              {editable && <th>Update</th>}
             </tr>
           </thead>
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={columns} className="muted">
                   Loading {tab.label.toLowerCase()}…
                 </td>
               </tr>
@@ -325,14 +456,32 @@ function RecordsPanel() {
                     </span>
                   )}
                 </td>
-                <td>{r.category ? <span title={r.category}>
+                <td>
+                  {r.category ? (
+                    <span title={r.category}>
                       <Highlight text={humanise(r.category)} query={query} />
-                    </span> : <span className="muted">—</span>}</td>
-                <td>{r.status ? <span className="pill dim">
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                  {r.department && (
+                    <div className="small muted">
+                      <Highlight text={r.department} query={query} />
+                    </div>
+                  )}
+                </td>
+                <td>
+                  {r.status ? (
+                    <span className={`pill ${RECORD_STATUS_TONE[r.status] ?? 'dim'}`}>
                       <Highlight text={humanise(r.status)} query={query} />
-                    </span> : <span className="muted">—</span>}</td>
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
                 <td className="sd-wrap sd-summary">
                   <Highlight text={r.summary} query={query} />
+                  <RecordDetail r={r} query={query} />
                   <div className="small muted">
                     {r.customer_ref && (
                       <span className="mono">
@@ -348,6 +497,11 @@ function RecordsPanel() {
                   </div>
                 </td>
                 <td className="num">{formatDateTime(r.created_at)}</td>
+                {editable && (
+                  <td>
+                    <TicketControls r={r} onUpdated={replaceRecord} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

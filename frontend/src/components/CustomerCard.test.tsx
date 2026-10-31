@@ -20,6 +20,19 @@ describe('CustomerCard', () => {
     expect(screen.queryByText('Complaints')).not.toBeInTheDocument();
   });
 
+  it('shows where a service request sits and how it is going, and a complaint in the caller\'s own words', () => {
+    const profile: CustomerProfile = {
+      ...structuredClone(SAMPLE_PROFILE),
+      tickets: [{ ref: 'SR-40102', category: 'STATEMENT', status: 'IN_PROGRESS', summary: 'Account statement request', department: 'Account Services', progress: 'Statement is being generated.' }],
+      complaints: [{ ref: 'CMP-50200', category: 'UNAUTHORISED_TRANSACTION', status: 'OPEN', description: 'Card debit not made by the customer', escalated: true, original_statement: 'I never made this payment.', related_ref: 'TXN-90011' }],
+    };
+    render(<CustomerCard profile={profile} />);
+    expect(screen.getByText(/Account Services/)).toBeInTheDocument();
+    expect(screen.getByText(/Statement is being generated\./)).toBeInTheDocument();
+    expect(screen.getByText('“I never made this payment.”')).toBeInTheDocument();
+    expect(screen.getByText(/TXN-90011/)).toBeInTheDocument();
+  });
+
   it('flags an overdue instalment and says when a customer holds nothing', () => {
     const overdue: CustomerProfile = {
       ...structuredClone(SAMPLE_PROFILE),

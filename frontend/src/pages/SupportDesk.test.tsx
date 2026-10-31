@@ -2,14 +2,15 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_RECORDS, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
-import type { RecordKind, SupportCallSummary } from '../api/support';
+import type { OpsRecord, RecordKind, SupportCallSummary } from '../api/support';
+import { OpOutcome, TicketStatus } from '../vocab';
 import { SupportDesk } from './SupportDesk';
 
-const h = vi.hoisted(() => ({ listCalls: vi.fn(), listRecords: vi.fn() }));
+const h = vi.hoisted(() => ({ listCalls: vi.fn(), listRecords: vi.fn(), updateTicket: vi.fn() }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
-  return { ...real, listCalls: h.listCalls, listRecords: h.listRecords };
+  return { ...real, listCalls: h.listCalls, listRecords: h.listRecords, updateTicket: h.updateTicket };
 });
 
 const summary = (c: typeof SAMPLE_VERIFIED_CALL): SupportCallSummary => ({
@@ -20,7 +21,11 @@ const summary = (c: typeof SAMPLE_VERIFIED_CALL): SupportCallSummary => ({
 beforeEach(() => {
   h.listCalls.mockReset().mockResolvedValue([summary(SAMPLE_VERIFIED_CALL), summary(SAMPLE_ROUTED_CALL)]);
   h.listRecords.mockReset().mockImplementation(async (kind: RecordKind) => SAMPLE_RECORDS[kind]);
+  h.updateTicket.mockReset();
 });
+
+/** The status pill in the records table (the status Select button carries the same words). */
+const statusPill = (panel: HTMLElement, label: string) => within(panel).getAllByText(label).find((e) => e.classList.contains('pill'))!;
 
 function mount() {
   return render(
@@ -109,5 +114,69 @@ describe('SupportDesk', () => {
     expect(await screen.findByText('Tickets could not be loaded')).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('SR-40200')).toBeInTheDocument();
+  });
+
+  it('counts failed operations on a call as a bad pill', async () => {
+    h.listCalls.mockResolvedValue([{ ...summary(SAMPLE_VERIFIED_CALL), failedOps: 2 }, { ...summary(SAMPLE_ROUTED_CALL), failedOps: 0 }]);
+    mount();
+    const pill = await screen.findByText('2 failed');
+    expect(pill).toHaveClass('pill', 'bad');
+    expect(screen.queryByText('0 failed')).not.toBeInTheDocument();
+  });
+
+  it('colours ticket statuses and shows the department and progress note', async () => {
+    const tickets: OpsRecord[] = [
+      { ...SAMPLE_RECORDS.ticket[0], status: TicketStatus.REJECTED, department: 'Loan Servicing', progress: 'Schedule cannot be issued for a closed loan.' },
+      { ...SAMPLE_RECORDS.ticket[1], status: TicketStatus.AWAITING_INFO, department: 'Account Services', progress: 'Waiting for the account number.' },
+    ];
+    h.listRecords.mockImplementation(async (kind: RecordKind) => (kind === 'ticket' ? tickets : SAMPLE_RECORDS[kind]));
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    await within(panel()).findAllByText('Rejected');
+    expect(statusPill(panel(), 'Rejected')).toHaveClass('pill', 'bad');
+    expect(statusPill(panel(), 'Awaiting info')).toHaveClass('pill', 'warn');
+    expect(within(panel()).getByText('Loan Servicing')).toBeInTheDocument();
+    expect(within(panel()).getByText('Account Services')).toBeInTheDocument();
+    expect(within(panel()).getByText('Schedule cannot be issued for a closed loan.')).toBeInTheDocument();
+    expect(within(panel()).getByText('Waiting for the account number.')).toBeInTheDocument();
+  });
+
+  it('moves a ticket to a new status with a progress note and refreshes the row', async () => {
+    h.updateTicket.mockImplementation(async (ref: string, status: TicketStatus, progress: string | null) => ({
+      ...SAMPLE_RECORDS.ticket[0], ref, status, progress,
+    }));
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    expect(await within(panel()).findByText('SR-40200')).toBeInTheDocument();
+    fireEvent.change(within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' }), { target: { value: 'Need the loan account number.' } });
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Status of SR-40200' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Awaiting info' }));
+    await waitFor(() => expect(h.updateTicket).toHaveBeenCalledWith('SR-40200', TicketStatus.AWAITING_INFO, 'Need the loan account number.'));
+    await waitFor(() => expect(statusPill(panel(), 'Awaiting info')).toHaveClass('warn'));
+    const row = statusPill(panel(), 'Awaiting info').closest('tr')!;
+    expect(within(row).getByText('SR-40200')).toBeInTheDocument();
+    expect(within(row).getByText('Need the loan account number.')).toBeInTheDocument();
+    expect(within(panel()).getByRole('button', { name: 'Status of SR-40200' })).toHaveTextContent('Awaiting info');
+  });
+
+  it('shows what an escalation concerns as ref pills and a complaint in the caller\'s own words', async () => {
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Escalations' }));
+    const esc = (await within(panel()).findByText('ESC-70200')).closest('tr')!;
+    const related = within(esc).getAllByText(/^(CMP|TXN)-/).filter((e) => e.classList.contains('ref-pill'));
+    expect(related.map((e) => e.textContent)).toEqual(['CMP-50200', 'TXN-90011']);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Complaints' }));
+    const cmp = (await within(panel()).findByText('CMP-50200')).closest('tr')!;
+    expect(within(cmp).getByText('“There is a card payment of 48,999 rupees I never made.”')).toBeInTheDocument();
+    expect(within(cmp).getByText('TXN-90011')).toHaveClass('ref-pill');
+  });
+});
+
+describe('vocabulary', () => {
+  it('names every ticket status and operation outcome once', () => {
+    expect(Object.values(TicketStatus)).toEqual(['OPEN', 'IN_PROGRESS', 'AWAITING_INFO', 'REJECTED', 'RESOLVED', 'CLOSED']);
+    expect(Object.values(OpOutcome)).toEqual(['OK', 'FAILED', 'DECLINED']);
   });
 });
