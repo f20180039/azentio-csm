@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.errors import install_error_handlers
-from app.routers import audit, auth, cbs, insurance, lms, los, verify
+from app.routers import audit, auth, cbs, csm, insurance, lms, los, ops, verify
 
 
 @asynccontextmanager
@@ -34,7 +34,7 @@ install_error_handlers(app)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
-for module in (verify, los, lms, cbs, insurance):
+for module in (verify, los, lms, cbs, insurance, csm, ops):
     app.include_router(module.router)
 
 
