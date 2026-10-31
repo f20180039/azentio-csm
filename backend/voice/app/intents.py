@@ -161,6 +161,7 @@ UNSUPPORTED: outside this bank's supported services or not permitted (weather, t
 UNCLEAR: too vague to tell which service is meant, e.g. "an issue with the thing from last time" names no product or problem
 CHITCHAT: greeting, thanks, goodbye, filler
 The utterance may be in Kannada (Kannada script, or Kannada mixed with English words such as EMI, loan, statement); label it the same way, e.g. "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?" is REPAYMENT and "ನನಗೆ ಲೋನ್ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ಬೇಕು" is SERVICE_REQUEST. Spoken digits in Kannada (ಒಂಬತ್ತು ಎಂಟು ...) giving a mobile number or date of birth are IDENTITY.
+The utterance may also be in Hindi (Devanagari script, or Hindi mixed with English words); label it the same way, e.g. "मेरी अगली EMI कब है?" is REPAYMENT and "मुझे लोन स्टेटमेंट चाहिए" is SERVICE_REQUEST. Hindi digit words (नौ आठ सात ...) giving a mobile number or date of birth are IDENTITY.
 Use the recent turns to resolve follow-ups like "and the vehicle one?". Give every label that applies, most important first.
 Reply with JSON only: {"intents": ["LABEL", ...], "confidence": 0.0-1.0}"""
 
