@@ -82,3 +82,40 @@ class RenewalsApi:
 
     async def call(self, call_id: str) -> dict:
         return await self._send("GET", self._p(call_id))
+
+
+class SupportCallsApi:
+    """Spring's support call records: one call, its turns in order, and per-turn metadata for the operator panel."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
+        self._client = httpx.AsyncClient(
+            base_url=settings.api_base.rstrip("/"), auth=(settings.api_user, settings.api_password), timeout=5.0, transport=transport,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def _send(self, method: str, path: str, body: dict | None = None) -> dict:
+        try:
+            resp = await self._client.request(method, path, json=body)
+        except httpx.HTTPError as e:
+            raise ApiUnavailable(str(e)) from e
+        if resp.status_code >= 400:
+            raise ApiUnavailable(f"{resp.status_code} from {path}")
+        try:
+            return resp.json() if resp.content else {}
+        except ValueError:
+            return {}
+
+    async def start(self, channel: str) -> str:
+        return (await self._send("POST", "/support/calls", {"channel": channel}))["id"]
+
+    async def turn(self, call_id: str, role: str, text: str, meta: dict) -> dict:
+        at = datetime.now(timezone.utc).isoformat()
+        return await self._send("POST", f"/support/calls/{call_id}/turns", {"role": role, "text": text, "at": at, "meta": meta})
+
+    async def patch_meta(self, call_id: str, seq: int, meta: dict) -> dict:
+        return await self._send("PATCH", f"/support/calls/{call_id}/turns/{seq}/meta", meta)
+
+    async def end(self, call_id: str, outcome: str) -> dict:
+        return await self._send("POST", f"/support/calls/{call_id}/end", {"outcome": outcome})
