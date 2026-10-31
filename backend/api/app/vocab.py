@@ -42,6 +42,11 @@ class TurnRole(StrEnum):
     AGENT = "agent"
 
 
+class TurnMetaKey(StrEnum):
+    """Keys the API itself writes into a turn's meta (the voice service owns the rest)."""
+    TRANSCRIPT_CORRECTION = "transcript_correction"
+
+
 class RatingSource(StrEnum):
     VOICE = "VOICE"
     PANEL = "PANEL"
@@ -185,6 +190,8 @@ class AuditAction(StrEnum):
     CASE_ESCALATE = "CASE_ESCALATE"
     RATING_RECORDED = "rating.recorded"
     FEEDBACK_RECORDED = "feedback.recorded"
+    TRANSCRIPT_CORRECTED = "transcript.corrected"
+    TRANSCRIPT_CORRECTION_REMOVED = "transcript.correction_removed"
     REVIEW_RESOLVED = "review.resolved"
     LESSON_PROPOSED = "lesson.proposed"
     LESSON_STATUS_CHANGED = "lesson.status_changed"

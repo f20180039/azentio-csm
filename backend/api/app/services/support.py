@@ -52,7 +52,7 @@ def failed_ops(turns: list[dict]) -> int:
     return count
 
 
-def _turn(t: dict) -> dict:
+def turn_view(t: dict) -> dict:
     meta = t.get("meta")
     return {"seq": t.get("seq"), "role": t.get("role"), "text": t.get("text"), "at": t.get("at"),
             "meta": meta if isinstance(meta, dict) else {}}
@@ -129,7 +129,7 @@ class SupportService:
             meta.update(patch)
             t["meta"] = meta
             con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
-        return _turn(t)
+        return turn_view(t)
 
     def end(self, call_id: str, outcome: Outcome, actor: str) -> dict:
         now = self.clock.instant()
@@ -155,7 +155,7 @@ class SupportService:
         return {"id": c["id"], "channel": c["channel"], "startedAt": c["started_at"], "endedAt": c["ended_at"],
                 "outcome": c["outcome"], "verified": verified(turns),
                 "rating": rating_view(rating) if rating else None,
-                "turns": [{**_turn(t), "feedback": feedback.get(t.get("seq"), [])} for t in turns]}
+                "turns": [{**turn_view(t), "feedback": feedback.get(t.get("seq"), [])} for t in turns]}
 
     def list(self, outcome: Outcome | None, limit: int) -> dict:
         if limit < 1 or limit > MAX_LIMIT:

@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import {
+  clearTranscriptCorrection,
+  correctTranscript,
   FeedbackVerdict,
   proposeLesson,
   rateCall,
   RATING_SOURCE_LABEL,
   sendFeedback,
+  transcriptText,
   type CallRating,
+  type SupportTurn,
   type TurnFeedback,
 } from '../api/support';
 import { Stars, StarInput } from '../components/Stars';
@@ -13,7 +17,7 @@ import { useToast } from '../components/Toasts';
 import { displayName } from '../demoUsers';
 import { formatDateTime } from '../format';
 import { useCanReview } from '../session';
-import { LessonLength } from '../vocab';
+import { LessonLength, TranscriptLength } from '../vocab';
 
 /* ---------- call rating ---------- */
 
@@ -249,6 +253,89 @@ export function TurnFeedbackBlock({ callId, seq, feedback, onChanged }: { callId
       )}
       {canReview && mode === 'lesson' && withCorrection && (
         <LessonForm initial={withCorrection.correction ?? ''} sourceCallId={callId} sourceSeq={seq} onDone={() => setMode('idle')} onCancel={() => setMode('idle')} />
+      )}
+    </div>
+  );
+}
+
+/* ---------- caller-turn transcript correction (Level 2 §6) ---------- */
+
+/**
+ * Who corrected a caller turn, for everyone; and for reviewers the control to correct it (prefilled with its current
+ * reading) or remove the correction. The recognised text is never edited: the page shows it as "Heard as".
+ */
+export function TranscriptCorrectionBlock({ callId, turn, onChanged }: { callId: string; turn: SupportTurn; onChanged: () => void }) {
+  const toast = useToast();
+  const canReview = useCanReview();
+  const correction = turn.meta.transcript_correction;
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const trimmed = text.trim();
+  const valid = trimmed.length >= TranscriptLength.MIN && trimmed.length <= TranscriptLength.MAX;
+
+  function open() {
+    setText(transcriptText(turn));
+    setEditing(true);
+  }
+
+  async function run(action: () => Promise<unknown>, done: string) {
+    setBusy(true);
+    try {
+      await action();
+      setEditing(false);
+      toast.push(done, 'The recognised text stays on the record.');
+      onChanged();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!canReview && !correction) return null;
+  const fieldId = `tc-${callId}-${turn.seq}`;
+  return (
+    <div className="sc-tc">
+      {correction && (
+        <span className="small muted">
+          Corrected by {displayName(correction.author)} ·{' '}
+          <time dateTime={correction.at}>{formatDateTime(correction.at)}</time>
+        </span>
+      )}
+      {canReview && !editing && (
+        <span className="row sc-tc-actions">
+          <button type="button" className="btn ghost sm" onClick={open} disabled={busy}>
+            Correct transcript
+          </button>
+          {correction && (
+            <button type="button" className="btn ghost sm" onClick={() => void run(() => clearTranscriptCorrection(callId, turn.seq), 'Correction removed')} disabled={busy}>
+              Remove correction
+            </button>
+          )}
+        </span>
+      )}
+      {canReview && editing && (
+        <form
+          className="sc-tc-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) void run(() => correctTranscript(callId, turn.seq, trimmed), 'Transcript corrected');
+          }}
+        >
+          <label className="small" htmlFor={fieldId}>
+            Corrected transcript
+          </label>
+          <input id={fieldId} type="text" value={text} maxLength={TranscriptLength.MAX} onChange={(e) => setText(e.target.value)} disabled={busy} autoFocus />
+          <span className="row">
+            <button type="button" className="btn ghost sm" onClick={() => setEditing(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary sm" disabled={!valid || busy}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </span>
+        </form>
       )}
     </div>
   );

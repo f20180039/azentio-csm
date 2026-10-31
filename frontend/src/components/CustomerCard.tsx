@@ -92,7 +92,17 @@ export function CustomerCard({ profile }: { profile: CustomerProfile }) {
       </Group>
       <Group title="Service requests">
         {profile.tickets.map((t) => (
-          <Row key={t.ref} id={t.ref} main={`${humanise(t.category)} · ${humanise(t.status)}`} detail={t.summary} />
+          <Row
+            key={t.ref}
+            id={t.ref}
+            main={`${humanise(t.category)} · ${humanise(t.status)}${t.department ? ` · ${t.department}` : ''}`}
+            detail={
+              <>
+                {t.summary}
+                {t.progress && <div>{t.progress}</div>}
+              </>
+            }
+          />
         ))}
       </Group>
       <Group title="Complaints">
@@ -101,7 +111,13 @@ export function CustomerCard({ profile }: { profile: CustomerProfile }) {
             key={cm.ref}
             id={cm.ref}
             main={`${humanise(cm.category)} · ${humanise(cm.status)}${cm.escalated ? ' · escalated' : ''}`}
-            detail={cm.description}
+            detail={
+              <>
+                {cm.description}
+                {cm.related_ref && ` · about ${cm.related_ref}`}
+                {cm.original_statement && <div className="cust-quote">{`“${cm.original_statement}”`}</div>}
+              </>
+            }
           />
         ))}
       </Group>

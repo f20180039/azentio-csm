@@ -40,6 +40,10 @@ class FeedbackRequest(BaseModel):
     correction: Any = None
 
 
+class TranscriptRequest(BaseModel):
+    text: Any = None
+
+
 @router.post("", status_code=201)
 def start(body: StartRequest | None = None, user: User = Depends(voice), s: Services = Depends(services)):
     return s.support.start(parse(Channel, "channel", body.channel if body else None), user.username)
@@ -85,3 +89,16 @@ def feedback(call_id: UUID, seq: int, body: FeedbackRequest, user: User = Depend
              s: Services = Depends(services)):
     verdict = parse(FeedbackVerdict, "verdict", body.verdict)
     return s.review.feedback(str(call_id), seq, verdict, body.correction, user)
+
+
+@router.put(ApiPath.SUPPORT_TURN_TRANSCRIPT)
+def correct_transcript(call_id: UUID, seq: int, body: TranscriptRequest, user: User = Depends(reviewer),
+                       s: Services = Depends(services)):
+    """A reviewer's corrected reading of a caller turn; the recognised text stays on the record."""
+    return s.review.correct_transcript(str(call_id), seq, body.text, user)
+
+
+@router.delete(ApiPath.SUPPORT_TURN_TRANSCRIPT)
+def clear_transcript_correction(call_id: UUID, seq: int, user: User = Depends(reviewer),
+                                s: Services = Depends(services)):
+    return s.review.clear_transcript_correction(str(call_id), seq, user)

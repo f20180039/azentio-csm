@@ -15,6 +15,7 @@ export const CoreApiPath = {
   supportCallEnd: (id: string) => `/support/calls/${encodeURIComponent(id)}/end`,
   supportCallRating: (id: string) => `/support/calls/${encodeURIComponent(id)}/rating`,
   turnFeedback: (id: string, seq: number) => `/support/calls/${encodeURIComponent(id)}/turns/${seq}/feedback`,
+  turnTranscript: (id: string, seq: number) => `/support/calls/${encodeURIComponent(id)}/turns/${seq}/transcript`,
   SUPPORT_REVIEW: '/support/review',
   reviewResolve: (id: string) => `/support/review/${encodeURIComponent(id)}/resolve`,
   SUPPORT_LESSONS: '/support/lessons',

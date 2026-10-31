@@ -97,6 +97,20 @@ export async function patchJson<T>(path: string, body: unknown): Promise<T> {
   ).data;
 }
 
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  return (
+    await request<T>(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  ).data;
+}
+
+export async function del<T>(path: string): Promise<T> {
+  return (await request<T>(path, { method: 'DELETE' })).data;
+}
+
 /** The signed-in username, for mock-mode authorship. */
 export function currentUsername(): string | null {
   return credentials?.username ?? null;
