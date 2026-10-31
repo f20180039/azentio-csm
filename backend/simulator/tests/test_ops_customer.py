@@ -8,7 +8,7 @@ def test_customer_profile_has_the_seeded_details_and_holdings(client):
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["customer"] == {"customer_ref": "CUST-1002", "first_name": "Rahul", "last_name": "Iyer",
-                                "mobile": "9876500002", "dob": "1985-11-03"}
+                                "mobile": "9731462580", "dob": "1985-11-03"}
     assert [a["account_id"] for a in body["accounts"]] == ["ACC-20002"]
     assert {l["loan_id"] for l in body["loans"]} == {"PL-31002", "VL-31003"}
     assert "SR-40102" in [t["ref"] for t in body["tickets"]]

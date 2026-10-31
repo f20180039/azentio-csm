@@ -34,10 +34,10 @@ U032,"What is the status of claim CLM-7001?",INSURANCE,claim reference
 U033,"When is my insurance premium due?",INSURANCE,premium due date
 U034,"Which documents are needed for a motor claim?",INSURANCE,claim requirements
 U035,"Has my policy lapsed or is the cover still active?",INSURANCE,coverage status
-U036,"My registered mobile is 9876500002.",IDENTITY,phone digits
+U036,"My registered mobile is 97314 62580.",IDENTITY,phone digits
 U037,"My date of birth is 3 November 1985.",IDENTITY,natural date
 U038,"It's 03 11 1985, that's my date of birth.",IDENTITY,numeric date
-U039,"Registered number is nine eight seven six five zero zero zero zero two.",IDENTITY,spoken digits
+U039,"Registered number is nine seven three one four six two five eight zero.",IDENTITY,spoken digits
 U040,"DOB third November nineteen eighty-five and my phone ends zero zero zero two.",IDENTITY,spoken date and partial number
 U041,"Can I speak to a person, please?",HUMAN_AGENT,direct handoff
 U042,"Please connect me to a human agent.",HUMAN_AGENT,direct handoff
@@ -57,5 +57,5 @@ U055,"The request is not right, you know what I mean.",UNCLEAR,underspecified
 U056,"Hi, can you check when my next EMI is due?",CHITCHAT|REPAYMENT,multi intent greeting and repayment
 U057,"I need a statement and also want to report an incorrect charge.",SERVICE_REQUEST|COMPLAINT,multi intent request and complaint
 U058,"Thanks, can you also tell me if claim CLM-7001 is under review?",CHITCHAT|INSURANCE,multi intent gratitude and claim
-U059,"My number is 9876500002 and I need the status of SR-40102.",IDENTITY|SERVICE_REQUEST,multi intent verification and request
+U059,"My number is 97314 62580 and I need the status of SR-40102.",IDENTITY|SERVICE_REQUEST,multi intent verification and request
 U060,"The transfer failed; please log a complaint and connect me to an agent.",COMPLAINT|HUMAN_AGENT,multi intent complaint and handoff

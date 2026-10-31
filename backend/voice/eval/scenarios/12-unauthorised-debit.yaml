@@ -1,10 +1,10 @@
 id: 12-unauthorised-debit
 title: Escalate an unauthorised debit
-customer: {mobile: "9876500008", dob: "1982-03-09"}
+customer: {mobile: "9304761852", dob: "1982-03-09"}
 turns:
   - say: "I didn't make this ₹48,999 payment, reference TXN-90011."
     expect: {intents: [COMPLAINT, ACCOUNT]}
-  - say: "My number is 98765 00008 and my date of birth is the ninth of March nineteen eighty-two."
+  - say: "My number is 93047 61852 and my date of birth is the ninth of March nineteen eighty-two."
     expect: {intents: [IDENTITY], verified: true}
   - say: "I did not authorise that card payment. Please help and get a person."
     expect: {intents: [COMPLAINT, HUMAN_AGENT], creates: {complaint: UNAUTHORISED_TRANSACTION}, escalated: true, tools_any: [register_complaint, escalate_to_human]}

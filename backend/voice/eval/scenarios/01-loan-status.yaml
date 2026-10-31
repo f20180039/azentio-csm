@@ -1,10 +1,10 @@
 id: 01-loan-status
 title: Application stage and no repayment schedule before disbursal
-customer: {mobile: "9876500001", dob: "1990-04-12"}
+customer: {mobile: "9845213076", dob: "1990-04-12"}
 turns:
   - say: "I applied for a personal loan last week, status? And when is my first instalment?"
     expect: {intents: [LOAN_APPLICATION, REPAYMENT]}
-  - say: "My registered number is 98765 00001 and my date of birth is the twelfth of April nineteen ninety."
+  - say: "My registered number is 98452 13076 and my date of birth is the twelfth of April nineteen ninety."
     expect: {intents: [IDENTITY], verified: true}
   - say: "Can you check the application and tell me when the first EMI is due?"
     expect: {intents: [LOAN_APPLICATION, REPAYMENT], must_say_any: ["document verification", "no schedule until disbursal"], tools_any: [get_loan_applications], never_say: ["approved"]}
