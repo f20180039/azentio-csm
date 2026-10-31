@@ -23,7 +23,7 @@ from .simulator_client import SimulatorClient
 from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
 from .support_tools import CallSession
-from .vocab import Channel, Route
+from .vocab import Channel, Outcome, Route
 
 
 class State:
@@ -234,7 +234,7 @@ class SupportTextTurnIn(BaseModel):
 
 class SupportEndIn(BaseModel):
     call_id: UUID
-    outcome: str | None = None
+    outcome: Outcome | None = None  # validated at the boundary: an unknown outcome is a 422
 
 
 @app.post(Route.SUPPORT_TEXT_CALL)

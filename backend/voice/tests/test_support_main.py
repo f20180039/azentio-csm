@@ -58,3 +58,10 @@ def test_phantom_transcripts_are_dropped():
     assert not is_phantom("Thank you, and when is my EMI?")
     assert keep_transcript(TranscriptionFrame("you", "u", "t")) is None
     assert keep_transcript(TranscriptionFrame("When is my next EMI?", "u", "t")) == "When is my next EMI?"
+
+
+def test_unknown_outcome_is_rejected_at_the_boundary():
+    c, _ = client(Scripted())
+    c.post("/support/text-call")
+    assert c.post("/support/end", json={"call_id": CALL, "outcome": "WAIVED"}).status_code == 422
+    assert c.post("/support/end", json={"call_id": CALL, "outcome": "ESCALATED"}).json() == {"outcome": "ESCALATED"}
