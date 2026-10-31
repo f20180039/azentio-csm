@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { PhoneSimulator, ChatMessage } from '../components/PhoneSimulator';
 
 interface AuditBlock {
@@ -25,7 +25,6 @@ export function BFSIAgentDesk() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastIntent, setLastIntent] = useState<string>('INIT');
   const [lastSentiment, setLastSentiment] = useState<string>('NEUTRAL');
-  const [piiTokens, setPiiTokens] = useState<string[]>([]);
   const [auditBlocks, setAuditBlocks] = useState<AuditBlock[]>([]);
   const [isHandoff, setIsHandoff] = useState(false);
 
@@ -136,9 +135,12 @@ export function BFSIAgentDesk() {
           <div className="panel-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <span style={{ fontWeight: 600, fontSize: '14px' }}>Active Conversation Telemetry</span>
-              <span className={`metric-badge ${lastSentiment === 'URGENT' ? 'badge-orange' : 'badge-green'}`}>
-                Sentiment: {lastSentiment}
-              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {isHandoff && <span className="metric-badge badge-orange">LIVE AGENT ACTIVE</span>}
+                <span className={`metric-badge ${lastSentiment === 'URGENT' ? 'badge-orange' : 'badge-green'}`}>
+                  Sentiment: {lastSentiment}
+                </span>
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '12px' }}>
               <div style={{ background: 'var(--surface-2)', padding: '8px', borderRadius: '4px' }}>

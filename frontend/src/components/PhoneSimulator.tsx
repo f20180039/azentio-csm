@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
 export interface ChatMessage {
   id: string;
@@ -25,7 +25,7 @@ export function PhoneSimulator({ messages, onSendMessage, isLoading }: PhoneSimu
     setInputText('');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') handleSend();
   };
 
