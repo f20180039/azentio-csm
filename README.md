@@ -1,16 +1,16 @@
-# Azentio-CSM: Enterprise BFSI Conversational AI & Autonomous Agent Suite
+# Azentio-CSM: customer service voice agent (problem #05)
 
-Azentio-CSM is a production-grade, multi-tenant conversational AI platform designed for regulated financial institutions (Commercial Banks, NBFCs, Insurers, and Wealth/Broking firms) to deploy autonomous customer servicing, proactive collections/renewals, loan onboarding, and workforce support across WhatsApp, Web Widget, and Voice IVR.
+A voice agent for a bank's customer service line, built for the Azentio.ai Build Labs hackathon on synthetic data. It is a prototype: it is not certified for any regulatory compliance and has not run against real customers or production systems.
 
 Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
-**Key Capabilities:**
-- **Omnichannel WhatsApp & Web Simulator**: Realistic smartphone interface for customer journeys with quick replies and real-time step-up authentication.
-- **Unified Python FastAPI Core API** (`backend/api`): Modular `APIRouter`s for `/auth`, `/chat`, `/cbs`, `/flows`, `/analytics`, and `/audit`.
-- **Zero-Trust PII Redaction Engine**: Masks raw Aadhaar, PAN, Card, and Phone numbers in-region before any prompt leaves the security perimeter.
-- **Deterministic FinTech Math**: Guarantees zero hallucinations on interest savings, prepayment calculations, and regulatory fee caps (RBI/IRDAI compliant).
-- **Cryptographic Audit Ledger**: Immutable SHA-256 hash chaining for tamper-evident compliance trails.
-- **Alpha-Fin Design Theme**: Observatory Green (`#00836C`) and Orange Passion (`#F58220`) high-contrast BFSI aesthetic with real-time CX telemetry.
+**What is here today**
+- **Voice agent** (`backend/voice`): a live speech loop (Pipecat, Silero voice detection, Groq Whisper speech-to-text, Edge read-aloud voice) with interruptions, a free-model fallback chain and tool calls. Its first specialist is **Renewal Desk**: an insurance renewal call where the agent talks but the API decides what it may offer.
+- **System of record** (Spring Boot, `backend/api/src`): calls, transcripts, renewals, dashboard queries and a hash-chained audit log on Postgres.
+- **Bank simulator** (FastAPI, `backend/api/app`): mock core banking and loan endpoints, sign-in, a personal-data masking step (Aadhaar, PAN, card and phone numbers) and an audit log. Its records are in memory and still being filled in.
+- **Web app** (`frontend`): the Renewals queue, the call screen, the dashboard and an agent desk with a phone simulator.
+
+**In progress:** inbound support intents (loan application status, repayment, account, service request, product questions from an approved FAQ, complaints), customer verification before account details, service tickets with reference numbers, and an operator panel. The bank simulator is moving to its own port (8090) so the Spring API keeps 8080; until then Compose builds the FastAPI app as `api`, and the renewal call needs the Spring API run natively (step 3 below).
 
 ## Run it
 
@@ -44,12 +44,12 @@ Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 **Without Docker**
 
 1. Create a database: `createdb caseintel`, or reuse an existing one by passing `DB_URL`.
-2. Start the agent: `cd agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
-3. Start the API: `cd api && DB_URL=jdbc:postgresql://localhost:5432/caseintel ./mvnw spring-boot:run`
-4. Start the voice service: `cd voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
-5. Start the web app: `cd web && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
+2. Start the agent: `cd backend/agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
+3. Start the API: `cd backend/api && DB_URL=jdbc:postgresql://localhost:5432/caseintel ./mvnw spring-boot:run`
+4. Start the voice service: `cd backend/voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
+5. Start the web app: `cd frontend && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
 
-**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `voice/README.md`.
+**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `backend/voice/README.md`.
 
 ## Try it
 
@@ -81,7 +81,7 @@ cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth
 
 ## Voice latency
 
-End of customer speech to first agent audio, measured at the client with `voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [voice/README.md](voice/README.md)).
+End of customer speech to first agent audio, measured at the client with `backend/voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [backend/voice/README.md](backend/voice/README.md)).
 
 | Customer says | Latency |
 |---|---|
@@ -105,7 +105,7 @@ Rule 3 of Azentio.ai Build Labs asks for this. The rows marked "Before the event
 | Topic layer: Renewal Desk | The `renewals` package in `api/` (call state, identity check, discount and offer limits, handoff, audit), the `voice/` service, the web Renewals and Call pages, and `agent/datagen/renewals.py` (synthetic policies) | During the event (29 Oct 2026) |
 | `voice/app/edge_tts_service.py` | Pipecat text-to-speech service around edge-tts, ported from a throwaway latency spike written during the event (29 Oct 2026). Event work, not pre-built | During the event (29 Oct 2026) |
 
-**Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `agent/app/pdf.py` and the test fixtures that build PDFs would change.
+**Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`backend/agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `backend/agent/app/pdf.py` and the test fixtures that build PDFs would change.
 
 **Third-party libraries in the voice stack** (licences read from the installed package metadata):
 
