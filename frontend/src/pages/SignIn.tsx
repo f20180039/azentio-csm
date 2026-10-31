@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError } from '../api/errors';
 import { MOCK_MODE } from '../api/client';
+import { SignInArt } from '../components/SignInArt';
 import { DEMO_USERS } from '../demoUsers';
 import { useSession } from '../session';
 
@@ -30,6 +31,22 @@ export function SignIn() {
 
   return (
     <div className="signin-wrap">
+      <div className="signin-shell">
+      <aside className="signin-art">
+        <div className="signin-art-brand">
+          <span className="brand-mark" aria-hidden="true">AC</span>
+          <span>Azentio-CSM</span>
+        </div>
+        <SignInArt />
+        <div className="signin-art-copy">
+          <h2>The bank&rsquo;s customer service line, answered by a voice agent</h2>
+          <ul>
+            <li>Understands what the caller needs, even with accents and noise</li>
+            <li>Verifies identity before sharing anything personal</li>
+            <li>Answers from the bank&rsquo;s systems and raises tickets</li>
+          </ul>
+        </div>
+      </aside>
       <div className="signin">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">AC</span>
@@ -103,6 +120,7 @@ export function SignIn() {
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </div>
   );

@@ -589,3 +589,29 @@ td.persona-cell > span { display: block; }
 .sc-mic-status.active .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 @media (prefers-reduced-motion: reduce) { .sc-dots i { animation: none; opacity: .85; } }
 .persona-role { margin-left: 6px; font: 600 var(--fs-xs) var(--font-body); vertical-align: 2px; }
+
+/* ---- sign-in: two columns, brand illustration beside the form ---- */
+.signin-shell { width: min(1040px, 100%); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); border-radius: calc(var(--radius) + 4px);
+  overflow: hidden; box-shadow: var(--shadow-lift); background: var(--surface); }
+.signin-shell .signin { width: auto; border: 0; border-radius: 0; box-shadow: none; padding: 30px 32px; align-content: start; }
+.signin-art { position: relative; display: grid; align-content: space-between; gap: 18px; padding: 28px 30px; color: #e8f1f8;
+  background: radial-gradient(120% 90% at 0% 0%, #163a63 0%, #0d2340 60%); }
+.signin-art-brand { display: inline-flex; align-items: center; gap: 10px; font: 700 1.2rem var(--display); color: #fff; }
+.signin-art-brand .brand-mark { border-color: #4ff0b0; color: #4ff0b0; }
+.signin-art-svg { width: 100%; height: auto; max-width: 440px; justify-self: center; }
+.signin-art-copy h2 { font: 700 1.3rem/1.25 var(--display); color: #fff; margin: 0 0 10px; text-wrap: balance; }
+.signin-art-copy ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: #a9bfd3; font-size: var(--fs-md); }
+.si-bar { transform-box: fill-box; transform-origin: center; animation: si-wave 1.4s ease-in-out infinite; }
+@keyframes si-wave { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1); } }
+.signin-shell .signin > .brand { display: none; }
+/* compact team-member shortcuts so the form column stays short */
+.signin-shell .persona { padding: 8px 12px; }
+.signin-shell .persona-avatar { width: 32px; height: 32px; font-size: 11px; }
+.signin-shell .persona-body .small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 860px) {
+  .signin-shell { grid-template-columns: minmax(0, 1fr); }
+  .signin-art { padding: 20px 22px; }
+  .signin-art-svg, .signin-art-copy ul { display: none; }
+  .signin-art-copy h2 { font-size: 1.05rem; margin: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .si-bar { animation: none; } }

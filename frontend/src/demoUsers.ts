@@ -1,8 +1,8 @@
 /** The three demo accounts, each shown as a team member. Usernames are the API's accounts (password = username). */
 export const DEMO_USERS = [
-  { username: 'admin', name: 'Anshuman', role: 'Admin', initials: 'AS', can: 'Everything a reviewer can, plus checking the audit chain.' },
-  { username: 'reviewer', name: 'Chirag', role: 'Reviewer', initials: 'CH', can: 'Everything an analyst can, plus deciding findings and cases.' },
-  { username: 'analyst', name: 'Pavan', role: 'Analyst', initials: 'PM', can: 'Opens cases, follows calls and uploads documents.' },
+  { username: 'admin', name: 'Anshuman', role: 'Admin', initials: 'AS', can: 'Full access, including the audit chain.' },
+  { username: 'reviewer', name: 'Chirag', role: 'Reviewer', initials: 'CH', can: 'Decides findings and cases.' },
+  { username: 'analyst', name: 'Pavan', role: 'Analyst', initials: 'PM', can: 'Follows calls and opens cases.' },
 ] as const;
 
 export type DemoUser = (typeof DEMO_USERS)[number];
