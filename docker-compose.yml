@@ -45,6 +45,13 @@ services:
     ports:
       - "8080:8080"
 
+  simulator:
+    build: ./backend/simulator
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data/simulator:/app/data/runtime
+
   voice:
     build: ./backend/voice
     env_file:
@@ -52,9 +59,11 @@ services:
         required: false
     environment:
       RENEWALS_API_BASE: http://api:8080/api/v1
+      SIMULATOR_BASE: http://simulator:8090/v1
       CORS_ORIGINS: http://localhost:5173
     depends_on:
       - api
+      - simulator
     ports:
       - "127.0.0.1:7861:7861"
 

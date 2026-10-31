@@ -9,7 +9,6 @@ import { Packs } from './pages/Packs';
 import { Queue } from './pages/Queue';
 import { Renewals } from './pages/Renewals';
 import { SignIn } from './pages/SignIn';
-import { BFSIAgentDesk } from './pages/BFSIAgentDesk';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
 
@@ -54,7 +53,6 @@ function Shell() {
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
-          <NavLink to="/agent-desk">Azentio-CSM Desk</NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/queue">Queue</NavLink>
           <NavLink to="/renewals">Renewals</NavLink>
@@ -84,8 +82,7 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Shell />}>
-              <Route index element={<Navigate to="/agent-desk" replace />} />
-              <Route path="/agent-desk" element={<BFSIAgentDesk />} />
+              <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="queue" element={<Queue />} />
               <Route path="cases/:id" element={<CaseWorkspace />} />
