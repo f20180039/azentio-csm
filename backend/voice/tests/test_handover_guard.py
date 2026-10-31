@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from app.support_tools import CallSession, is_fraud_handover, run_support_tool
+from app.support_tools import CallSession, run_support_tool
 from app.vocab import EscalationTrigger, RefPrefix, ToolError
 from tests.test_brain import Scripted, text, tool_call
 from tests.test_escalation_backstops import escalations
@@ -37,7 +37,8 @@ def test_no_handover_for_missing_details():
 @pytest.mark.parametrize("trigger", [EscalationTrigger.SENSITIVE, EscalationTrigger.UNRESOLVED])
 @pytest.mark.parametrize("reason", ["Unable to verify caller", "Caller could not provide 10-digit mobile number",
                                     "Could not confirm the caller's identity", "The date of birth was not heard clearly",
-                                    "Caller did not give the details needed"])
+                                    "Caller did not give the details needed", "Caller unverified after an incomplete mobile number",
+                                    "Mobile number misheard twice", "Missing date of birth"])
 def test_verification_reasons_are_refused_while_unverified(trigger, reason):
     sim, client, call = setup()
     out = escalate(client, call, trigger, reason)
@@ -53,6 +54,32 @@ def test_fraud_handover_still_goes_through_unverified(reason):
     out = escalate(client, call, EscalationTrigger.SENSITIVE, reason)
     assert out["ref"].startswith(RefPrefix.ESCALATION) and "error" not in out and call.refs == [out["ref"]]
     assert len([r for r in sim.requests if r.url.path.endswith("/escalations")]) == 1
+
+
+@pytest.mark.parametrize("reason", [
+    # review round 1: realistic unverified fraud or distress hand-overs whose reason also mentions a verification word
+    "Money debited without the caller's knowledge; caller unverified",
+    "Someone used the caller's mobile to withdraw money via UPI",
+    "OTP scam; the caller shared an OTP and could not verify caller",
+    "Suspicious transaction; identity not yet confirmed",
+    "Transaction caller does not recognise; details of the debit",
+    "Caller scared, someone took money from the account; will not share phone number",
+    "Caller in distress, crying, cannot remember her date of birth",
+    "Threatening to harm themselves; mobile number not given",
+    "Emergency: caller's card was taken; verification failed",
+])
+def test_sensitive_subjects_hand_over_even_with_a_verification_word(reason):
+    sim, client, call = setup()
+    out = escalate(client, call, EscalationTrigger.SENSITIVE, reason)
+    assert out["ref"].startswith(RefPrefix.ESCALATION) and "error" not in out and call.refs == [out["ref"]]
+
+
+@pytest.mark.parametrize("reason", ["Caller wants to speak about their mobile banking app", "Needs help with identity documents for a loan",
+                                    "Caller asked about the details of a service request", "Caller would rather not verify today"])
+def test_an_unverified_caller_who_will_not_verify_is_not_trapped(reason):
+    sim, client, call = setup()
+    out = escalate(client, call, EscalationTrigger.UNRESOLVED, reason)
+    assert out["ref"].startswith(RefPrefix.ESCALATION) and "error" not in out
 
 
 def test_distress_and_dissatisfaction_still_hand_over_unverified():
@@ -89,8 +116,3 @@ def test_lock_backstop_still_hands_over_through_the_brain():
         turn = asyncio.run(brain.reply("98765 00002, first January 1990"))
     raised = escalations(sim)
     assert turn.locked and len(raised) == 1 and raised[0]["category"] == EscalationTrigger.AUTH_LOCKED and turn.refs == ["ESC-70200"]
-
-
-def test_is_fraud_handover():
-    assert is_fraud_handover("a payment I never made") and is_fraud_handover("stolen card") and is_fraud_handover("Fraudulent UPI debit")
-    assert not is_fraud_handover("Unable to verify caller") and not is_fraud_handover("")

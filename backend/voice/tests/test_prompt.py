@@ -65,6 +65,6 @@ def test_prompt_forbids_date_formats_and_handover_for_missing_details():
     # E1 (call 475b0ac5): Kannada replies asked for the date of birth "(YYYY-MM-DD)" / "(year-month-day)", and one missing
     # detail became a SENSITIVE hand-over
     for p in (support_prompt(), support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))):
-        assert "Never mention a date format (no YYYY-MM-DD, no year-month-day, in any language); just ask for their date of birth." in p
+        assert "Never mention a date format to the caller (no YYYY-MM-DD, no year-month-day, in any language); just ask for their date of birth." in p
         assert "Never hand the caller to a person because a detail is missing or was misheard; ask again and read back what you heard." in p
-        assert "never mention a date format to the caller" not in p  # the old, language-blind wording is gone
+        assert "never mention a date format to the caller, just ask" not in p  # the old, language-blind wording is gone

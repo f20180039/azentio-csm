@@ -13,20 +13,19 @@ from .vocab import OFFERED_TRIGGERS, EscalationTrigger, HandoffMode, RefPrefix, 
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
-# A caller reporting a payment they did not make, in their words or the model's reason: the fraud backstop and the hand-over
-# guard both read it. Lost or stolen cards belong with fraud for a hand-over.
+# A caller reporting a payment they did not make, in their own words: the brain's fraud backstop reads it
 UNAUTHORISED = re.compile(r"\b(did ?n[o']?t|never)\s+(make|made|do|authori[sz]e|recogni[sz]e)\b|\bunauthori[sz]ed\b|\bfraud", re.I)
-LOST_OR_STOLEN = re.compile(r"\b(stolen|lost|theft|skimm)", re.I)
-# A hand-over reason that is really a verification detail the agent has not heard yet (or heard wrongly)
-VERIFICATION_REASON = re.compile(r"verif|identit|\bmobile\b|\bphone number\b|\bdate of birth\b|\bdob\b|\bdigits?\b|\bdetails?\b|mis-?heard", re.I)
+# A hand-over about something a person must handle at once (fraud, money gone, a scam, a lost card, distress), whatever else
+# the reason says about verification: an unverified caller's SENSITIVE call is their only way to a person
+SENSITIVE_SUBJECT = re.compile(r"fraud|unauthori|stolen|lost|theft|skimm|scam|debit|withdr|\btook\b|taken|\bmoney\b|suspicious|recogni|"
+                               r"transaction|payment|\bupi\b|\botp\b|distress|harm|threat|cry|scared|emergency", re.I)
+# A hand-over whose only reason is that verification has not succeeded yet: a detail not given, not heard, or heard wrongly
+VERIFICATION_REASON = re.compile(r"(unable to|could ?n[o']?t|can ?no?t|can't|failed to) .{0,20}(verif|confirm)|verification failed|"
+                                 r"\bnot verified\b|unverified|mis-?heard|not heard|did not (give|provide)|could not provide|"
+                                 r"missing (mobile|date of birth)|incomplete", re.I)
+# Model-chosen triggers a missing detail must not reach: SENSITIVE (call 475b0ac5, turn 7) and UNRESOLVED (the next excuse).
+# DISSATISFIED and CUSTOMER_REQUEST are the caller's own wish; AUTH_LOCKED is the backstop's, after the bank locked.
 VERIFICATION_GUARDED_TRIGGERS = (EscalationTrigger.SENSITIVE, EscalationTrigger.UNRESOLVED)
-"""Model-chosen triggers that a missing detail must not reach: SENSITIVE (call 475b0ac5, turn 7) and UNRESOLVED (the next
-excuse). DISSATISFIED and CUSTOMER_REQUEST are the caller's own wish; AUTH_LOCKED is the backstop's, after the bank locked."""
-
-
-def is_fraud_handover(text: str) -> bool:
-    """Whether a hand-over reason or summary is about fraud, an unauthorised transaction, or a lost or stolen card."""
-    return bool(UNAUTHORISED.search(text) or LOST_OR_STOLEN.search(text))
 
 
 class TicketCategory(StrEnum):
@@ -208,12 +207,14 @@ def apply_mismatch(call: CallSession, mismatch: str | None) -> str:
 
 def is_premature_handover(call: CallSession, trigger: EscalationTrigger, why: str) -> bool:
     """A hand-over the desk refuses: the caller is not verified and not locked, the model chose SENSITIVE or UNRESOLVED, and
-    its reason or summary is about verification (unable to verify, could not provide the mobile number, date of birth not
-    heard) rather than fraud. Rule chosen over 'same turn as a MISSING_DETAILS result' because it also catches the model's
-    next turn, and leaves distress or fraud hand-overs alone. After the bank locks the caller the backstop takes over."""
+    its reason or summary says verification failed (unable to verify, could not provide the mobile number, date of birth
+    not heard) with no sensitive subject in it. Any sensitive subject (fraud, money gone, a scam, distress) goes through
+    even when the reason also mentions verification; a caller who simply will not verify is not trapped either, since a bare
+    mention of the mobile number or identity is not a failure. Rule chosen over 'same turn as a MISSING_DETAILS result'
+    because it also catches the model's next turn. After the bank locks the caller the backstop takes over."""
     if call.verified or call.locked or trigger not in VERIFICATION_GUARDED_TRIGGERS:
         return False
-    return bool(VERIFICATION_REASON.search(why)) and not is_fraud_handover(why)
+    return bool(VERIFICATION_REASON.search(why)) and not SENSITIVE_SUBJECT.search(why)
 
 
 async def run_support_tool(client: SimulatorClient, call: CallSession, name: str, args: dict) -> dict:

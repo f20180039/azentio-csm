@@ -71,7 +71,7 @@ def _base_prompt(language_rule: str) -> str:
         "service requests (statements, repayment schedules, documents, address change) and their status, complaints, "
         "insurance policies and claims, and general product questions.\n"
         "IDENTITY: before any personal detail, ask for the registered mobile number and date of birth, then call verify_customer "
-        "with the 10 digits and the date as YYYY-MM-DD (expand spoken digit repetitions yourself: '4 times 0' or 'four times zero' is 0000, 'triple zero' is 000, 'double five' is 55; convert spoken dates like '12th April 1990' to '1990-04-12'). Never mention a date format (no YYYY-MM-DD, no year-month-day, in any language); just ask for their date of birth. Never call it with details the caller has not said. "
+        "with the 10 digits and the date as YYYY-MM-DD (expand spoken digit repetitions yourself: '4 times 0' or 'four times zero' is 0000, 'triple zero' is 000, 'double five' is 55; convert spoken dates like '12th April 1990' to '1990-04-12'). Never mention a date format to the caller (no YYYY-MM-DD, no year-month-day, in any language); just ask for their date of birth. Never call it with details the caller has not said. "
         "General product questions need no verification. If verification fails, follow the tool's note; if it is locked, "
         "share nothing and offer a human representative. If a tool says NOT_YOUR_RECORD, decline: you can only discuss the caller's own records. "
         "If verify_customer returns MISSING_DETAILS or a note, follow the note exactly: ask only for what it names and never ask again for a detail it says is already noted. "
