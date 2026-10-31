@@ -1,6 +1,7 @@
 """In-memory seed data loader and SQLite-backed dynamic store for the Bank Simulator."""
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -143,6 +144,14 @@ class BankStore:
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL
                 );
+
+                CREATE VIRTUAL TABLE IF NOT EXISTS faq_fts USING fts5(
+                    id,
+                    question,
+                    answer,
+                    tags,
+                    tokenize = 'porter'
+                );
                 """
             )
             for prefix, val in INITIAL_COUNTERS.items():
@@ -258,6 +267,18 @@ class BankStore:
             d_ago = item.pop("submitted_days_ago", 0)
             item["submitted_on"] = (ref_date - timedelta(days=d_ago)).isoformat()
             self.claims.append(item)
+
+        # 10. FAQs (FTS5 index with Porter stemmer)
+        self.seed_faqs = read_seed("faq")
+        with self._get_connection() as con:
+            con.execute("DELETE FROM faq_fts")
+            for item in self.seed_faqs:
+                tags_str = " ".join(item.get("tags", []))
+                con.execute(
+                    "INSERT INTO faq_fts (id, question, answer, tags) VALUES (?, ?, ?, ?)",
+                    (item["id"], item["question"], item["answer"], tags_str),
+                )
+            con.commit()
 
     def reset(self) -> None:
         """Empties all dynamic write tables and resets reference counters."""
@@ -838,6 +859,50 @@ class BankStore:
                         "escalated": True,
                     })
         return results
+
+    # -------------------------------------------------------------------------
+    # FAQ Search (FTS5 BM25 with Porter stemming)
+    # -------------------------------------------------------------------------
+    def search_faq(
+        self,
+        query: str,
+        limit: int = 3,
+        threshold: float = 2.0,
+    ) -> list[dict[str, Any]]:
+        if not query or not query.strip():
+            return []
+        stop_words = {
+            "what", "whats", "who", "when", "where", "how", "is", "are", "do",
+            "does", "did", "i", "you", "a", "an", "the", "for", "to", "of",
+            "in", "my", "me", "can", "tell", "please"
+        }
+        words = re.findall(r"\w+", query.lower())
+        content_words = [w for w in words if w not in stop_words]
+        if not content_words:
+            return []
+        match_query = " OR ".join(f'"{w}"' for w in content_words)
+        with self._get_connection() as con:
+            cur = con.execute(
+                """
+                SELECT id, question, answer, round(-bm25(faq_fts, 0.0, 10.0, 1.0, 5.0), 2) as score
+                FROM faq_fts
+                WHERE faq_fts MATCH ?
+                ORDER BY score DESC
+                LIMIT ?
+                """,
+                (match_query, limit),
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "question": r["question"],
+                    "answer": r["answer"],
+                    "score": float(r["score"]),
+                }
+                for r in rows
+                if r["score"] >= threshold
+            ]
 
 
 # Global singleton instance

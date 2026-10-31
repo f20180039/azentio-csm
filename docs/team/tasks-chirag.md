@@ -105,17 +105,17 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 2: Implement it. Every write stores the `call_id` and a `created_at` timestamp.
 - [ ] Step 3: Commit: `feat(simulator): CSM tickets, complaints, routed queries, escalations and ops listing`.
 
-- [ ] **C6: FAQ search; final clean-up** (needs: C2; content from P1)
+- [x] **C6: FAQ search; final clean-up** (needs: C2; content from P1)
 
 **Files:** create `backend/simulator/app/routers/faq.py`. Data lives in `backend/simulator/data/seed/faq.json`. Until Pavan's P1 is merged, use 3 placeholder entries with the same schema: `{id, question, answer, tags, source}`.
 
-- [ ] Step 1: Write the failing tests (`tests/test_faq.py`):
+- [x] Step 1: Write the failing tests (`tests/test_faq.py`):
   - "what documents do I need for a vehicle loan" puts the vehicle-loan documents entry first;
   - "how do I stop auto debit" matches the NACH entry;
   - "what's the weather today" returns `items: []`. This is the **unsupported** signal, so use a minimum score threshold.
-- [ ] Step 2: Implement `GET /v1/faq/search` with SQLite FTS5 (bm25, `tokenize='porter'` so "prepay" matches "prepayment") over the question, answer and tags, built at start-up. Pavan's 30 entries are already merged in `faq.json`. Return `score` as a positive float, and drop results below the threshold.
-- [ ] Step 3: `grep -rniE "compliant|RBI|DPDP|PCI|zero hallucination|production-grade" backend/simulator` returns nothing. No hard-coded statistics remain anywhere in the simulator.
-- [ ] Step 4: Commit: `feat(simulator): FAQ search with an approved-answer threshold`.
+- [x] Step 2: Implement `GET /v1/faq/search` with SQLite FTS5 (bm25, `tokenize='porter'` so "prepay" matches "prepayment") over the question, answer and tags, built at start-up. Pavan's 30 entries are already merged in `faq.json`. Return `score` as a positive float, and drop results below the threshold.
+- [x] Step 3: `grep -rniE "compliant|RBI|DPDP|PCI|zero hallucination|production-grade" backend/simulator` returns nothing. No hard-coded statistics remain anywhere in the simulator.
+- [x] Step 4: Commit: `feat(simulator): FAQ search with an approved-answer threshold`.
 
 - [ ] **C7: Docker Compose works end to end** (needs: C6 merged, or run it alongside)
 

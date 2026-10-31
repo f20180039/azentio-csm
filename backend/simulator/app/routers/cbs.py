@@ -69,7 +69,7 @@ async def calculate_prepayment(req: PrepaymentCalcRequest):
         "interest_saved": interest_saved,
         "tenor_reduction_months": months_reduced,
         "prepayment_penalty": 0,
-        "rbi_compliance": "Floating-rate retail loans carry 0% prepayment charges as per RBI guidelines."
+        "terms": "Floating-rate retail loans carry 0% prepayment charges."
     }
 
 

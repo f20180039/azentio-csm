@@ -1,4 +1,4 @@
-"""RBI & DPDP Act compliant PII redaction and masking engine."""
+"""PII redaction and masking engine for banking identifiers."""
 import re
 from typing import NamedTuple
 
