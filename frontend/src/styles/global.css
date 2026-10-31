@@ -439,6 +439,10 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sc-turn-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .sc-turn .who { font: 700 var(--fs-xs) var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .sc-nospeech { font-style: italic; }
+.sc-turn-head .sc-lang { margin-inline-end: auto; }
+.sc-turn-alt { line-height: 1.35; }
+.sc-turn-alt-label { font-weight: 600; }
+.sc-english-first { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; color: var(--muted); font-weight: 600; white-space: nowrap; cursor: pointer; }
 .sc-audio { width: 100%; max-width: 360px; height: 34px; }
 .sc-retrieved { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .sc-retrieved > summary { cursor: pointer; padding: 7px 11px; font: 600 var(--fs-sm) var(--font-body); }

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
+import { SAMPLE_ESCALATION_CALL, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { SupportCall } from './SupportCall';
@@ -220,5 +220,74 @@ describe('customer turn playback', () => {
   it('builds the voice service URL for a recorded turn', async () => {
     const { turnAudioUrl } = await import('../api/support');
     expect(turnAudioUrl('11111111-1111-1111-1111-111111111111', 3)).toMatch(/\/support\/calls\/11111111-1111-1111-1111-111111111111\/turns\/3\/audio$/);
+  });
+});
+
+describe('English beside Kannada and Hindi turns', () => {
+  const KANNADA_ASK = 'ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ?';
+
+  it('shows the language chip and the English, labelled, under a Kannada turn', async () => {
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_ESCALATION_CALL));
+    mount(`/support/calls/${SAMPLE_ESCALATION_CALL.id}`);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const original = await within(log).findByText(KANNADA_ASK);
+    expect(original).toHaveAttribute('lang', 'kn');
+    expect(original).not.toHaveClass('muted');
+    const turn = original.closest('li')!;
+    expect(within(turn).getByText('Kannada')).toHaveClass('pill');
+
+    const english = within(turn).getByTestId('turn-english');
+    expect(english).toHaveTextContent('English: When is my next EMI?');
+    expect(english).toHaveClass('muted');
+    expect(english).toHaveAttribute('lang', 'en');
+    expect(original.compareDocumentPosition(english) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // An English turn gets neither a chip nor a second line.
+    const englishTurn = within(log).getByText('There is a card payment of 48,999 rupees I never made.').closest('li')!;
+    expect(within(englishTurn).queryByText('Kannada')).toBeNull();
+    expect(within(englishTurn).queryByTestId('turn-english')).toBeNull();
+  });
+
+  it('"English first" puts the English line first and the original beneath it, labelled with its language', async () => {
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_ESCALATION_CALL));
+    mount(`/support/calls/${SAMPLE_ESCALATION_CALL.id}`);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const toggle = await screen.findByRole('switch', { name: 'English first' });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+
+    const turn = within(log).getAllByTestId('turn-english')[0].closest('li')!;
+    const lines = turn.querySelectorAll('p');
+    expect(lines[0]).toHaveAttribute('data-testid', 'turn-english');
+    expect(lines[0]).toHaveTextContent('When is my next EMI?');
+    expect(lines[0]).not.toHaveTextContent('English:');
+    expect(lines[0]).not.toHaveClass('muted');
+    expect(lines[1]).toHaveTextContent(`Kannada: ${KANNADA_ASK}`);
+    expect(lines[1]).toHaveClass('muted');
+    expect(lines[1]).toHaveAttribute('lang', 'kn');
+    expect(within(turn).getByText('Kannada')).toHaveClass('pill');
+
+    fireEvent.click(toggle);
+    expect(turn.querySelectorAll('p')[0]).toHaveTextContent(KANNADA_ASK);
+  });
+
+  it('offers no "English first" toggle when no turn has an English translation', async () => {
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_ROUTED_CALL));
+    mount(`/support/calls/${SAMPLE_ROUTED_CALL.id}`);
+    await screen.findByText('No speech detected');
+    expect(screen.queryByRole('switch', { name: 'English first' })).toBeNull();
+  });
+
+  it('finds a turn by its English when searching', async () => {
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_ESCALATION_CALL));
+    mount(`/support/calls/${SAMPLE_ESCALATION_CALL.id}?q=EMI`);
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(KANNADA_ASK)).closest('li')!;
+    expect(turn).toHaveAttribute('data-search', 'hit');
+    expect(within(turn).getByText('EMI', { selector: 'mark' })).toBeInTheDocument();
+    expect(within(log).getByText('There is a card payment of 48,999 rupees I never made.').closest('li')).toHaveAttribute('data-search', 'dim');
   });
 });

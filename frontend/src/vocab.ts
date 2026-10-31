@@ -24,6 +24,10 @@ export type SupportChannel = ValueOf<typeof SupportChannel>;
 export const TurnRole = { CUSTOMER: 'customer', AGENT: 'agent' } as const;
 export type TurnRole = ValueOf<typeof TurnRole>;
 
+/** backend/voice/app/vocab.py SpeechLanguage: caller languages (Whisper codes); a translated turn's meta.language. */
+export const SpeechLanguage = { ENGLISH: 'en', KANNADA: 'kn', HINDI: 'hi' } as const;
+export type SpeechLanguage = ValueOf<typeof SpeechLanguage>;
+
 /** backend/voice/app/intents.py Intent. */
 export const Intent = {
   LOAN_APPLICATION: 'LOAN_APPLICATION',
