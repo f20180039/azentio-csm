@@ -88,6 +88,12 @@ class RefPrefix(StrEnum):
     ESCALATION = "ESC-"
 
 
+class SpeechLanguage(StrEnum):
+    """Caller languages (Whisper codes); VOICE_LANGUAGES lists the enabled ones."""
+    ENGLISH = "en"
+    KANNADA = "kn"
+
+
 class IntentSource(StrEnum):
     LLM = "llm"
     RULES = "rules"

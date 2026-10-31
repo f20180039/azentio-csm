@@ -56,3 +56,25 @@ The Nigerian voice in noise is the weakest case: 11.4% WER at baseline, 8.4% wit
 - Real phone audio and real accents.
 - RNNoise.
 - large-v3 on the full set (the request cap was 400).
+
+## Kannada (31 Oct 2026)
+
+Task C8. The test set was 5 distinct caller turns from scenarios 13 and 14 (turn 2 is the same in both), rendered with edge-tts `kn-IN-SapnaNeural`, clean, 16 kHz mono, and sent through the recorded-audio path (VAD trim, FLAC, `whisper-large-v3-turbo`, `verbose_json`). There were 25 Groq speech-to-text requests in all. **Caveat:** this is one synthetic voice and 5 clips, with no noise and no real speakers.
+
+| Turn (said) | Auto + English prompt | Auto + bilingual prompt (**shipped for `en,kn`**) | Pinned `kn` + Kannada prompt |
+|---|---|---|---|
+| ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ? | `Nana Mundina EMI, Yawa, Ka?` (romanised) | `ನನಮುಂದಿನ ಎಮೇಯಾವಾಗ.` | `ನನಮುಂದಿನ ಎಮೇಯಾವಾಗ?` |
+| ನನ್ನ ಮೊಬೈಲ್ ನಂಬರ್ 98765 00002, ಹುಟ್ಟಿದ ದಿನಾಂಕ 3 ನವೆಂಬರ್ 1985. | **Telugu script**, digits garbled | `ನನ್ನ, ಮೋಬೈಲ್ ನಂಬರ್ ಒಂಬತ್ತು ಎಂಟು ಎಳು, ಆರು ಆಯದು ಸೊನ್ನೆ ×4 ಎರಡು, ಹುಟ್ಟಿದ ದಿನಾಂಕ ಮೂರು ನವೆಂಬರ್ ಒಂದು ಸಾವಿರ ಒಂಬಯನುರ ಎಂಬತ್ತಯಿದು.` | same as bilingual |
+| ನನ್ನ ಮುಂದಿನ EMI ಎಷ್ಟು, ಯಾವಾಗ ಕಟ್ಟಬೇಕು? | `Nana Mundina M.A.S.T.U. Yawa G. Kattabeku.` (**dropped**, logprob −0.701) | `ನನವ್ ಮುಂದಿನ AMIASಟು ಯಾವಾಗ ಕಟ್ಟಬೇಕು.` | `ನನ್ನ ಮುಂದಿನ ಮೈಯೇಷ್ಟು ಯಾವಾಗ ಕಟ್ಟಬೇಕು.` |
+| ನನಗೆ ನನ್ನ ಲೋನ್ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ಬೇಕು | `NANGE NANNA LOAN STATEMENT BAKO.` | `ನನಗೆ ನನನ ಲೋನ್, ಸ್ಟೇಟ್ಮೆಟ್ ಬೇಕು.` | `ನನಗೆ ನನನ ಲೋಂ ಸ್ಟೇಟ್ಮೆಟ್ ಬೇಕು.` |
+| ದಯವಿಟ್ಟು ಸ್ಟೇಟ್‌ಮೆಂಟ್ ರಿಕ್ವೆಸ್ಟ್ ಮಾಡಿ. | `Devittu, statement request, Mardi.` | `DEVITTO, STATEMENT REQUEST, MARDI.` (romanised) | `ಬ್ರಿಟು, ಱ್ಟೆ ಟೆಟುಟು, ಮರಡೀ.` (garbage; **dropped**, −0.825) |
+
+What it shows:
+- **Groq's detected `language` is unreliable.** It named the 5 Kannada clips English, Tamil, Hindi, Tamil and English; it never said Kannada unless pinned. The code therefore decides the call's language from the transcript's script (mostly Kannada letters means a Kannada call) and does not use that field.
+- **The prompt decides the script.** With the English prompt and no pinned language, Kannada came back romanised or in Telugu script. Kannada words in the prompt keep it in Kannada script.
+- **Pinning `kn` is not better.** It ties on pure-Kannada turns, wrecks the code-mixed turn, and could never hear an English caller. With `en,kn` the language is left to Whisper, the prompt is bilingual, and it switches to the Kannada prompt once the call is Kannada.
+- **Accuracy is usable for intent, but not exact.** "EMI" became `ಎಮೇ` or `AMIAS`, and "ನನ್ನ" lost letters. Spoken digits come back as Kannada number words (ಒಂಬತ್ತು ಎಂಟು …), with 5 heard as `ಆಯದು` and the year garbled (`ಒಂಬಯನುರ ಎಂಬತ್ತಯಿದು`). The support prompt now lists the Kannada digit words, but **whether the agent verifies from this turn is untested** (see below).
+- **Confidence filter:** every shipped-setting segment scored avg_logprob −0.14 to −0.49, so the −0.7 threshold kept them all, and no change was needed. It dropped one romanised turn under the English prompt (−0.701) and the pinned-`kn` garbage (−0.825). The values are in `backend/voice/tests/fixtures/kannada_stt_segments.json`.
+- **Cost to English when `en,kn` is on:** 2 English clips (Indian voice). Pinned English with the domain prompt gave `My number is 987-6500002 and I was born on 3 November 1985` and `SR-40200`. Auto with the bilingual prompt gave `987650002` (**a digit lost**) and `born` misheard as `ban`, and `SR-40 to 00` (which `normalise_refs` repairs to `SR-40200`). This is 2 clips, so it's an indication only. Keep `VOICE_LANGUAGES=en` unless Kannada is being demoed.
+
+**Not run:** the two scenarios through `eval.run_scenarios --audio --accent kn`. The team paused all Groq use for the live demo, so the agent's replies to these transcripts (intents, verification, the Kannada reply and voice) are covered only by offline unit tests with fakes. To run them when quota allows (about 6 speech-to-text and 20 LLM requests), start a voice service on a spare port with `VOICE_LANGUAGES=en,kn`, then run `python -m eval.run_scenarios --voice http://localhost:<port> --audio --accent kn --condition clean --only 13-kannada-repayment 14-kannada-statement`.

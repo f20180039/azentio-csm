@@ -1,0 +1,44 @@
+{
+  "_about": "Groq whisper-large-v3-turbo verbose_json segments for the rendered kn-IN-SapnaNeural scenario turns (31 Oct 2026). kept: VOICE_LANGUAGES=en,kn settings (no pinned language, bilingual prompt). rejected: the same clip with language pinned to kn, which garbled the code-mixed turn.",
+  "kept": [
+    {
+      "file": "13-kannada-repayment_t01.wav",
+      "text": " ನನಮುಂದಿನ ಎಮೇಯಾವಾಗ.",
+      "avg_logprob": -0.37092012,
+      "no_speech_prob": 2.4437904e-06
+    },
+    {
+      "file": "13-kannada-repayment_t02.wav",
+      "text": " ನನ್ನ, ಮೋಬೈಲ್ ನಂಬರ್ ಒಂಬತ್ತು ಎಂಟು ಎಳು, ಆರು ಆಯದು ಸೊನ್ನೆ ಸೊನ್ನೆ ಸೊನ್ನೆ ಸೊನ್ನೆ ಎರಡು, ಹುಟ್ಟಿದ ದಿನಾಂಕ ಮೂರು ನವೆಂಬರ್ ಒಂದು ಸಾವಿರ ಒಂಬಯನುರ ಎಂಬತ್ತಯಿದು.",
+      "avg_logprob": -0.14381385,
+      "no_speech_prob": 1.8000603e-05
+    },
+    {
+      "file": "13-kannada-repayment_t03.wav",
+      "text": " ನನವ್ ಮುಂದಿನ AMIASಟು ಯಾವಾಗ ಕಟ್ಟಬೇಕು.",
+      "avg_logprob": -0.31025887,
+      "no_speech_prob": 5.722046e-05
+    },
+    {
+      "file": "14-kannada-statement_t01.wav",
+      "text": " ನನಗೆ ನನನ ಲೋನ್, ಸ್ಟೇಟ್ಮೆಟ್ ಬೇಕು.",
+      "avg_logprob": -0.27594468,
+      "no_speech_prob": 9.357929e-06
+    },
+    {
+      "file": "14-kannada-statement_t03.wav",
+      "text": " DEVITTO, STATEMENT REQUEST, MARDI.",
+      "avg_logprob": -0.48967507,
+      "no_speech_prob": 4.172325e-07
+    }
+  ],
+  "rejected": [
+    {
+      "file": "14-kannada-statement_t03.wav",
+      "text": " ಬ್ರಿಟು, ಱ್ಟೆ ಟೆಟುಟು, ಮರಡೀ.",
+      "avg_logprob": -0.8245026,
+      "no_speech_prob": 8.34465e-07,
+      "compression_ratio": 1.2407408
+    }
+  ]
+}

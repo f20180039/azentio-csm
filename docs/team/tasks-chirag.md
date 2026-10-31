@@ -136,22 +136,23 @@ Status markers: `[ ]` todo · `[~]` in progress (add your name and the branch) �
 - [x] Step 5: In the README's "With Docker" section, write what you actually ran, including the note that browser microphone calls on macOS need the voice service run natively (WebRTC from Docker Desktop). Delete stale lines (Swagger, Postgres).
 - [x] Step 6: Commit: `chore(docker): compose runs the Python API, simulator, voice and web end to end`.
 
-- [~] (Anshuman, at the team lead's request; on develop) **C8 (stretch): Kannada callers** (needs: C6, approval: Anshuman)
+- [x] **C8 (stretch): Kannada callers** (needs: C6, approval: Anshuman)
 
 The team lead chose Kannada as the second language (most teams will do Hindi).
 
 **Files:** `backend/voice/app/speech.py`, `backend/voice/app/speech_file.py`, `backend/voice/app/support_prompt.py`, the TTS voice choice in `backend/voice/app/support_pipeline.py` and `main.py` (`spoken_reply`), `backend/voice/app/config.py`. Add scenarios under `backend/voice/eval/scenarios/` and tests under `backend/voice/tests/`.
 
-- [ ] Step 1: **Language setting.**
+- [x] Step 1: **Language setting.**
   - Add `VOICE_LANGUAGES` (default `en`; demo value `en,kn`).
   - When it includes `kn`, don't pin English for speech-to-text: let Whisper detect the language (`kn` is a Whisper language).
   - Keep the English domain prompt for English, and add a short Kannada one with common banking words as callers say them (EMI, ಸಾಲ, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್).
   - Whisper's Kannada accuracy is lower than its English or Hindi, so measure it (Step 5) before relying on it. If a `SARVAM_API_KEY` is available, Sarvam's speech-to-text handles Kannada better; adding it as an option is fine.
-- [ ] Step 2: **Replies in the caller's language.** The support prompt says: reply in the language the caller used (English or Kannada; mixed Kannada-English is fine), keep amounts in digits plus the `*_spoken` form, and keep tool calls and arguments in English.
-- [ ] Step 3: **Voice.** If the reply is mostly Kannada script or the call's detected language is Kannada, speak it with `kn-IN-SapnaNeural`; otherwise use the existing English voice.
-- [ ] Step 4: **Tests:**
+- [x] Step 2: **Replies in the caller's language.** The support prompt says: reply in the language the caller used (English or Kannada; mixed Kannada-English is fine), keep amounts in digits plus the `*_spoken` form, and keep tool calls and arguments in English.
+- [x] Step 3: **Voice.** If the reply is mostly Kannada script or the call's detected language is Kannada, speak it with `kn-IN-SapnaNeural`; otherwise use the existing English voice.
+- [x] Step 4: **Tests:**
   - offline unit tests for the language choice;
   - a reply in Kannada script selects the Kannada voice;
   - the prompt contains the language rule.
-- [ ] Step 5: **Scenarios.** Write 2 Kannada scenarios (e.g. Rahul asking "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", and a statement request). Render them with the audio renderer; it needs a Kannada voice mapping (`kn`: `kn-IN-SapnaNeural`), so add one. Run them with `python -m eval.run_scenarios --audio --accent kn --only <ids>`, and report transcript accuracy honestly.
-- [ ] Step 6: Commit: `feat(voice): Kannada callers (detected language, Kannada voice)`.
+- [x] Step 5: **Scenarios.** Write 2 Kannada scenarios (e.g. Rahul asking "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", and a statement request). Render them with the audio renderer; it needs a Kannada voice mapping (`kn`: `kn-IN-SapnaNeural`), so add one. Run them with `python -m eval.run_scenarios --audio --accent kn --only <ids>`, and report transcript accuracy honestly.
+  - Done: transcript accuracy in `docs/stt-benchmark.md` ("Kannada"). Pending: the harness run, paused with all Groq use during the live demo (command in that section).
+- [x] Step 6: Commit: `feat(voice): Kannada callers (detected language, Kannada voice)`.
