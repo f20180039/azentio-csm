@@ -73,10 +73,11 @@ def test_complaint_schema_offers_an_optional_related_reference():
     complaint = next(t for t in SUPPORT_TOOL_SCHEMAS if t["function"]["name"] == SupportTool.REGISTER_COMPLAINT)["function"]["parameters"]
     assert "TXN-88213" in complaint["properties"]["related_ref"]["description"]
     assert "related_ref" not in complaint["required"]
+    assert "pass the account, loan or transaction reference as related_ref when the caller gives one" in support_prompt()
 
 
 def test_prompt_tells_the_agent_how_to_report_ticket_status():
     p = support_prompt()
     assert "REQUEST STATUS" in p and "AWAITING_INFO" in p and "REJECTED" in p
-    assert "IN_PROGRESS" in p and "RESOLVED or CLOSED" in p and "offer to escalate" in p
+    assert "IN_PROGRESS" in p and "RESOLVED or CLOSED: say it is done and read the progress note" in p and "offer to escalate" in p
     assert p.index("SERVICE REQUESTS:") < p.index("REQUEST STATUS:") < p.index("COMPLAINTS:")
