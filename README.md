@@ -426,6 +426,7 @@ Their measured speech-to-text numbers are in `docs/stt-benchmark.md` § Hindi; t
 - Set the `TWILIO_*` and `PUBLIC_BASE_URL` values in `.env` (see `.env.example`).
 - Run `cloudflared tunnel --url http://localhost:7861` and put its https URL in `PUBLIC_BASE_URL`.
 - Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there, unless the request comes through the panel's proxy carrying `VOICE_PROXY_TOKEN` (see *Share the demo from one laptop*).
+- `ALLOW_PROXIED_REQUESTS=true` (for hosting the voice service on Render) turns that guard off completely: anyone with the voice URL can use every voice endpoint with no token, spending the LLM and speech-to-text quota and placing phone calls to the numbers in `TWILIO_ALLOWED_TO`. Set it only for the judging window and remove it afterwards. Leave it unset on the demo laptop.
 - Details are in `backend/voice/README.md`.
 
 ---
