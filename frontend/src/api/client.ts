@@ -153,6 +153,8 @@ function flattenExtraction(e: ExtractionSummary & { extraction?: ExtractionSumma
 export interface CaseQuery {
   status?: CaseStatus | '';
   caseType?: string;
+  dateFrom?: string;
+  dateTo?: string;
   page?: number;
   size?: number;
 }
@@ -190,6 +192,8 @@ const liveApi = {
     const params = new URLSearchParams();
     if (q.status) params.set('status', q.status);
     if (q.caseType) params.set('caseType', q.caseType);
+    if (q.dateFrom) params.set('dateFrom', q.dateFrom);
+    if (q.dateTo) params.set('dateTo', q.dateTo);
     params.set('page', String(q.page ?? 0));
     params.set('size', String(q.size ?? 50));
     const page = normalisePage<CaseSummary>(await get(`${CoreApiPath.CASES}?${params}`));

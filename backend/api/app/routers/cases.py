@@ -19,10 +19,12 @@ class DecisionRequest(BaseModel):
 
 
 @router.get("")
-def list_cases(status: str | None = None, caseType: str | None = None, page: int = 0, size: int = 20,
+def list_cases(status: str | None = None, caseType: str | None = None,
+               dateFrom: str | None = None, dateTo: str | None = None,
+               page: int = 0, size: int = 20,
                _: User = Depends(staff), s: Services = Depends(services)):
     parsed = parse(CaseStatus, "status", status) if status else None
-    return s.cases.list(parsed, caseType, page, size)
+    return s.cases.list(parsed, caseType, page, size, date_from=dateFrom, date_to=dateTo)
 
 
 @router.get(ApiPath.CASE)

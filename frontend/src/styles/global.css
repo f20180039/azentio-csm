@@ -167,7 +167,7 @@ a { color: var(--accent-text); text-underline-offset: 3px; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--accent-text); }
 .btn.ghost:hover:not(:disabled) { background: var(--accent-soft); border-color: transparent; }
 .btn.sm { padding: 5px 10px; font-size: var(--fs-xs); }
-input[type='text'], input[type='password'], input[type='number'], textarea {
+input[type='text'], input[type='password'], input[type='number'], input[type='date'], textarea {
   font: inherit;
   font-size: var(--fs-sm);
   color: var(--ink);
