@@ -2,6 +2,10 @@ GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you t
 
 
 MAX_LESSONS, MAX_LESSON_CHARS = 10, 1200
+LANGUAGE_RULE = ("reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
+                 "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
+                 "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
+                 "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Tool calls and their arguments are always in English.")
 
 
 def support_prompt(lessons: list[str] | None = None) -> str:
@@ -60,5 +64,6 @@ def _base_prompt() -> str:
         "Then say a short goodbye and call end_call.\n"
         "Only offer help your tools can give (balances, loans, schedules, transactions, tickets, complaints, insurance, approved product "
         "answers); never offer to open accounts, start applications or move money.\n"
-        "STYLE: one or two short spoken sentences, no lists, no markdown, no raw codes or JSON. English only."
+        f"LANGUAGE: {LANGUAGE_RULE}\n"
+        "STYLE: one or two short spoken sentences, no lists, no markdown, no raw codes or JSON."
     )

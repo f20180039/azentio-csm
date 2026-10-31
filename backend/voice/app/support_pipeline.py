@@ -23,7 +23,7 @@ from pipecat.transports.base_transport import BaseTransport
 from . import phone
 from .edge_tts_service import EdgeTTSService
 from .recordings import join_wavs
-from .speech import build_stt, build_vad, keep_transcript
+from .speech import CallLanguage, build_stt, build_vad, keep_transcript
 from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
 from .support_tools import CallSession
@@ -235,9 +235,10 @@ class SupportResponder(FrameProcessor):
 
 def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTransport, audio_sample_rate: int | None = None) -> PipelineWorker:
     responder = SupportResponder(brain, settings)
+    language = CallLanguage(settings.voice_languages)  # heard by speech-to-text, followed by the voice
     task = PipelineWorker(
-        Pipeline([transport.input(), VADProcessor(vad_analyzer=build_vad()), build_stt(settings), responder,
-                  EdgeTTSService(voice=settings.tts_voice), transport.output()]),
+        Pipeline([transport.input(), VADProcessor(vad_analyzer=build_vad()), build_stt(settings, language), responder,
+                  EdgeTTSService(voice=settings.tts_voice, call_language=language), transport.output()]),
         params=PipelineParams(enable_metrics=True, **({"audio_in_sample_rate": audio_sample_rate, "audio_out_sample_rate": audio_sample_rate}
                                                      if audio_sample_rate else {})),
     )

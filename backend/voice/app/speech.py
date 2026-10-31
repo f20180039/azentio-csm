@@ -7,6 +7,9 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TranscriptionFrame
 from pipecat.services.groq.stt import GroqSTTService
+from pipecat.transcriptions.language import Language
+
+from .vocab import SpeechLanguage
 
 # Live voice detection (docs/stt-benchmark.md): stopping at 0.4 s instead of 0.2 s splits ~30% fewer sentences in two,
 # so fewer speech-to-text requests and fewer half-sentence turns, for 0.2 s more end-of-turn wait.
@@ -19,12 +22,20 @@ MIN_SPEECH_SECS = 0.25      # shorter bursts (a cough, a door) start no segment
 PRE_ROLL_SECS = 0.2         # keep the start of the first word
 POST_ROLL_SECS = 0.2
 MERGE_GAP_SECS = 0.6        # a pause inside a sentence stays one segment
-LANGUAGE = "en"
+LANGUAGE = SpeechLanguage.ENGLISH.value
 # Groq's turbo always reports no_speech_prob 0, so log-probability carries the filter (removed 5/20 false transcripts, 0 speech lost)
 NO_SPEECH_PROB_MAX = 0.5
 AVG_LOGPROB_MIN = -0.7
 # The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
 DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001."
+# Kannada (docs/stt-benchmark.md, "Kannada"): with the English prompt and no pinned language, Whisper wrote Kannada speech
+# romanised or in Telugu script; Kannada words in the prompt keep it in Kannada script. Groq's detected-language field named
+# the Kannada clips English, Tamil or Hindi, so the call's language is read from the transcript's script instead.
+BILINGUAL_PROMPT = "Bank customer call. ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, NACH, KYC, statement, SR-40102."
+KANNADA_PROMPT = "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102."
+KANNADA_VOICE = "kn-IN-SapnaNeural"
+_KANNADA_CHAR = re.compile(r"[ಀ-೿]")
+_LETTER = re.compile(r"[^\W\d_]")
 
 # Whisper's well-known inventions on silence and noise. Not "okay" or "bye": callers say those.
 PHANTOMS = {"thank you", "thanks for watching", "thank you for watching", "you", "thank you so much", "please subscribe"}
@@ -48,25 +59,80 @@ def normalise_refs(text: str) -> str:
     return _REF.sub(fix, text)
 
 
+def is_mostly_kannada(text: str | None) -> bool:
+    letters = _LETTER.findall(text or "")
+    return bool(letters) and 2 * sum(1 for c in letters if _KANNADA_CHAR.match(c)) >= len(letters)
+
+
+class CallLanguage:
+    """The language one call is in: Kannada from a mostly-Kannada transcript until the caller speaks English again."""
+
+    def __init__(self, enabled: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)):
+        self.enabled = enabled
+        self.current = SpeechLanguage.ENGLISH if SpeechLanguage.ENGLISH in enabled else enabled[0]
+
+    @property
+    def detects(self) -> bool:
+        """Several languages enabled: Whisper detects the language instead of being pinned to one."""
+        return len(self.enabled) > 1
+
+    def heard(self, text: str | None) -> None:
+        if self.detects and _LETTER.search(text or ""):
+            self.current = SpeechLanguage.KANNADA if is_mostly_kannada(text) else SpeechLanguage.ENGLISH
+
+    def stt_language(self) -> str | None:
+        return None if self.detects else self.enabled[0].value
+
+    def stt_prompt(self) -> str:
+        if SpeechLanguage.KANNADA not in self.enabled:
+            return DOMAIN_PROMPT
+        return KANNADA_PROMPT if self.current == SpeechLanguage.KANNADA else BILINGUAL_PROMPT
+
+
+def voice_for(text: str, default: str, call: CallLanguage | None = None) -> str:
+    """Kannada voice for a reply in Kannada script or during a Kannada call; the configured voice otherwise."""
+    kannada_call = call is not None and call.current == SpeechLanguage.KANNADA
+    return KANNADA_VOICE if is_mostly_kannada(text) or kannada_call else default
+
+
 def build_vad() -> SileroVADAnalyzer:
     return SileroVADAnalyzer(params=VADParams(confidence=VAD_CONFIDENCE, min_volume=VAD_MIN_VOLUME,
                                               start_secs=VAD_START_SECS, stop_secs=VAD_STOP_SECS))
 
 
 class RecordingGroqSTT(GroqSTTService):
-    """Groq Whisper that attaches each segment's WAV to its transcript, so the turn's audio can be played back."""
+    """Groq Whisper that attaches each segment's WAV to its transcript, so the turn's audio can be played back. With several
+    languages enabled it leaves the language to Whisper and takes the prompt from the call's language."""
+
+    def __init__(self, *, call_language: CallLanguage | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self.call_language = call_language or CallLanguage()
+
+    async def _transcribe(self, audio: bytes):
+        if not self.call_language.detects:
+            return await super()._transcribe(audio)
+        # GroqSTTService always sends a language, so detection needs its own request
+        kwargs = {"file": ("audio.wav", audio, "audio/wav"), "model": self._settings.model,
+                  "response_format": "verbose_json" if self._include_prob_metrics else "json",
+                  "prompt": self.call_language.stt_prompt()}
+        if self._settings.temperature is not None:
+            kwargs["temperature"] = self._settings.temperature
+        return await self._client.audio.transcriptions.create(**kwargs)
 
     async def run_stt(self, audio: bytes):
         async for frame in super().run_stt(audio):
             if isinstance(frame, TranscriptionFrame):
                 frame.audio_wav = audio
+                self.call_language.heard(keep_transcript(frame))
             yield frame
 
 
-def build_stt(settings) -> GroqSTTService:
+def build_stt(settings, call_language: CallLanguage | None = None) -> GroqSTTService:
+    call_language = call_language or CallLanguage(settings.voice_languages)
     # verbose_json gives per-segment confidence, so keep_transcript can drop what the model made up from noise
-    return RecordingGroqSTT(api_key=settings.groq_api_key, include_prob_metrics=True,
-                          settings=GroqSTTService.Settings(model=settings.stt_model, prompt=DOMAIN_PROMPT))
+    return RecordingGroqSTT(api_key=settings.groq_api_key, include_prob_metrics=True, call_language=call_language,
+                            settings=GroqSTTService.Settings(model=settings.stt_model, prompt=call_language.stt_prompt(),
+                                                             language=Language(call_language.stt_language() or LANGUAGE)))
 
 
 def is_phantom(text: str) -> bool:
