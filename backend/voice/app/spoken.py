@@ -35,7 +35,7 @@ def spoken_inr(n: int) -> str:
     return " ".join(parts) + " rupees"
 
 
-HYPHENS = "-\u2010\u2011\u2012\u2013"  # the model sometimes writes a reference with a non-breaking (U+2011) or en (U+2013) dash
+HYPHENS = "-\u2010\u2011\u2012\u2013\u2014"  # the model sometimes writes a reference with a non-breaking (U+2011), en (U+2013) or em (U+2014) dash
 MOBILE_GROUP = 5  # a 10-digit mobile is read in two groups of five: "9 8 7 6 5, 0 0 0 0 2"
 _REFERENCE = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[" + HYPHENS + r"](\d+)\b", re.I)
 _MOBILE = re.compile(rf"\b([{MOBILE_FIRST_DIGITS}]\d{{{MOBILE_GROUP - 1}}}) ?(\d{{{MOBILE_LEN - MOBILE_GROUP}}})\b")

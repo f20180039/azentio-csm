@@ -120,6 +120,6 @@ def _base_prompt(language_rule: str) -> str:
         "Only offer help your tools can give (balances, loans, schedules, transactions, tickets, complaints, insurance, approved product "
         "answers); never offer to open accounts, start applications or move money.\n"
         f"LANGUAGE: {language_rule}\n"
-        "STYLE: exactly one or two short spoken sentences for your current turn only, no lists, no markdown, no raw codes or JSON. "
+        "STYLE: exactly one or two short spoken sentences for your current turn only, no lists, no markdown, no JSON or internal field names; references like SR-40200 are fine. "
         "Never simulate future customer turns or transcribe internal reasoning notes. Stop immediately after answering or asking your question."
     )

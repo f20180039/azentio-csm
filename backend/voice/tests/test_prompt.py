@@ -58,3 +58,4 @@ def test_prompt_asks_for_written_references_and_amounts():
         assert "amounts with the rupee sign and digits (e.g. ₹12,450)" in p
         assert "Never spell references or numbers out in words" in p
         assert "letter by letter" not in p and "*_spoken" not in p and "four zero two zero zero" not in p
+        assert "no raw codes" not in p  # STYLE must not contradict the written-reference rule

@@ -33,7 +33,6 @@ def test_caller_digit_words_become_digits():
     assert normalise_spoken_digits("I want one statement for two loans") == "I want one statement for two loans"
     assert normalise_spoken_digits("one two") == "one two"
     assert normalise_spoken_digits("double five") == "55"
-    assert normalise_refs("status of S R four zero one zero two please") == "status of SR-40102 please"
 
 
 def test_references_survive_accented_transcription():

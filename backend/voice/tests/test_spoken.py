@@ -23,6 +23,7 @@ def test_speakable_spells_references_and_mobiles():
     assert speakable("Your reference is SR-40200.") == "Your reference is S R, 4 0 2 0 0."
     assert speakable("complaint reference CMP\u201150200 is noted") == "complaint reference C M P, 5 0 2 0 0 is noted"  # U+2011
     assert speakable("CMP\u201350200") == "C M P, 5 0 2 0 0"  # U+2013
+    assert speakable("CMP\u201450200") == "C M P, 5 0 2 0 0"  # U+2014 em dash
     assert speakable("TXN-90011 on PL-31002") == "T X N, 9 0 0 1 1 on P L, 3 1 0 0 2"
     assert speakable("registered mobile 98765 00002") == "registered mobile 9 8 7 6 5, 0 0 0 0 2"
     assert speakable("mobile 9876500002") == "mobile 9 8 7 6 5, 0 0 0 0 2"
