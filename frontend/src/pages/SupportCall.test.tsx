@@ -114,6 +114,26 @@ describe('SupportCall', () => {
     expect(within(log).getByText('No speech detected')).toBeInTheDocument();
     expect(screen.getByLabelText('Reply to a.wav')).toHaveAttribute('src', 'data:audio/wav;base64,UklGRgAAAA==');
   });
+
+  it('ending an already-ended call closes the dialog without showing conflict error', async () => {
+    const live: SupportCallRecord = { ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null };
+    h.getCall.mockResolvedValue(live);
+    const { ApiError } = await import('../api/errors');
+    h.endCall.mockRejectedValue(new ApiError({ status: 409, title: 'Conflict', detail: 'CALL_ALREADY_ENDED' }));
+    mount(`/support/calls/${live.id}`);
+
+    const endBtn = await screen.findByRole('button', { name: 'End call' });
+    fireEvent.click(endBtn);
+
+    const dialog = screen.getByRole('dialog', { name: 'End this call' });
+    expect(dialog).toBeInTheDocument();
+
+    const confirmBtn = within(dialog).getByRole('button', { name: 'End call' });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText('CALL_ALREADY_ENDED')).not.toBeInTheDocument();
+  });
 });
 
 describe('customer turn playback', () => {

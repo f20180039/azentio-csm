@@ -28,13 +28,13 @@ def test_enums_defined():
     assert ClaimStatus.UNDER_REVIEW.value == "UNDER_REVIEW"
 
 
-def test_seeds_load_8_customers(tmp_path: Path):
+def test_seeds_load_9_customers(tmp_path: Path):
     db_file = tmp_path / "test_sim.db"
     store = BankStore(db_path=db_file, seed_dir=DEFAULT_SEED_DIR)
-    assert len(store.customers) == 8
+    assert len(store.customers) == 9
 
     # Verify all expected customer refs exist
-    expected_refs = {f"CUST-100{i}" for i in range(1, 9)}
+    expected_refs = {f"CUST-100{i}" for i in range(1, 10)}
     assert set(store.customers.keys()) == expected_refs
 
     # Check mobile and dob for Asha Verma

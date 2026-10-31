@@ -21,6 +21,7 @@ Dates are relative to the simulator's start, as the seed stores them ("in 5 days
 | Vikram Rao (`CUST-1006`) | `98765 00006` | `1995-12-05` | Home loan, open complaint |
 | Sana Mirza (`CUST-1007`) | `98765 00007` | `1999-05-18` | Rejected application, low balance |
 | David Fernandes (`CUST-1008`) | `98765 00008` | `1982-03-09` | Disputed ₹48,999 card payment |
+| Demo Caller (`CUST-1009`) | `93809 39280` | `1990-01-01` |  |
 
 ## Asha Verma
 
@@ -186,6 +187,20 @@ Card payment TXN-90011 he will say he didn't make: complaint plus escalation.
 | Transaction | When | Description | Amount | Status |
 |---|---|---|---|---|
 | `TXN-90011` | 1 days ago | POS Debit - Luxury Electronics Mumbai | −₹48,999 | posted |
+
+
+## Demo Caller
+
+
+
+**Verify:** "My number is nine three eight zero nine, three nine two eight zero, and I was born on the 1st January 1990."
+
+| Say | Expect |
+|---|---|
+| "Please send me my loan statement." | A new SR- ticket, read back letter by letter and digit by digit |
+
+
+
 
 
 ## Tests that must be refused
