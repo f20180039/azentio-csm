@@ -305,6 +305,17 @@ export interface SupportVoiceHandlers {
  * Same transport as the renewals call (api/voice.ts). The offer goes through supportOffer, so the
  * call_id the voice service creates comes back to the page; transcripts and meta arrive by polling Spring.
  */
+/** Browser-side clean-up of the caller's microphone: background noise, the agent's own voice (echo) and level swings. */
+export const MIC_CONSTRAINTS: MediaTrackConstraints = { noiseSuppression: true, echoCancellation: true, autoGainControl: true };
+
+export async function cleanMicrophone(track: MediaStreamTrack): Promise<void> {
+  try {
+    await track.applyConstraints(MIC_CONSTRAINTS);
+  } catch {
+    /* a browser that can't apply them keeps the raw microphone */
+  }
+}
+
 async function liveConnectSupportVoice(
   callId: string | undefined,
   audio: HTMLAudioElement | null,
@@ -320,6 +331,10 @@ async function liveConnectSupportVoice(
     enableCam: false,
     callbacks: {
       onTrackStarted: (track, participant) => {
+        if (track.kind === 'audio' && participant?.local) {
+          void cleanMicrophone(track);
+          return;
+        }
         if (track.kind === 'audio' && !participant?.local && audio) {
           audio.srcObject = new MediaStream([track]);
           void audio.play().catch(() => undefined);

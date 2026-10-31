@@ -1,5 +1,6 @@
 """The speech front end shared by live calls and recorded-audio simulation: voice detection settings, the speech-to-text
 service, and the filter that drops transcripts the model invents from noise. Values are tuned from spikes/stt-bench."""
+import os
 import re
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -9,9 +10,9 @@ from pipecat.services.groq.stt import GroqSTTService
 
 # Live voice detection (docs/stt-benchmark.md): stopping at 0.4 s instead of 0.2 s splits ~30% fewer sentences in two,
 # so fewer speech-to-text requests and fewer half-sentence turns, for 0.2 s more end-of-turn wait.
-VAD_CONFIDENCE = 0.7
-VAD_MIN_VOLUME = 0.6
-VAD_START_SECS = 0.2
+VAD_CONFIDENCE = float(os.environ.get("VOICE_VAD_CONFIDENCE", "0.7"))
+VAD_MIN_VOLUME = float(os.environ.get("VOICE_VAD_MIN_VOLUME", "0.6"))
+VAD_START_SECS = float(os.environ.get("VOICE_VAD_START_SECS", "0.3"))  # 0.3 s of speech before a segment opens: clicks and knocks don't
 VAD_STOP_SECS = 0.4
 # Recorded-audio trimming
 MIN_SPEECH_SECS = 0.25      # shorter bursts (a cough, a door) start no segment
@@ -53,7 +54,8 @@ def build_vad() -> SileroVADAnalyzer:
 
 
 def build_stt(settings) -> GroqSTTService:
-    return GroqSTTService(api_key=settings.groq_api_key,
+    # verbose_json gives per-segment confidence, so keep_transcript can drop what the model made up from noise
+    return GroqSTTService(api_key=settings.groq_api_key, include_prob_metrics=True,
                           settings=GroqSTTService.Settings(model=settings.stt_model, prompt=DOMAIN_PROMPT))
 
 
@@ -68,6 +70,21 @@ def is_invented_segment(segment: dict) -> bool:
             or is_phantom(segment.get("text", "")))
 
 
+def _segments(result) -> list[dict]:
+    segs = getattr(result, "segments", None) if result is not None else None
+    if segs is None and isinstance(result, dict):
+        segs = result.get("segments")
+    out = []
+    for s in segs or []:
+        out.append(s if isinstance(s, dict) else {k: getattr(s, k, None) for k in ("text", "no_speech_prob", "avg_logprob")})
+    return out
+
+
 def keep_transcript(frame: TranscriptionFrame) -> str | None:
-    text = (frame.text or "").strip()
+    """The caller's words with noise removed: segments Whisper rates as unlikely speech, and phantom phrases, are dropped."""
+    segments = _segments(getattr(frame, "result", None))
+    if segments:
+        text = " ".join((s.get("text") or "").strip() for s in segments if not is_invented_segment(s)).strip()
+    else:
+        text = (frame.text or "").strip()
     return None if is_phantom(text) else normalise_refs(text)

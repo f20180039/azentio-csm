@@ -37,6 +37,8 @@ SETTLE_SECS = float(os.environ.get("VOICE_TURN_SETTLE_SECS", "1.5"))  # quiet ti
 IDLE_PROMPT_SECS = float(os.environ.get("VOICE_IDLE_PROMPT_SECS", "5"))  # silence after the agent speaks before it checks in
 IDLE_HANGUP_SECS = float(os.environ.get("VOICE_IDLE_HANGUP_SECS", "3"))  # further silence after the check-in before it hangs up
 STILL_THERE = "Are you still there?"
+NOISY_BEFORE_ASKING = 2  # unusable, noise-only segments in a row before the agent asks the caller to repeat
+NOISY_ASK = "Sorry, there's some background noise. Could you say that again?"
 IDLE_GOODBYE = "I haven't heard anything, so I'll end the call now. Thank you for calling Azentio Demo Bank."
 
 
@@ -153,6 +155,7 @@ class SupportResponder(FrameProcessor):
         self._settings = settings
         self._gate = TurnGate(self._answer)
         self._idle = IdleWatch(self._check_in, self._hang_up)
+        self._noisy = 0
         self.abandoned = False
         self._transfers: set[asyncio.Task] = set()
 
@@ -180,8 +183,14 @@ class SupportResponder(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
             text = keep_transcript(frame)
             if text:
+                self._noisy = 0
                 self._idle.caller_active()
                 self._gate.transcript(text)
+            else:
+                self._noisy += 1  # the caller made sound but nothing usable came through
+                if self._noisy == NOISY_BEFORE_ASKING and not self._gate.busy:
+                    self._noisy = 0
+                    await self.push_frame(TTSSpeakFrame(NOISY_ASK))
             return
         await self.push_frame(frame, direction)
 

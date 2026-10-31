@@ -29,6 +29,24 @@ def test_logprob_carries_the_filter_on_turbo():
 
 def test_live_services_use_the_benchmarked_settings():
     params = build_vad().params
-    assert (params.confidence, params.min_volume, params.start_secs, params.stop_secs) == (0.7, 0.6, 0.2, 0.4)
+    assert (params.confidence, params.min_volume, params.start_secs, params.stop_secs) == (0.7, 0.6, 0.3, 0.4)
     stt = build_stt(Settings(groq_api_key="k"))
     assert stt._settings.prompt == DOMAIN_PROMPT and str(stt._settings.language).endswith("en")
+
+
+def test_live_transcripts_drop_segments_the_model_made_up_from_noise():
+    from types import SimpleNamespace
+    result = SimpleNamespace(segments=[
+        SimpleNamespace(text=" When is my next EMI?", no_speech_prob=0.0, avg_logprob=-0.3),
+        SimpleNamespace(text=" so the ok la mar vin", no_speech_prob=0.0, avg_logprob=-1.4),  # chatter from the room
+    ])
+    frame = TranscriptionFrame("When is my next EMI? so the ok la mar vin", "u", "t", result=result)
+    assert keep_transcript(frame) == "When is my next EMI?"
+    only_noise = TranscriptionFrame("so the ok", "u", "t", result=SimpleNamespace(segments=[
+        SimpleNamespace(text="so the ok", no_speech_prob=0.7, avg_logprob=-1.1)]))
+    assert keep_transcript(only_noise) is None
+
+
+def test_live_speech_to_text_asks_for_confidence_scores():
+    stt = build_stt(Settings(groq_api_key="k"))
+    assert stt._include_prob_metrics is True
