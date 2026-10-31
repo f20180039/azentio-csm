@@ -1,6 +1,6 @@
 # Azentio-CSM: customer service voice agent (problem #05)
 
-A production-grade voice agent platform for a bank's customer service line, built for the Azentio.ai Build Labs hackathon on synthetic data.
+A voice agent prototype for a bank's customer service line, built for the Azentio.ai Build Labs hackathon on synthetic data.
 
 Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
@@ -182,7 +182,7 @@ sequenceDiagram
   - **Recorded Audio Simulation:** Headless multipart audio ingestion (`POST /sim/audio`) supporting WAV, MP3, M4A, OGG, and WebM for automated testing and CI.
 - **Speech Front End (`app/speech.py`):**
   - **Silero VAD:** Confidence threshold of 0.7; cuts processing on background noise.
-  - **Whisper Biasing Prompt:** Domain prompt containing banking vocabulary and terminology, cutting transcription error rates by over 30%.
+  - **Whisper Biasing Prompt:** Domain prompt containing banking vocabulary and terminology. Measured in [docs/stt-benchmark.md](docs/stt-benchmark.md) on 96 synthetic clips (VAD-trimmed `whisper-large-v3-turbo`, without vs with the prompt): WER 4.6% to 3.7%, keyword accuracy 92.8% to 95.3%; that document's own caveat is that a WER gap under about 2 points is within noise on a set this size.
   - **Hallucination Suppression:** Filters invented noise loops and strips repetitive silent-frame artifacts.
   - **Spoken Digit Normalisation:** Translates spoken repetition phrases (`"4 times 0"` $\rightarrow$ `"0000"`, `"triple five"` $\rightarrow$ `"555"`, `"double zero"` $\rightarrow$ `"00"`) prior to tool calls and LLM inference.
   - **Reference Repair:** Automatic regex normalization of spoken references (`"S R four zero one zero two"` $\rightarrow$ `SR-40102`).
@@ -334,7 +334,7 @@ Start from a reset simulator (`curl -X POST -u ops:ops http://localhost:8090/v1/
 | 4 | Complaint with the caller's words | Still CUST-1004: "My fifteen thousand transfer failed, reference TXN-88213" | Status read from the record, no guessed cause, then a complaint CMP-… (category `FAILED_TRANSACTION`). The Complaints tab shows the structured summary, the caller's own words in quotes and an "About TXN-88213" pill. |
 | 5 | Escalation on repeated authentication failure | Any mobile with a wrong date of birth three times | `LOCKED`, nothing personal shared, and the agent hands over on its own: an escalation ESC-… with category `AUTH_LOCKED` on the Escalations tab, linked to the call. (Three unclear turns in a row give the same hand-over with `REPEATED_MISUNDERSTANDING`.) |
 | 5a | Verification keeps what was heard correctly (needs the `fix/verification-capture` hotfix on `develop`) | Give only the mobile number first, e.g. "My number is 98765 00002" | The agent asks only for the date of birth, spends no attempt, and verifies once the date arrives. On a genuine mismatch it asks to confirm both the first time and names the wrong field after the second failed attempt. |
-| 6 | Transcript correction on the call screen | Signed in as `reviewer/reviewer`, open the call, click **Bad answer** on an agent turn, type the corrected text, **Save feedback** | The original turn text stays as recognised; the correction sits beside it with the reviewer's name, and the write is on the audit chain (`/api/v1/audit/verify` still passes). |
+| 6 | Transcript correction on the call screen | Signed in as `reviewer/reviewer` (shown as Chirag), open the call, and on a *customer* turn click **Correct transcript**, edit the text, **Save** | The corrected reading leads the turn and the recognised words stay beneath it as "Heard as:"; "Corrected by Chirag" with the time shows under the turn; the audit chain records `transcript.corrected` with the original and corrected text, and `GET /api/v1/audit/verify` (admin login) still passes. **Remove correction** undoes it and records `transcript.correction_removed`. |
 | 7 | Operations dashboard | Look at the Calls, Tickets and Escalations tabs after the steps above | Ticket pills by status (amber for `Awaiting info`, red for `Rejected` SR-40103, green for `Resolved` SR-40105); a red "N failed" pill on any call where a bank API call failed (stop the simulator for one turn to force it); on the call screen each Retrieved card carries `OK`, `Failed` or `Declined` per tool call (a loan question before verification shows `Declined`). |
 
 **Hindi and Kannada calls.** With `VOICE_LANGUAGES=en,kn,hi` in `.env`, the greeting offers both languages and the agent follows the caller's script. Hindi (scenario 15): "मेरी अगली EMI कब है?", then "मेरा मोबाइल नंबर 98765 00002, जन्म तिथि 3 नवंबर 1985.", then "मेरी अगली EMI कितनी है, और कब भरनी है?". Kannada (scenario 13): "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", then the same details in Kannada. Expect the reply in the caller's language and voice, digits in ASCII, amounts in ₹; on the call screen every Kannada or Hindi turn carries a language chip with its English beneath ("English: When is my next EMI?"), and the "English first" switch swaps the order. The English is a separate translation call that lands a moment after the turn, so a turn may show its original first.
@@ -380,18 +380,18 @@ Their measured speech-to-text numbers are in `docs/stt-benchmark.md` § Hindi; t
 
 ---
 
-## Comprehensive Test Suite (774 Tests Total)
+## Test Suites
 
-Every service features automated test suites verifying contracts, guardrails, and role permissions:
+Every service has an automated test suite covering its contracts, guardrails and role permissions. Each command prints its own pass count; the counts move with every merge, so none are written here.
 
-| Service | Test Command | Tests Passed | Key Areas Verified |
-|---|---|---|---|
-| **Voice Agent** | `cd backend/voice && .venv/bin/python -m pytest -q` | **436 passed** | Tools & verification gates, brain routing backstop, escalation triggers, intent classifier, speech front end & reference repair, spoken multiplier normalisation, Kannada language rules, runaway turn cleanup, model chain failover, Twilio phone transfers. |
-| **Bank Simulator** | `cd backend/simulator && .venv/bin/python -m pytest -q` | **108 passed** | Verification gates, multi-tier lockouts (cross-call and per-caller brute force), record ownership boundaries, loan/account/card/insurance entities, ticket/complaint lifecycles, zero-downtime ops reset, SQLite FTS5 FAQ search. |
-| **System of Record API** | `cd backend/api && .venv/bin/python -m pytest -q` | **108 passed** | Support call contract, turn auditing, customer star ratings & feedback, review queue & lessons engine, insights analytics, role permissions (analyst, reviewer, admin, voice), SHA-256 audit hash chain integrity, renewal guardrails. |
-| **Frontend Web** | `cd frontend && npx vitest run` | **122 passed** (29 suites) | Operator desk live call views, phone dialing flows, session storage rehydration across refreshes, review queue, insights charts, scenario exports, component test suites. |
+| Service | Test Command | Key Areas Verified |
+|---|---|---|
+| **Voice Agent** | `cd backend/voice && .venv/bin/python -m pytest -q` | Tools & verification gates, brain routing backstop, escalation triggers, intent classifier, speech front end & reference repair, spoken multiplier normalisation, Kannada language rules, runaway turn cleanup, model chain failover, Twilio phone transfers. |
+| **Bank Simulator** | `cd backend/simulator && .venv/bin/python -m pytest -q` | Verification gates, multi-tier lockouts (cross-call and per-caller brute force), record ownership boundaries, loan/account/card/insurance entities, ticket/complaint lifecycles, ops reset, SQLite FTS5 FAQ search. |
+| **System of Record API** | `cd backend/api && .venv/bin/python -m pytest -q` | Support call contract, turn auditing, customer star ratings & feedback, review queue & lessons engine, insights analytics, role permissions (analyst, reviewer, admin, voice), SHA-256 audit hash chain integrity, renewal guardrails. |
+| **Frontend Web** | `cd frontend && npx vitest run` | Operator desk live call views, phone dialing flows, session storage rehydration across refreshes, review queue, insights charts, scenario exports, component test suites. |
 
-All test suites execute cleanly in CI and locally in under 15 seconds.
+Run them locally from the repo root; the frontend adds `npx tsc --noEmit` for types.
 
 ---
 
