@@ -16,7 +16,7 @@ from .intents import Intent
 from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits, script_language
 from .support_prompt import GREETING, support_prompt
-from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
+from .support_tools import SUPPORT_TOOL_SCHEMAS, UNAUTHORISED, CallSession, ComplaintCategory, Severity, run_support_tool
 from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, IntentSource, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
                     ToolError, TurnRole, VerifyField)
 
@@ -120,7 +120,6 @@ def window(messages: list[dict], turns: int = HISTORY_TURNS, state: str = "") ->
     return out
 
 
-UNAUTHORISED = re.compile(r"\b(did ?n[o']?t|never)\s+(make|made|do|authori[sz]e|recogni[sz]e)\b|\bunauthori[sz]ed\b|\bfraud", re.I)
 TEXT_TOOL_NAME = re.compile(r'^\s*\{.*?"name\\?"\s*:\s*\\?"(\w+)', re.S)
 
 

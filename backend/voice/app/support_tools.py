@@ -1,5 +1,6 @@
 """The front-desk agent's tools. Personal tools refuse here, before any HTTP call, when the caller is not verified; the
 simulator enforces the same rule again, so a prompt-injected tool call still gets nothing."""
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
@@ -7,10 +8,25 @@ from enum import StrEnum
 from .api_client import ApiUnavailable
 from .identity import MOBILE_LEN, clean_dob, clean_mobile
 from .simulator_client import SimulatorClient
-from .spoken import spoken_inr
+from .spoken import MOBILE_GROUP, spoken_inr
 from .vocab import OFFERED_TRIGGERS, EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError, VerifyField, VerifyMismatch
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
+
+# A caller reporting a payment they did not make, in their words or the model's reason: the fraud backstop and the hand-over
+# guard both read it. Lost or stolen cards belong with fraud for a hand-over.
+UNAUTHORISED = re.compile(r"\b(did ?n[o']?t|never)\s+(make|made|do|authori[sz]e|recogni[sz]e)\b|\bunauthori[sz]ed\b|\bfraud", re.I)
+LOST_OR_STOLEN = re.compile(r"\b(stolen|lost|theft|skimm)", re.I)
+# A hand-over reason that is really a verification detail the agent has not heard yet (or heard wrongly)
+VERIFICATION_REASON = re.compile(r"verif|identit|\bmobile\b|\bphone number\b|\bdate of birth\b|\bdob\b|\bdigits?\b|\bdetails?\b|mis-?heard", re.I)
+VERIFICATION_GUARDED_TRIGGERS = (EscalationTrigger.SENSITIVE, EscalationTrigger.UNRESOLVED)
+"""Model-chosen triggers that a missing detail must not reach: SENSITIVE (call 475b0ac5, turn 7) and UNRESOLVED (the next
+excuse). DISSATISFIED and CUSTOMER_REQUEST are the caller's own wish; AUTH_LOCKED is the backstop's, after the bank locked."""
+
+
+def is_fraud_handover(text: str) -> bool:
+    """Whether a hand-over reason or summary is about fraud, an unauthorised transaction, or a lost or stolen card."""
+    return bool(UNAUTHORISED.search(text) or LOST_OR_STOLEN.search(text))
 
 
 class TicketCategory(StrEnum):
@@ -67,6 +83,10 @@ NOT_VERIFIED = {"error": ToolError.NOT_VERIFIED, "note": "Ask for the registered
 ASK_BOTH = "Ask for the registered mobile number and date of birth."
 ASK_MOBILE_ONLY = "Ask only for the registered 10-digit mobile number; the date of birth is already noted."
 ASK_DOB_ONLY = "Ask only for the date of birth; the mobile number is already noted."
+KEEP_DOB = "Keep the date of birth."
+ALSO_ASK_DOB = "Also ask for their date of birth."
+NO_HANDOVER_FOR_DETAILS = {"error": ToolError.ASK_FIRST,
+                           "note": "Don't hand over for missing or misheard details. Ask again for what is missing, reading back what you heard."}
 CONFIRM_BOTH = ("The details do not match our records. Ask the caller to confirm both their mobile number and date of birth. "
                 "Do not say which one is wrong.")
 MISMATCH_NOTES = {
@@ -119,7 +139,8 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
     _tool(SupportTool.ESCALATE_TO_HUMAN,
           "Hand the caller to a human representative. Use trigger SENSITIVE at once for fraud, unauthorised transactions or distress; "
           "DISSATISFIED when the caller is unhappy with the help; UNRESOLVED when you could not answer or do what they need; "
-          "CUSTOMER_REQUEST when they ask for a person (first ask what they need and try to help: the first such request is refused).",
+          "CUSTOMER_REQUEST when they ask for a person (first ask what they need and try to help: the first such request is refused). "
+          "Never because a verification detail is missing or was misheard: ask again and read back what you heard.",
           {"trigger": _enum(OFFERED_TRIGGERS, "Why a person is needed"), "reason": {"type": "string"},
            "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["trigger", "reason", "summary"]),
     _tool(SupportTool.RECORD_RATING, "Record the caller's 1-5 rating of this call, and any comment, after you asked for it.",
@@ -148,13 +169,26 @@ def missing_details(call: CallSession, mobile: str | None, dob: str | None) -> d
     missing = [f for f in VerifyField if f not in have]
     if not missing:
         return None
-    if missing == [VerifyField.MOBILE]:
+    if VerifyField.MOBILE in missing and call.heard_digits and len(call.heard_digits) != MOBILE_LEN:
+        note = f"{read_back_heard(call.heard_digits)} {KEEP_DOB if VerifyField.DOB in have else ALSO_ASK_DOB}"
+    elif missing == [VerifyField.MOBILE]:
         note = ASK_MOBILE_ONLY
-        if call.heard_digits and len(call.heard_digits) != MOBILE_LEN:
-            note += f" The number heard had {len(call.heard_digits)} digits."
     else:
         note = ASK_DOB_ONLY if missing == [VerifyField.DOB] else ASK_BOTH
     return {"error": ToolError.MISSING_DETAILS, "missing": missing, "have": have, "note": note}
+
+
+def grouped_like_a_mobile(digits: str) -> str:
+    """The heard digits in the two groups a mobile is read in ('98765 0006'), so the caller recognises their own number."""
+    return f"{digits[:MOBILE_GROUP]} {digits[MOBILE_GROUP:]}".strip()
+
+
+def read_back_heard(digits: str) -> str:
+    """The note for a wrong-length mobile: say how many digits were heard, read them back, and ask for the full number.
+    The digits are the caller's own, read back to them; a full number is never written here."""
+    only = "only " if len(digits) < MOBILE_LEN else ""
+    return (f"Tell the caller you heard {only}{len(digits)} digits ({grouped_like_a_mobile(digits)}) and ask them to say the full "
+            f"{MOBILE_LEN}-digit mobile number again, slowly.")
 
 
 def apply_mismatch(call: CallSession, mismatch: str | None) -> str:
@@ -170,6 +204,16 @@ def apply_mismatch(call: CallSession, mismatch: str | None) -> str:
         call.heard_dob = None
         call.model_may_fill.discard(VerifyField.DOB)
     return MISMATCH_NOTES[VerifyMismatch(mismatch)]
+
+
+def is_premature_handover(call: CallSession, trigger: EscalationTrigger, why: str) -> bool:
+    """A hand-over the desk refuses: the caller is not verified and not locked, the model chose SENSITIVE or UNRESOLVED, and
+    its reason or summary is about verification (unable to verify, could not provide the mobile number, date of birth not
+    heard) rather than fraud. Rule chosen over 'same turn as a MISSING_DETAILS result' because it also catches the model's
+    next turn, and leaves distress or fraud hand-overs alone. After the bank locks the caller the backstop takes over."""
+    if call.verified or call.locked or trigger not in VERIFICATION_GUARDED_TRIGGERS:
+        return False
+    return bool(VERIFICATION_REASON.search(why)) and not is_fraud_handover(why)
 
 
 async def run_support_tool(client: SimulatorClient, call: CallSession, name: str, args: dict) -> dict:
@@ -258,6 +302,8 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             if earlier := next((r for r in call.refs if r.startswith(RefPrefix.ESCALATION)), None):
                 return {"escalated": True, "ref": earlier, "already_escalated": True,
                         "note": "This call is already with a person: give the same reference and say a colleague will be in touch."}
+            if is_premature_handover(call, trigger, f"{args.get('reason') or ''} {args.get('summary') or ''}"):
+                return NO_HANDOVER_FOR_DETAILS
             if trigger == EscalationTrigger.CUSTOMER_REQUEST:
                 call.human_requests += 1
                 if call.human_requests == 1:
