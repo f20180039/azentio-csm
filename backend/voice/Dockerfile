@@ -9,7 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
 
-RUN useradd --system --create-home --user-group voice && mkdir -p data/recordings && chown -R voice:voice data
+RUN (getent group voice || groupadd -r voice) && \
+    (getent passwd voice || useradd --system --create-home -g voice voice) && \
+    mkdir -p data/recordings && chown -R voice:voice data
 USER voice
 
 EXPOSE 7861
