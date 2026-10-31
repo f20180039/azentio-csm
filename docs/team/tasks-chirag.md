@@ -27,7 +27,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 7: Test (`backend/simulator/tests/test_health.py`): `GET /health` is 200 with the body above, and `GET /api/v1/chat/message` is 404. Run `cd backend/simulator && python -m pytest -q`.
 - [ ] Step 8: Run `docker compose config` with no errors. Commit: `chore(simulator): move FastAPI bank simulator to backend/simulator on 8090; api builds Spring again`.
 
-- [ ] **C2: Seed data and SQLite writes** (needs: C1)
+- [~] (Chirag, feat/c2-seed-and-store) **C2: Seed data and SQLite writes** (needs: C1)
 
 **Files:** create `backend/simulator/data/seed/{customers,applications,loans,accounts,transactions,tickets,complaints,policies,claims}.json`, `backend/simulator/app/store.py` and `backend/simulator/app/enums.py`.
 
