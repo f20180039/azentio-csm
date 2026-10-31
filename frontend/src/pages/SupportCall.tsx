@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CustomerCard } from '../components/CustomerCard';
 import { SpeakingBubble, speechStatus, useLiveSpeech } from '../components/LiveSpeech';
-import { PiiRevealProvider, PiiText } from '../components/PiiText';
-import { currentUsername } from '../api/client';
 import { ApiError } from '../api/errors';
 import {
   audioDataUrl,
@@ -14,7 +12,6 @@ import {
   verifiedCustomerRef,
   endCall,
   getCall,
-  getCallPii,
   intentLabel,
   intentTone,
   OUTCOME_LABEL,
@@ -23,7 +20,6 @@ import {
   SUPPORT_OUTCOMES,
   verificationOf,
   type CustomerProfile,
-  type PiiTokens,
   type SimTurn,
   type SupportCall as SupportCallRecord,
   type SupportOutcome,
@@ -36,7 +32,6 @@ import type { VoiceSession } from '../api/voice';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
-import { isDemoAdmin } from '../demoUsers';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
 import { Route } from '../routes';
 import { Highlight, matches } from '../search';
@@ -88,11 +83,7 @@ function Scalar({ k, v }: { k: string; v: unknown }) {
   if (typeof v === 'number' && MONEY_KEY.test(k)) return <span className="num">{formatInr(v)}</span>;
   if (typeof v === 'boolean') return <span>{v ? 'Yes' : 'No'}</span>;
   if (typeof v === 'number') return <span className="num">{v}</span>;
-  return (
-    <span>
-      <PiiText text={String(v)} />
-    </span>
-  );
+  return <span>{String(v)}</span>;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -167,17 +158,9 @@ export function RetrievedCard({ trace, retrieved, refs }: { trace: ToolTrace[]; 
           <div key={`${t.name}-${i}`} className="sc-tool">
             <div className="sc-tool-head">
               <code className="sc-tool-name">{t.name}</code>
-              {argText(t.args) && (
-                <span className="mono small muted">
-                  <PiiText text={argText(t.args)} />
-                </span>
-              )}
+              {argText(t.args) && <span className="mono small muted">{argText(t.args)}</span>}
             </div>
-            {t.result_summary && (
-              <div className="small">
-                <PiiText text={t.result_summary} />
-              </div>
-            )}
+            {t.result_summary && <div className="small">{t.result_summary}</div>}
             {retrieved[t.name] !== undefined && <Fields value={retrieved[t.name]} />}
           </div>
         ))}
@@ -234,7 +217,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTur
           <p className="muted sc-nospeech">No speech detected</p>
         ) : (
           <p>
-            <PiiText text={t.text} query={query} />
+            <Highlight text={t.text} query={query} />
           </p>
         )}
         {m.audio && callId && (
@@ -263,7 +246,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTur
         </time>
       </div>
       <p>
-        <PiiText text={t.text} query={query} />
+        <Highlight text={t.text} query={query} />
       </p>
       <RefPills refs={m.refs ?? []} query={query} />
       {audio && <audio controls src={audioDataUrl(audio)} aria-label="Agent reply audio" className="sc-audio" />}
@@ -586,10 +569,6 @@ export function SupportCall() {
   const [pausing, setPausing] = useState(false);
   const [results, setResults] = useState<SimTurn[]>(() => (location.state as { results?: SimTurn[] } | null)?.results ?? []);
   const [ending, setEnding] = useState<'closed' | 'open' | 'busy'>('closed');
-  // personal data behind the [KIND#n] tokens: admin only, fetched on demand, held in memory and dropped on toggle-off
-  const [revealed, setRevealed] = useState<PiiTokens | null>(null);
-  const [revealing, setRevealing] = useState(false);
-  const admin = isDemoAdmin(currentUsername());
   const session = useRef<VoiceSession | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -622,27 +601,6 @@ export function SupportCall() {
     const t = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(t);
   }, [callId, ended, refresh]);
-
-  useEffect(() => {
-    setRevealed(null); // revealed values belong to one call; moving to another drops them
-  }, [callId]);
-
-  async function toggleReveal() {
-    if (revealed) {
-      setRevealed(null);
-      return;
-    }
-    if (!callId) return;
-    setRevealing(true);
-    try {
-      const tokens = await getCallPii(callId);
-      if (!unmounted.current) setRevealed(tokens);
-    } catch (e) {
-      if (!unmounted.current) toastRef.current.error(e);
-    } finally {
-      if (!unmounted.current) setRevealing(false);
-    }
-  }
 
   useEffect(() => {
     unmounted.current = false;
@@ -809,7 +767,7 @@ export function SupportCall() {
   const badgeSource = call ?? { turns, verified: false };
 
   return (
-    <PiiRevealProvider value={revealed}>
+    <>
       <div className="case-head">
         <Link to={Route.SUPPORT} className="small">
           ← Customer service desk
@@ -836,24 +794,11 @@ export function SupportCall() {
               {callId && <span className="mono small muted">{callId}</span>}
             </div>
           </div>
-          <div className="row">
-            {admin && call && (
-              <button
-                className="btn"
-                onClick={() => void toggleReveal()}
-                disabled={revealing}
-                aria-pressed={!!revealed}
-                title="Personal data is stored as tokens; revealing it is recorded in the audit trail."
-              >
-                {revealing ? 'Revealing…' : revealed ? 'Hide personal data' : 'Show personal data'}
-              </button>
-            )}
-            {callId && !ended && (
-              <button className="btn danger" onClick={() => setEnding('open')} disabled={ending !== 'closed'}>
-                End call
-              </button>
-            )}
-          </div>
+          {callId && !ended && (
+            <button className="btn danger" onClick={() => setEnding('open')} disabled={ending !== 'closed'}>
+              End call
+            </button>
+          )}
         </div>
       </div>
 
@@ -1012,6 +957,6 @@ export function SupportCall() {
       {ending !== 'closed' && call && (
         <EndDialog initial={suggestOutcome(call)} busy={ending === 'busy'} onCancel={() => setEnding('closed')} onConfirm={(o) => void finish(o)} />
       )}
-    </PiiRevealProvider>
+    </>
   );
 }
