@@ -76,3 +76,76 @@ class ClaimStatus(StrEnum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     SETTLED = "SETTLED"
+
+
+class ErrorCode(StrEnum):
+    VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    LOCKED = "LOCKED"
+    CALLER_BLOCKED = "CALLER_BLOCKED"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    NOT_YOUR_RECORD = "NOT_YOUR_RECORD"
+    NOT_FOUND = "NOT_FOUND"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    UNAUTHORIZED = "UNAUTHORIZED"
+
+
+class VerifyOutcome(StrEnum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    LOCKED = "LOCKED"
+    CALLER_BLOCKED = "CALLER_BLOCKED"
+
+
+class LockScope(StrEnum):
+    CUSTOMER = "CUSTOMER"
+    CALLER = "CALLER"
+
+
+class EscalationCategory(StrEnum):
+    SECURITY = "SECURITY"
+
+
+class EscalationReason(StrEnum):
+    CALLER_BLOCKED = "CALLER_BLOCKED"
+
+
+class AuditAction(StrEnum):
+    VERIFY_ATTEMPT = "VERIFY_ATTEMPT"
+
+
+class RefPrefix(StrEnum):
+    TICKET = "SR"
+    COMPLAINT = "CMP"
+    ROUTED = "RQ"
+    ESCALATION = "ESC"
+
+
+class RecordKind(StrEnum):
+    TICKET = "ticket"
+    COMPLAINT = "complaint"
+    ROUTED = "routed"
+    ESCALATION = "escalation"
+
+
+class Route(StrEnum):
+    """Endpoint paths, relative to API_PREFIX."""
+    VERIFY = "/verify"
+    LOS_APPLICATIONS = "/los/applications"
+    LMS_LOANS = "/lms/loans"
+    LMS_SCHEDULE = "/lms/loans/{loan_id}/schedule"
+    CBS_ACCOUNTS = "/cbs/accounts"
+    CBS_TRANSACTIONS = "/cbs/transactions"
+    INSURANCE_POLICIES = "/insurance/policies"
+    INSURANCE_CLAIMS = "/insurance/claims"
+    CSM_TICKETS = "/csm/tickets"
+    CSM_TICKET = "/csm/tickets/{ref}"
+    CSM_COMPLAINTS = "/csm/complaints"
+    CSM_ROUTED = "/csm/routed"
+    CSM_ESCALATIONS = "/csm/escalations"
+    FAQ_SEARCH = "/faq/search"
+    OPS_RECORDS = "/ops/records"
+    OPS_RESET = "/ops/reset"
+
+
+API_PREFIX = "/v1"
+SESSION_HEADER = "X-Customer-Session"

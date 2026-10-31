@@ -11,8 +11,26 @@ class Settings(BaseSettings):
     # Network & Ports
     host: str = "0.0.0.0"
     port: int = 8090
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "*"]
-    
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+    cors_headers: list[str] = ["Authorization", "Content-Type", "Accept", "X-Customer-Session"]
+
+    # Customer verification
+    session_ttl_seconds: int = 900
+    verify_max_failures: int = 3
+    verify_window_minutes: int = 15
+    customer_lock_minutes: int = 15
+
+    # Per-caller brute-force protection (caller_ref, else call_id)
+    caller_window_minutes: int = 30
+    caller_max_distinct_customers: int = 3
+    caller_max_failures: int = 6
+    caller_block_minutes: int = 30
+
+    ticket_eta_days: int = 2
+
+    ops_username: str = "ops"
+    ops_password: str = "ops"
+
     # Internal microservices
     agent_url: str = os.getenv("AGENT_URL", "http://localhost:8000")
     voice_url: str = os.getenv("VOICE_URL", "http://localhost:7861")

@@ -34,7 +34,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
     def get(key: str, default: str) -> str:
         return os.environ.get(key) or file_values.get(key) or default
 
-    keys = {"groq": get("GROQ_API_KEY", ""), "gemini": get("GEMINI_API_KEY", ""), "mistral": get("MISTRAL_API_KEY", "")}
+    keys = {"groq": get("GROQ_API_KEY", ""), "gemini": get("GEMINI_API_KEY", ""), "mistral": get("MISTRAL_API_KEY", ""),
+            "ollama": "local"}  # a local Ollama needs no key; the link fails over fast if it is not running
     spec = get("VOICE_LLM_CHAIN", default_chain_spec(get("GEMINI_MODEL", ""), get("MISTRAL_MODEL", "")))
     return Settings(
         groq_api_key=keys["groq"],

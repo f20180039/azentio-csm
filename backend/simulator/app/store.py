@@ -1,6 +1,7 @@
 """In-memory seed data loader and SQLite-backed dynamic store for the Bank Simulator."""
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -12,9 +13,13 @@ from app.enums import (
     ComplaintCategory,
     Direction,
     InstalmentStatus,
+    LockScope,
     PolicyStatus,
     ProductType,
+    RecordKind,
+    RefPrefix,
     Severity,
+    VerifyOutcome,
     Stage,
     TicketCategory,
     TicketStatus,
@@ -28,10 +33,16 @@ DEFAULT_SEED_DIR = DEFAULT_DATA_DIR / "seed"
 DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "runtime" / "simulator.db"
 
 INITIAL_COUNTERS = {
-    "SR": 40199,
-    "CMP": 50199,
-    "RQ": 60199,
-    "ESC": 70199,
+    RefPrefix.TICKET: 40199,
+    RefPrefix.COMPLAINT: 50199,
+    RefPrefix.ROUTED: 60199,
+    RefPrefix.ESCALATION: 70199,
+}
+
+# Columns added after C2; existing runtime databases get them via ALTER TABLE.
+ADDED_COLUMNS = {
+    "verification_attempts": {"customer_ref": "TEXT", "caller_key": "TEXT", "target_key": "TEXT", "outcome": "TEXT"},
+    "escalations": {"category": "TEXT"},
 }
 
 
@@ -49,6 +60,7 @@ class BankStore:
     ):
         self.db_path = Path(db_path or os.getenv("SIMULATOR_DB_PATH") or DEFAULT_DB_PATH)
         self.seed_dir = Path(seed_dir or os.getenv("SIMULATOR_SEED_DIR") or DEFAULT_SEED_DIR)
+        self._fixed_today = today
         self.today = today or date.today()
 
         # In-memory seed containers
@@ -143,8 +155,28 @@ class BankStore:
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS lockouts (
+                    scope TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    locked_until TEXT NOT NULL,
+                    PRIMARY KEY (scope, key)
+                );
+
+                CREATE VIRTUAL TABLE IF NOT EXISTS faq_fts USING fts5(
+                    id,
+                    question,
+                    answer,
+                    tags,
+                    tokenize = 'porter'
+                );
                 """
             )
+            for table, columns in ADDED_COLUMNS.items():
+                existing = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+                for column, sql_type in columns.items():
+                    if column not in existing:
+                        con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
             for prefix, val in INITIAL_COUNTERS.items():
                 con.execute(
                     "INSERT OR IGNORE INTO reference_counters (prefix, last_val) VALUES (?, ?)",
@@ -259,23 +291,31 @@ class BankStore:
             item["submitted_on"] = (ref_date - timedelta(days=d_ago)).isoformat()
             self.claims.append(item)
 
-    def reset(self) -> None:
-        """Empties all dynamic write tables and resets reference counters."""
+        # 10. FAQs (FTS5 index with Porter stemmer)
+        self.seed_faqs = read_seed("faq")
         with self._get_connection() as con:
-            con.execute("DELETE FROM tickets")
-            con.execute("DELETE FROM complaints")
-            con.execute("DELETE FROM routed_queries")
-            con.execute("DELETE FROM escalations")
-            con.execute("DELETE FROM verification_attempts")
-            con.execute("DELETE FROM sessions")
+            con.execute("DELETE FROM faq_fts")
+            for item in self.seed_faqs:
+                tags_str = " ".join(item.get("tags", []))
+                con.execute(
+                    "INSERT INTO faq_fts (id, question, answer, tags) VALUES (?, ?, ?, ?)",
+                    (item["id"], item["question"], item["answer"], tags_str),
+                )
+            con.commit()
+
+    def reset(self) -> None:
+        """Empties all write tables (lockouts included), resets reference counters and reloads the seed."""
+        with self._get_connection() as con:
+            for table in ("tickets", "complaints", "routed_queries", "escalations",
+                          "verification_attempts", "sessions", "lockouts"):
+                con.execute(f"DELETE FROM {table}")
             for prefix, val in INITIAL_COUNTERS.items():
                 con.execute(
                     "UPDATE reference_counters SET last_val = ? WHERE prefix = ?",
                     (val, prefix),
                 )
             con.commit()
-        # Reload seeds to refresh relative dates
-        self.load_seeds(self.today)
+        self.load_seeds(self._fixed_today or date.today())
 
     # -------------------------------------------------------------------------
     # Verification & Sessions
@@ -287,46 +327,68 @@ class BankStore:
         call_id: str,
         success: bool,
         attempted_at: datetime | None = None,
+        *,
+        outcome: VerifyOutcome | None = None,
+        customer_ref: str | None = None,
+        caller_key: str | None = None,
+        target_key: str | None = None,
     ) -> None:
-        t_str = _now_iso(attempted_at)
+        resolved = outcome or (VerifyOutcome.SUCCESS if success else VerifyOutcome.FAILED)
         with self._get_connection() as con:
             con.execute(
                 """
-                INSERT INTO verification_attempts (mobile, dob, call_id, success, attempted_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO verification_attempts
+                    (mobile, dob, call_id, success, attempted_at, outcome, customer_ref, caller_key, target_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (mobile, dob, call_id, 1 if success else 0, t_str),
+                (mobile, dob, call_id, 1 if success else 0, _now_iso(attempted_at), str(resolved),
+                 customer_ref, caller_key, target_key or mobile),
             )
             con.commit()
 
-    def get_failed_attempts(
-        self,
-        mobile: str,
-        window_minutes: int = 15,
-        now: datetime | None = None,
-    ) -> int:
-        cur_time = now or datetime.now(timezone.utc)
-        since_time = cur_time - timedelta(minutes=window_minutes)
-        since_str = since_time.isoformat()
+    def count_target_failures(self, target_key: str, since: datetime) -> int:
+        """Failed attempts against one customer (or unknown mobile) since `since`, not counting any before its last success."""
         with self._get_connection() as con:
+            last_ok_id = con.execute(
+                "SELECT MAX(id) FROM verification_attempts WHERE target_key = ? AND outcome = ?",
+                (target_key, str(VerifyOutcome.SUCCESS)),
+            ).fetchone()[0]
             row = con.execute(
                 """
                 SELECT COUNT(*) FROM verification_attempts
-                WHERE mobile = ? AND success = 0 AND attempted_at >= ?
+                WHERE target_key = ? AND outcome = ? AND attempted_at >= ? AND id > ?
                 """,
-                (mobile, since_str),
+                (target_key, str(VerifyOutcome.FAILED), since.isoformat(), last_ok_id or 0),
             ).fetchone()
-            return int(row[0]) if row else 0
+            return int(row[0])
 
-    def is_locked(
-        self,
-        mobile: str,
-        window_minutes: int = 15,
-        max_failures: int = 3,
-        now: datetime | None = None,
-    ) -> bool:
-        failures = self.get_failed_attempts(mobile, window_minutes, now)
-        return failures >= max_failures
+    def caller_failure_stats(self, caller_key: str, since: datetime) -> tuple[int, int]:
+        """(failed attempts, distinct customers or mobiles failed) for one caller since `since`."""
+        with self._get_connection() as con:
+            row = con.execute(
+                """
+                SELECT COUNT(*), COUNT(DISTINCT target_key) FROM verification_attempts
+                WHERE caller_key = ? AND outcome = ? AND attempted_at >= ?
+                """,
+                (caller_key, str(VerifyOutcome.FAILED), since.isoformat()),
+            ).fetchone()
+            return int(row[0]), int(row[1])
+
+    def set_lock(self, scope: LockScope, key: str, until: datetime) -> None:
+        with self._get_connection() as con:
+            con.execute(
+                "INSERT OR REPLACE INTO lockouts (scope, key, locked_until) VALUES (?, ?, ?)",
+                (str(scope), key, until.isoformat()),
+            )
+            con.commit()
+
+    def is_locked(self, scope: LockScope, key: str, now: datetime) -> bool:
+        with self._get_connection() as con:
+            row = con.execute(
+                "SELECT locked_until FROM lockouts WHERE scope = ? AND key = ?",
+                (str(scope), key),
+            ).fetchone()
+            return bool(row) and row["locked_until"] > now.isoformat()
 
     def create_session(
         self,
@@ -514,21 +576,22 @@ class BankStore:
         call_id: str,
         eta_days: int = 2,
     ) -> dict[str, Any]:
-        ref = self._next_ref("SR")
+        ref = self._next_ref(RefPrefix.TICKET)
         now_str = _now_iso()
         details_json = json.dumps(details or {})
         with self._get_connection() as con:
             con.execute(
                 """
                 INSERT INTO tickets (ref, customer_ref, category, status, summary, details, call_id, eta_days, created_at, updated_at)
-                VALUES (?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (ref, customer_ref, str(category), summary, details_json, call_id, eta_days, now_str, now_str),
+                (ref, customer_ref, str(category), str(TicketStatus.OPEN), summary, details_json, call_id, eta_days,
+                 now_str, now_str),
             )
             con.commit()
         return {
             "ref": ref,
-            "status": "OPEN",
+            "status": TicketStatus.OPEN,
             "eta_days": eta_days,
         }
 
@@ -602,7 +665,7 @@ class BankStore:
         severity: str,
         call_id: str,
     ) -> dict[str, Any]:
-        ref = self._next_ref("CMP")
+        ref = self._next_ref(RefPrefix.COMPLAINT)
         now_str = _now_iso()
         cat_str = str(category)
         sev_str = str(severity).upper()
@@ -614,14 +677,14 @@ class BankStore:
             con.execute(
                 """
                 INSERT INTO complaints (ref, customer_ref, category, severity, status, description, escalated, call_id, created_at)
-                VALUES (?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (ref, customer_ref, cat_str, sev_str, description, 1 if escalated else 0, call_id, now_str),
+                (ref, customer_ref, cat_str, sev_str, str(TicketStatus.OPEN), description, 1 if escalated else 0, call_id, now_str),
             )
             con.commit()
         return {
             "ref": ref,
-            "status": "OPEN",
+            "status": TicketStatus.OPEN,
             "escalated": escalated,
         }
 
@@ -683,7 +746,7 @@ class BankStore:
         call_id: str,
         customer_ref: str | None = None,
     ) -> dict[str, Any]:
-        ref = self._next_ref("RQ")
+        ref = self._next_ref(RefPrefix.ROUTED)
         now_str = _now_iso()
         with self._get_connection() as con:
             con.execute(
@@ -702,16 +765,17 @@ class BankStore:
         summary: str,
         call_id: str,
         customer_ref: str | None = None,
+        category: str | None = None,
     ) -> dict[str, Any]:
-        ref = self._next_ref("ESC")
+        ref = self._next_ref(RefPrefix.ESCALATION)
         now_str = _now_iso()
         with self._get_connection() as con:
             con.execute(
                 """
-                INSERT INTO escalations (ref, reason, summary, customer_ref, call_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO escalations (ref, reason, summary, customer_ref, call_id, created_at, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (ref, reason, summary, customer_ref, call_id, now_str),
+                (ref, reason, summary, customer_ref, call_id, now_str, str(category) if category else None),
             )
             con.commit()
         return {"ref": ref}
@@ -751,93 +815,85 @@ class BankStore:
     # -------------------------------------------------------------------------
     # Ops list
     # -------------------------------------------------------------------------
-    def list_records(self, kind: str) -> list[dict[str, Any]]:
-        """Lists records newest first for operations."""
+    def list_records(self, kind: RecordKind | None = None) -> list[dict[str, Any]]:
+        """Every ticket, complaint, routed query and escalation (or one kind), newest first, in the ops item shape."""
+        kinds = [RecordKind(kind)] if kind else list(RecordKind)
         results: list[dict[str, Any]] = []
-        k = kind.strip().lower()
+
+        def item(ref, k, category, status, summary, customer_ref, call_id, created_at, escalated):
+            return {"ref": ref, "kind": str(k), "category": category, "status": status, "summary": summary,
+                    "customer_ref": customer_ref, "call_id": call_id, "created_at": created_at, "escalated": escalated}
+
         with self._get_connection() as con:
-            if k == "ticket":
-                rows = con.execute("SELECT * FROM tickets ORDER BY created_at DESC").fetchall()
-                for r in rows:
-                    results.append({
-                        "ref": r["ref"],
-                        "kind": "ticket",
-                        "category": r["category"],
-                        "status": r["status"],
-                        "summary": r["summary"],
-                        "customer_ref": r["customer_ref"],
-                        "call_id": r["call_id"],
-                        "created_at": r["created_at"],
-                        "escalated": None,
-                    })
-                # Add seed tickets
-                for st in self.seed_tickets:
-                    results.append({
-                        "ref": st["ref"],
-                        "kind": "ticket",
-                        "category": st["category"],
-                        "status": st["status"],
-                        "summary": st["summary"],
-                        "customer_ref": st["customer_ref"],
-                        "call_id": None,
-                        "created_at": st["created_on"],
-                        "escalated": None,
-                    })
-            elif k == "complaint":
-                rows = con.execute("SELECT * FROM complaints ORDER BY created_at DESC").fetchall()
-                for r in rows:
-                    results.append({
-                        "ref": r["ref"],
-                        "kind": "complaint",
-                        "category": r["category"],
-                        "status": r["status"],
-                        "summary": r["description"],
-                        "customer_ref": r["customer_ref"],
-                        "call_id": r["call_id"],
-                        "created_at": r["created_at"],
-                        "escalated": bool(r["escalated"]),
-                    })
-                for sc in self.seed_complaints:
-                    results.append({
-                        "ref": sc["ref"],
-                        "kind": "complaint",
-                        "category": sc["category"],
-                        "status": sc["status"],
-                        "summary": sc["description"],
-                        "customer_ref": sc["customer_ref"],
-                        "call_id": None,
-                        "created_at": sc["created_at"],
-                        "escalated": sc["escalated"],
-                    })
-            elif k == "routed":
-                rows = con.execute("SELECT * FROM routed_queries ORDER BY created_at DESC").fetchall()
-                for r in rows:
-                    results.append({
-                        "ref": r["ref"],
-                        "kind": "routed",
-                        "category": None,
-                        "status": None,
-                        "summary": f"{r['query_text']} - {r['reason']}",
-                        "customer_ref": r["customer_ref"],
-                        "call_id": r["call_id"],
-                        "created_at": r["created_at"],
-                        "escalated": None,
-                    })
-            elif k == "escalation":
-                rows = con.execute("SELECT * FROM escalations ORDER BY created_at DESC").fetchall()
-                for r in rows:
-                    results.append({
-                        "ref": r["ref"],
-                        "kind": "escalation",
-                        "category": None,
-                        "status": None,
-                        "summary": f"{r['summary']} ({r['reason']})",
-                        "customer_ref": r["customer_ref"],
-                        "call_id": r["call_id"],
-                        "created_at": r["created_at"],
-                        "escalated": True,
-                    })
+            if RecordKind.TICKET in kinds:
+                for r in con.execute("SELECT * FROM tickets"):
+                    results.append(item(r["ref"], RecordKind.TICKET, r["category"], r["status"], r["summary"],
+                                        r["customer_ref"], r["call_id"], r["created_at"], None))
+                for t in self.seed_tickets:
+                    results.append(item(t["ref"], RecordKind.TICKET, t["category"], t["status"], t["summary"],
+                                        t["customer_ref"], None, t["created_on"], None))
+            if RecordKind.COMPLAINT in kinds:
+                for r in con.execute("SELECT * FROM complaints"):
+                    results.append(item(r["ref"], RecordKind.COMPLAINT, r["category"], r["status"], r["description"],
+                                        r["customer_ref"], r["call_id"], r["created_at"], bool(r["escalated"])))
+                for c in self.seed_complaints:
+                    results.append(item(c["ref"], RecordKind.COMPLAINT, c["category"], c["status"], c["description"],
+                                        c["customer_ref"], None, c["created_at"], c["escalated"]))
+            if RecordKind.ROUTED in kinds:
+                for r in con.execute("SELECT * FROM routed_queries"):
+                    results.append(item(r["ref"], RecordKind.ROUTED, None, None, f"{r['query_text']} - {r['reason']}",
+                                        r["customer_ref"], r["call_id"], r["created_at"], None))
+            if RecordKind.ESCALATION in kinds:
+                for r in con.execute("SELECT * FROM escalations"):
+                    results.append(item(r["ref"], RecordKind.ESCALATION, r["category"], None,
+                                        f"{r['summary']} ({r['reason']})", r["customer_ref"], r["call_id"],
+                                        r["created_at"], True))
+        results.sort(key=lambda r: (r["created_at"] or "", r["ref"]), reverse=True)
         return results
+
+    # -------------------------------------------------------------------------
+    # FAQ Search (FTS5 BM25 with Porter stemming)
+    # -------------------------------------------------------------------------
+    def search_faq(
+        self,
+        query: str,
+        limit: int = 3,
+        threshold: float = 2.0,
+    ) -> list[dict[str, Any]]:
+        if not query or not query.strip():
+            return []
+        stop_words = {
+            "what", "whats", "who", "when", "where", "how", "is", "are", "do",
+            "does", "did", "i", "you", "a", "an", "the", "for", "to", "of",
+            "in", "my", "me", "can", "tell", "please"
+        }
+        words = re.findall(r"\w+", query.lower())
+        content_words = [w for w in words if w not in stop_words]
+        if not content_words:
+            return []
+        match_query = " OR ".join(f'"{w}"' for w in content_words)
+        with self._get_connection() as con:
+            cur = con.execute(
+                """
+                SELECT id, question, answer, round(-bm25(faq_fts, 0.0, 10.0, 1.0, 5.0), 2) as score
+                FROM faq_fts
+                WHERE faq_fts MATCH ?
+                ORDER BY score DESC
+                LIMIT ?
+                """,
+                (match_query, limit),
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "question": r["question"],
+                    "answer": r["answer"],
+                    "score": float(r["score"]),
+                }
+                for r in rows
+                if r["score"] >= threshold
+            ]
 
 
 # Global singleton instance

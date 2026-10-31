@@ -50,9 +50,10 @@ def client(handler, spec=SPEC, keys=KEYS, clock=None):
 
 def test_default_spec_uses_provider_model_vars():
     assert default_chain_spec("", "") == (
-        "groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,gemini:gemini-2.5-flash,mistral:mistral-small-latest"
+        "groq:openai/gpt-oss-120b,gemini:gemini-3-flash-preview,groq:openai/gpt-oss-20b,mistral:mistral-small-latest,ollama:llama3.2"
     )
-    assert default_chain_spec("g-x", "m-y").endswith("gemini:g-x,mistral:m-y")
+    spec = default_chain_spec("g-x", "m-y")
+    assert "gemini:g-x" in spec and "mistral:m-y" in spec and spec.endswith("ollama:llama3.2")
 
 
 def test_link_without_key_is_skipped():

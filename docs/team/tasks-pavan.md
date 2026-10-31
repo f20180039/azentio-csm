@@ -120,3 +120,53 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
   - the output is 16 kHz mono;
   - the manifest rows match the inputs.
 - [ ] Step 4: Commit: `test(eval): accent and noise audio renderer for utterances and scenarios`.
+
+---
+
+## Next items
+
+- [ ] **P5: Run the scored evaluation and publish the results** (needs: C3, C4, C5)
+
+**Files:** `README.md` (a new "Evaluation results" section), `backend/voice/eval/out/` (reports, git-ignored, so paste the key numbers into the README).
+
+- [ ] Step 1: Start the stack: `scripts/dev-up.sh` (Groq key in `.env`). Check that `curl localhost:8090/health` and `curl localhost:7861/health` both answer.
+- [ ] Step 2: Typed run: from `backend/voice`, run `.venv/bin/python -m eval.run_scenarios`. It resets the simulator before each scenario and writes `eval/out/scenarios-report.md`.
+- [ ] Step 3: Audio runs. The rendered files are in `eval/audio/out/`; render them with `python -m eval.audio.render --source scenarios` if they are missing.
+  - Run `.venv/bin/python -m eval.run_scenarios --audio --accent in --condition clean`, then `--condition noisy`.
+  - Then `--accent ng --condition noisy`, the hardest case in `docs/stt-benchmark.md`.
+  - **Do not run `--full`:** the Groq daily quota is shared with the live demo. These runs are about 150 requests.
+- [ ] Step 4: For every scenario that fails, read the report and decide: a wrong expectation in the YAML (fix the scenario), or a real agent problem (write it up in the PR description for Anshuman, with the scenario id, turn, what was said and what was expected). Don't change agent code.
+- [ ] Step 5: README "Evaluation results" section with a table:
+  - scenarios passed;
+  - intent accuracy;
+  - disclosures before verification (must be 0);
+  - routed and escalated correctness;
+  - latency p50/p95;
+  - typed vs Indian-clean vs Indian-noisy vs Nigerian-noisy.
+
+  Add one line on the method: synthetic voices, 5 dB café noise, `eval/run_scenarios.py`. Report the real numbers, including failures.
+- [ ] Step 6: Commit: `docs(eval): scored scenario results, typed and accented audio`.
+
+- [ ] **P6: Demo rehearsal and backup video** (needs: P5)
+
+**Files:** `docs/demo-checklist.md` (new). The video itself stays outside the repo; put the link in the checklist.
+
+- [ ] Step 1: Follow the README's "Demo script" table on the live stack (`http://localhost:5173/support`, sign in as any team member, Start a call, then Microphone). Use a headset: the agent can hear itself through laptop speakers.
+- [ ] Step 2: For each scenario, record pass or fail, what the agent said, and the time to the first reply. Include the persona's mobile and date of birth as you said them.
+- [ ] Step 3: `docs/demo-checklist.md`:
+  - the start-up steps that worked, with the exact commands;
+  - the persona order for the demo, the best 5 scenarios in about 4 minutes;
+  - known rough edges and how to recover (refresh, restart a service, the typed or recorded-audio fallback);
+  - who drives and who narrates.
+- [ ] Step 4: Record a 2–3 minute backup video of the best run (screen and audio). Store it in the team drive and link it in the checklist.
+- [ ] Step 5: Commit: `docs(demo): rehearsal checklist and backup video link`.
+
+- [ ] **P7 (only if Chirag takes C8): Hindi and Hinglish scenarios** (needs: C8 started)
+
+**Files:** `backend/voice/eval/scenarios/13-hindi-repayment.yaml`, `14-hinglish-statement.yaml`, and the voice map in `backend/voice/eval/audio/render.py` (add `"hi": "hi-IN-SwaraNeural"`; coordinate with Chirag, who may add it too).
+
+- [ ] Step 1: Two scenarios in the existing schema:
+  - Rahul (9876500002 / 1985-11-03) asks "मेरी अगली EMI कब है?", expecting `REPAYMENT`, verification, and the ₹12,450 or vehicle ₹9,800 amounts as digits or spoken;
+  - a Hinglish statement request ("mujhe mera loan statement chahiye"), expecting a `STATEMENT` ticket.
+- [ ] Step 2: Render with `--accents hi`. Check that the files play and are 16 kHz mono.
+- [ ] Step 3: Commit: `test(eval): Hindi and Hinglish scenarios`.

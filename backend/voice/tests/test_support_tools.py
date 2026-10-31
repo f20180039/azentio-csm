@@ -152,3 +152,11 @@ def test_handover_mode_follows_the_channel():
     assert out["handoff"] == {"mode": "CALLBACK", "helpline": "1800 210 4455"} and browser.refs == ["ESC-70200"]
     phone = CallSession(CALL, phone_call_sid="CA123")
     assert run(client, phone, "escalate_to_human", {"trigger": "DISSATISFIED", "reason": "unhappy", "summary": "s"})["handoff"] == {"mode": "TRANSFER"}
+
+
+def test_verify_without_real_details_spends_no_attempt():
+    sim, client, call = setup()
+    for args in ({}, {"mobile": "", "date_of_birth": ""}, {"mobile": "98765", "date_of_birth": "1985-11-03"},
+                 {"mobile": "9876500002", "date_of_birth": "third November"}):
+        assert run(client, call, "verify_customer", args)["error"] == "NOT_VERIFIED"
+    assert sim.requests == [] and call.verify_failures == 0

@@ -16,9 +16,15 @@ If neither matches, ask the human which person they are. **Work only on tasks in
 
 ## 2. Pick your next task automatically
 1. Sync: `git switch develop && git pull`.
-2. Open your task file. Take the **first** task marked `[ ]` whose "needs" are satisfied.
-   - A need is satisfied when that task shows `[x]` in its owner's file on `develop`.
-   - If a need belongs to someone else and isn't done, follow the workaround in your task's text (e.g. placeholder data), or skip to your next available task.
+2. Run `python3 scripts/next-task.py <chirag|pavan|anshuman>`. It reads every task file and prints `NEXT: <id>` only when all of that task's dependencies are met.
+   - Every task line ends with `(needs: …)`:
+     - `C3` means that task is `[x]`, done and merged on `develop`;
+     - `C8 started` means it is `[~]` or `[x]`;
+     - `approval: Name` means a person must confirm first;
+     - `none` means there is nothing to wait for.
+   - **If it prints `BLOCKED`, stop.** Don't start a blocked task. Don't stub, mock or "temporarily" work around a missing dependency unless the task text explicitly tells you to. Don't edit another person's files to unblock yourself.
+   - Instead, tell your human what you are waiting for (the script lists it), and run the script again after the next `git pull`.
+   - If a task needs `approval: Name`, ask your human to get that confirmation before you start.
 3. Claim it:
    - change `[ ]` to `[~] (<name>, feat/<task-id>-<slug>)` in your file;
    - commit only that line with message `chore(tasks): claim <task-id>`;

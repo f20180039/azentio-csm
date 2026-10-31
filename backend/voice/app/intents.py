@@ -65,7 +65,8 @@ _RULES: dict[Intent, re.Pattern] = {
         r"\b(?<!mini\s)statement\b", r"\bnoc\b", r"\bno\s+objection\b", r"\b(?:interest|tax)\s+certificate\b",
         r"\b(?:change|update)\s+(?:my\s+)?(?:address|email|e-mail|mobile|phone|contact)\b",
         r"\bcheque\s*book\b", r"\b(?:block|replace|reissue)\b.{0,15}\bcard\b", r"\braise\b.{0,30}\brequest\b",
-        r"\b(?:schedule|statement|change|document)\s+request\b", r"\baddress\s+change\b"),
+        r"\b(?:schedule|statement|change|document)\s+request\b", r"\baddress\s+change\b",
+        r"\b(?:need|want|send|get|share|email)\b.{0,25}\b(?:repayment|loan)\s+schedule\b"),
     Intent.PRODUCT_INFO: _rx(
         r"\bdocuments?\b.{0,15}\b(?:for|required|needed|to)\b", r"\bdocuments?\s+(?:list|required)\b",
         r"\beligib\w*", r"\binterest\s+rates?\b", r"\brate\s+of\s+interest\b", r"\broi\b",
@@ -148,7 +149,7 @@ Labels:
 LOAN_APPLICATION: status or details of a loan application already made
 REPAYMENT: EMI/instalment amount or due date, overdue, outstanding, repayment, foreclosure
 ACCOUNT: bank account balance, transactions, account details
-SERVICE_REQUEST: status of an existing ticket (e.g. SR-40102) or a new request such as a statement, NOC, address change
+SERVICE_REQUEST: status of an existing ticket (e.g. SR-40102) or a request for a document or change: a statement, repayment schedule, NOC, certificate, address change (asking to be SENT a repayment schedule is SERVICE_REQUEST, not REPAYMENT)
 PRODUCT_INFO: general product questions: rates, eligibility, documents, how to apply
 COMPLAINT: a problem or grievance: failed transfer, wrong charge, money debited, poor service
 INSURANCE: insurance policy, premium, cover or claim
