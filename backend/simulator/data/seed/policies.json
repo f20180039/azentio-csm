@@ -1,0 +1,22 @@
+[
+  {
+    "customer_ref": "CUST-1005",
+    "policy_no": "HP-77001",
+    "product": "Family Health Protect",
+    "status": "ACTIVE",
+    "premium": 14500,
+    "due_in_days": 18,
+    "sum_insured": 1000000,
+    "coverage_status": "In Force"
+  },
+  {
+    "customer_ref": "CUST-1005",
+    "policy_no": "MP-77002",
+    "product": "Comprehensive Motor Insurance",
+    "status": "LAPSED",
+    "premium": 8200,
+    "due_in_days": -45,
+    "sum_insured": 450000,
+    "coverage_status": "Lapsed due to non-payment of renewal premium"
+  }
+]

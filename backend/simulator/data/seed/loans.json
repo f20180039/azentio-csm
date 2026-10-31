@@ -1,0 +1,86 @@
+[
+  {
+    "customer_ref": "CUST-1002",
+    "loan_id": "PL-31002",
+    "product": "Personal Loan",
+    "product_type": "personal",
+    "outstanding_principal": 280000,
+    "next_instalment": {
+      "amount": 12450,
+      "due_in_days": 5
+    },
+    "overdue": null,
+    "status": "ACTIVE",
+    "schedule": [
+      { "n": 1, "due_in_days": -55, "amount": 12450, "status": "PAID" },
+      { "n": 2, "due_in_days": -25, "amount": 12450, "status": "PAID" },
+      { "n": 3, "due_in_days": 5, "amount": 12450, "status": "DUE" },
+      { "n": 4, "due_in_days": 35, "amount": 12450, "status": "UPCOMING" },
+      { "n": 5, "due_in_days": 65, "amount": 12450, "status": "UPCOMING" },
+      { "n": 6, "due_in_days": 95, "amount": 12450, "status": "UPCOMING" }
+    ]
+  },
+  {
+    "customer_ref": "CUST-1002",
+    "loan_id": "VL-31003",
+    "product": "Vehicle Loan",
+    "product_type": "vehicle",
+    "outstanding_principal": 450000,
+    "next_instalment": {
+      "amount": 9800,
+      "due_in_days": 12
+    },
+    "overdue": null,
+    "status": "ACTIVE",
+    "schedule": [
+      { "n": 1, "due_in_days": -48, "amount": 9800, "status": "PAID" },
+      { "n": 2, "due_in_days": -18, "amount": 9800, "status": "PAID" },
+      { "n": 3, "due_in_days": 12, "amount": 9800, "status": "DUE" },
+      { "n": 4, "due_in_days": 42, "amount": 9800, "status": "UPCOMING" },
+      { "n": 5, "due_in_days": 72, "amount": 9800, "status": "UPCOMING" }
+    ]
+  },
+  {
+    "customer_ref": "CUST-1003",
+    "loan_id": "VL-31007",
+    "product": "Vehicle Loan",
+    "product_type": "vehicle",
+    "outstanding_principal": 320000,
+    "next_instalment": {
+      "amount": 9800,
+      "due_in_days": 21
+    },
+    "overdue": {
+      "amount": 9800,
+      "since_days_ago": 9
+    },
+    "status": "ACTIVE",
+    "schedule": [
+      { "n": 1, "due_in_days": -39, "amount": 9800, "status": "PAID" },
+      { "n": 2, "due_in_days": -9, "amount": 9800, "status": "OVERDUE" },
+      { "n": 3, "due_in_days": 21, "amount": 9800, "status": "DUE" },
+      { "n": 4, "due_in_days": 51, "amount": 9800, "status": "UPCOMING" },
+      { "n": 5, "due_in_days": 81, "amount": 9800, "status": "UPCOMING" }
+    ]
+  },
+  {
+    "customer_ref": "CUST-1006",
+    "loan_id": "HL-90182",
+    "product": "Home Loan",
+    "product_type": "home",
+    "outstanding_principal": 3500000,
+    "next_instalment": {
+      "amount": 34200,
+      "due_in_days": 15
+    },
+    "overdue": null,
+    "status": "ACTIVE",
+    "schedule": [
+      { "n": 1, "due_in_days": -45, "amount": 34200, "status": "PAID" },
+      { "n": 2, "due_in_days": -15, "amount": 34200, "status": "PAID" },
+      { "n": 3, "due_in_days": 15, "amount": 34200, "status": "DUE" },
+      { "n": 4, "due_in_days": 45, "amount": 34200, "status": "UPCOMING" },
+      { "n": 5, "due_in_days": 75, "amount": 34200, "status": "UPCOMING" }
+    ]
+  }
+]

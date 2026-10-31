@@ -31,12 +31,12 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 
 **Files:** create `backend/simulator/data/seed/{customers,applications,loans,accounts,transactions,tickets,complaints,policies,claims}.json`, `backend/simulator/app/store.py` and `backend/simulator/app/enums.py`.
 
-- [ ] Step 1: `app/enums.py`: a `StrEnum` for each contract enum:
+- [x] Step 1: `app/enums.py`: a `StrEnum` for each contract enum:
   - `Stage`, `ProductType`, `InstalmentStatus`, `Direction`, `TxnStatus`;
   - `TicketCategory`, `TicketStatus` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`);
   - `ComplaintCategory`, `Severity`;
   - `PolicyStatus` (`ACTIVE`, `LAPSED`, `EXPIRED`), `ClaimStatus` (`SUBMITTED`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`, `SETTLED`).
-- [ ] Step 2: Seed these 8 synthetic customers, each with a `customer_ref`, `first_name`, `last_name`, 10-digit `mobile` and `dob`. Dates are relative to today, computed at load time: store `"due_in_days": 5`, never fixed dates.
+- [x] Step 2: Seed these 8 synthetic customers, each with a `customer_ref`, `first_name`, `last_name`, 10-digit `mobile` and `dob`. Dates are relative to today, computed at load time: store `"due_in_days": 5`, never fixed dates.
 
 | ref | mobile / dob | Supports scenario |
 |---|---|---|
@@ -49,14 +49,14 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 | CUST-1007 Sana Mirza | 9876500007 / 1999-05-18 | Application `LA-24009` `REJECTED`. Current account with a low balance. |
 | CUST-1008 David Fernandes | 9876500008 / 1982-03-09 | `TXN-90011` card debit â‚¹48,999 `POSTED`, which the customer will say they didn't make (escalation scenario). |
 
-- [ ] Step 3: `app/store.py`. Load the JSON into memory at start-up; seeds are read-only. Writes (tickets, complaints, routed queries, escalations, verification attempts, sessions) go to SQLite at `data/runtime/simulator.db`, with the schema created on start. `reset()` empties the write tables. References are `SR-`, `CMP-`, `RQ-` and `ESC-` plus 5 digits, unique, starting at 40200, 50200, 60200 and 70200.
-- [ ] Step 4: Tests (`tests/test_store.py`):
+- [x] Step 3: `app/store.py`. Load the JSON into memory at start-up; seeds are read-only. Writes (tickets, complaints, routed queries, escalations, verification attempts, sessions) go to SQLite at `data/runtime/simulator.db`, with the schema created on start. `reset()` empties the write tables. References are `SR-`, `CMP-`, `RQ-` and `ESC-` plus 5 digits, unique, starting at 40200, 50200, 60200 and 70200.
+- [x] Step 4: Tests (`tests/test_store.py`):
   - the seeds load with 8 customers;
   - every loan's `next_instalment.due_date` is in the future;
   - `VL-31007.overdue.amount == 9800`;
   - a created ticket gets ref `SR-40200` and survives a store reload;
   - `reset()` removes it.
-- [ ] Step 5: Commit: `feat(simulator): seed data for the #05 scenarios and SQLite-backed writes`.
+- [x] Step 5: Commit: `feat(simulator): seed data for the #05 scenarios and SQLite-backed writes`.
 
 - [ ] **C3: Verification, sessions, lockout, ownership** (needs: C2)
 
