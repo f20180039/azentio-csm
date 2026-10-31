@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/errors';
 import { getQueue, startCall } from '../api/renewals';
 import { RenewalRoute, type QueueItem, type Severity } from '../api/types';
+import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { ScoreBar } from '../components/StatusPill';
 import { useToast } from '../components/Toasts';
 import { humanise } from '../format';
 import { Route } from '../routes';
+import { Highlight, matches } from '../search';
 
 const SEV_TONE: Record<Severity, string> = { HIGH: 'bad', MEDIUM: 'warn', LOW: 'info' };
 
@@ -16,16 +18,26 @@ const REFUSALS: Record<string, string> = {
   OUTSIDE_CALLING_HOURS: 'Outside permitted calling hours. Try again in the calling window.',
 };
 
+const ROUTE_LABEL: Record<RenewalRoute, string> = {
+  [RenewalRoute.AGENT_CALL]: 'Start agent call',
+  [RenewalRoute.HUMAN_ONLY]: 'Agent may not call',
+  [RenewalRoute.REMINDER_SMS]: 'Reminder SMS',
+};
+
+function itemMatches(q: string, item: QueueItem): boolean {
+  return matches(q, item.holderName, item.policyId, item.product, item.signals.map((s) => s.label), item.route, ROUTE_LABEL[item.route]);
+}
+
 function RouteCell({ item, busy, onStart }: { item: QueueItem; busy: boolean; onStart: () => void }) {
   const route: RenewalRoute = item.route;
   if (route === RenewalRoute.AGENT_CALL) {
     return (
       <button className="btn primary sm" onClick={onStart} disabled={busy}>
-        {busy ? 'Starting…' : 'Start agent call'}
+        {busy ? 'Starting…' : ROUTE_LABEL[route]}
       </button>
     );
   }
-  return <span className="muted small">{route === RenewalRoute.HUMAN_ONLY ? 'Agent may not call' : 'Reminder SMS'}</span>;
+  return <span className="muted small">{ROUTE_LABEL[route]}</span>;
 }
 
 export function Renewals() {
@@ -37,6 +49,8 @@ export function Renewals() {
   toastRef.current = toast;
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [query, setQuery] = useUrlQuery();
+  const shown = useMemo(() => items?.filter((q) => itemMatches(query, q)) ?? null, [items, query]);
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -78,6 +92,16 @@ export function Renewals() {
           <span className="muted small">Lotusleaf General Insurance. Ranked by renewal risk; the route decides who may call.</span>
         </div>
       </div>
+      <div className="filters">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search renewals"
+          placeholder="Search renewals by holder, policy, product or signal"
+          shown={shown?.length}
+          total={items?.length}
+        />
+      </div>
       <div className="panel table-wrap">
         <table>
           <thead>
@@ -98,13 +122,19 @@ export function Renewals() {
                 </td>
               </tr>
             )}
-            {items?.map((q) => (
+            {shown?.map((q) => (
               <tr key={q.policyId}>
                 <td className="title-cell">
-                  <strong>{q.holderName}</strong>
-                  <div className="mono small muted">{q.policyId}</div>
+                  <strong>
+                    <Highlight text={q.holderName} query={query} />
+                  </strong>
+                  <div className="mono small muted">
+                    <Highlight text={q.policyId} query={query} />
+                  </div>
                 </td>
-                <td>{q.product}</td>
+                <td>
+                  <Highlight text={q.product} query={query} />
+                </td>
                 <td className="num">
                   {q.expiresOn}
                   <div className="small muted">{q.daysToExpiry} days</div>
@@ -116,7 +146,7 @@ export function Renewals() {
                   <div className="row" style={{ gap: 4 }}>
                     {q.signals.map((s) => (
                       <span key={s.code} className={`pill ${SEV_TONE[s.severity]}`} title={`${humanise(s.severity)} · weight ${s.weight}`}>
-                        {s.label}
+                        <Highlight text={s.label} query={query} />
                       </span>
                     ))}
                   </div>
@@ -143,6 +173,7 @@ export function Renewals() {
             <span>Policies expiring soon appear here once the API has scored them.</span>
           </div>
         )}
+        {!!items?.length && shown?.length === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
       </div>
     </>
   );
