@@ -1,10 +1,10 @@
 id: 07-multiple-requests
 title: Repayment, then a statement, then an existing service request
-customer: {mobile: "9876500002", dob: "1985-11-03"}
+customer: {mobile: "9731462580", dob: "1985-11-03"}
 turns:
   - say: "Hi, I want to know when my next EMI is due."
     expect: {intents: [REPAYMENT]}
-  - say: "My number is 98765 00002 and date of birth third November eighty-five."
+  - say: "My number is 97314 62580 and date of birth third November eighty-five."
     expect: {intents: [IDENTITY], verified: true}
   - say: "Okay so when is the EMI?"
     expect: {intents: [REPAYMENT], must_say_any: ["12,450", "twelve thousand four hundred fifty"], tools_any: [get_loans, get_schedule]}

@@ -1,10 +1,10 @@
 id: 11-failed-verification
 title: Lock after three incorrect dates of birth
-customer: {mobile: "9876500002", dob: "1985-11-03"}
+customer: {mobile: "9731462580", dob: "1985-11-03"}
 turns:
   - say: "Tell me my next EMI amount."
     expect: {intents: [REPAYMENT], verified: false}
-  - say: "My number is 98765 00002. My date of birth is January second nineteen eighty."
+  - say: "My number is 97314 62580. My date of birth is January second nineteen eighty."
     expect: {intents: [IDENTITY], verified: false}
   - say: "Let me try again, January third nineteen ninety."
     expect: {intents: [IDENTITY], verified: false}

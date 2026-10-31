@@ -17,7 +17,7 @@ A 5-minute live demo of the customer-service voice agent. The persona details ar
 | # | What you do | What the audience sees |
 |---|---|---|
 | 1 | **Start a call, then Microphone.** Say "When is my next EMI?" | The transcript appears, the Repayment chip and the speaking bubble show, and the agent asks for your mobile number and date of birth (nothing personal yet). |
-| 2 | "My number is nine eight seven six five, zero zero zero zero two, born the third of November eighty-five." | The Verified badge turns green. The answer is ₹12,450, with a Retrieved card showing the loan record behind it. |
+| 2 | "My number is nine seven three one four, six two five eight zero, born the third of November eighty-five." | The Verified badge turns green. The answer is ₹12,450, with a Retrieved card showing the loan record behind it. |
 | 3 | "No, I meant my vehicle loan." | ₹9,800 from the vehicle loan, with no second verification. |
 | 4 | "Please send me my loan statement." Then: "Can you book me a flight to Dubai?" | An `SR-…` ticket read back digit by digit, then a polite refusal with an `RQ-…` routed query. Both show on the Support desk's Tickets and Routed queries tabs. |
 | 5 | Say goodbye and give a rating ("four"). | The rating is saved on the call; open **Insights** to show the rating, review queue and lessons. |
@@ -26,7 +26,7 @@ A 5-minute live demo of the customer-service voice agent. The persona details ar
 | 8 | Close with the evidence: [stt-benchmark.md](stt-benchmark.md) and the scored evaluation in the README. | Measured accuracy by accent and noise, scenario pass rate, zero disclosures before verification. |
 
 Optional extras if time allows:
-- **Fraud:** David (98765 00008) says "I didn't make this ₹48,999 payment", giving a complaint plus escalation (Escalations tab).
+- **Fraud:** David (93047 61852) says "I didn't make this ₹48,999 payment", giving a complaint plus escalation (Escalations tab).
 - **Asking for a person:** "I want a person" (it asks what you need), then "just connect me" (escalation and helpline).
 - **Wrong person:** verified as Rahul, ask about loan `VL-31007`; the simulator refuses.
 

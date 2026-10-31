@@ -13,21 +13,21 @@ Dates are relative to the simulator's start, as the seed stores them ("in 5 days
 
 | Customer | Mobile | Date of birth | Set up for |
 |---|---|---|---|
-| Asha Verma (`CUST-1001`) | `98765 00001` | `1990-04-12` | Loan application in document verification |
-| Rahul Iyer (`CUST-1002`) | `98765 00002` | `1985-11-03` | Two loans, an open statement request |
-| Fatima Khan (`CUST-1003`) | `98765 00003` | `1992-07-21` | Vehicle loan with an overdue EMI, rejected address change |
-| Arjun Nair (`CUST-1004`) | `98765 00004` | `1978-02-14` | A failed and a pending transfer, request awaiting info |
-| Meera Pillai (`CUST-1005`) | `98765 00005` | `1988-09-30` | Health claim under review, lapsed motor policy, resolved request |
-| Vikram Rao (`CUST-1006`) | `98765 00006` | `1995-12-05` | Home loan, open complaint |
-| Sana Mirza (`CUST-1007`) | `98765 00007` | `1999-05-18` | Rejected application, low balance |
-| David Fernandes (`CUST-1008`) | `98765 00008` | `1982-03-09` | Disputed ₹48,999 card payment |
-| Demo Caller (`CUST-1009`) | `93809 39280` | `1990-01-01` |  |
+| Asha Verma (`CUST-1001`) | `98452 13076` | `1990-04-12` | Loan application in document verification |
+| Rahul Iyer (`CUST-1002`) | `97314 62580` | `1985-11-03` | Two loans, an open statement request |
+| Fatima Khan (`CUST-1003`) | `89523 04716` | `1992-07-21` | Vehicle loan with an overdue EMI, rejected address change |
+| Arjun Nair (`CUST-1004`) | `74061 58293` | `1978-02-14` | A failed and a pending transfer, request awaiting info |
+| Meera Pillai (`CUST-1005`) | `96204 87135` | `1988-09-30` | Health claim under review, lapsed motor policy, resolved request |
+| Vikram Rao (`CUST-1006`) | `81935 62704` | `1995-12-05` | Home loan, open complaint |
+| Sana Mirza (`CUST-1007`) | `75819 40362` | `1999-05-18` | Rejected application, low balance |
+| David Fernandes (`CUST-1008`) | `93047 61852` | `1982-03-09` | Disputed ₹48,999 card payment |
+| Karthik Menon (`CUST-1009`) | `93809 39280` | `1990-01-01` |  |
 
 ## Asha Verma
 
 Personal loan application in document verification; no loan account yet, so no EMI schedule.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero one, and I was born on the 12th April 1990."
+**Verify:** "My number is nine eight four five two, one three zero seven six, and I was born on the 12th April 1990."
 
 | Say | Expect |
 |---|---|
@@ -42,7 +42,7 @@ Personal loan application in document verification; no loan account yet, so no E
 
 Personal and vehicle loans (for the correction test), a savings account and request SR-40102.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero two, and I was born on the 3rd November 1985."
+**Verify:** "My number is nine seven three one four, six two five eight zero, and I was born on the 3rd November 1985."
 
 | Say | Expect |
 |---|---|
@@ -68,7 +68,7 @@ Personal and vehicle loans (for the correction test), a savings account and requ
 
 An overdue instalment kept separate from the next one; her loan VL-31007 is the 'someone else's record' target. Address-change request SR-40103 was rejected (unreadable proof).
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero three, and I was born on the 21st July 1992."
+**Verify:** "My number is eight nine five two three, zero four seven one six, and I was born on the 21st July 1992."
 
 | Say | Expect |
 |---|---|
@@ -87,7 +87,7 @@ An overdue instalment kept separate from the next one; her loan VL-31007 is the 
 
 Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending. Request SR-40104 is waiting for the delivery address.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero four, and I was born on the 14th February 1978."
+**Verify:** "My number is seven four zero six one, five eight two nine three, and I was born on the 14th February 1978."
 
 | Say | Expect |
 |---|---|
@@ -112,7 +112,7 @@ Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending. Request
 
 Health policy in force with claim CLM-7001 under review; the motor policy has lapsed. Statement request SR-40105 was resolved.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero five, and I was born on the 30th September 1988."
+**Verify:** "My number is nine six two zero four, eight seven one three five, and I was born on the 30th September 1988."
 
 | Say | Expect |
 |---|---|
@@ -135,7 +135,7 @@ Health policy in force with claim CLM-7001 under review; the motor policy has la
 
 Home loan and complaint CMP-50011 about an incorrect charge.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero six, and I was born on the 5th December 1995."
+**Verify:** "My number is eight one nine three five, six two seven zero four, and I was born on the 5th December 1995."
 
 | Say | Expect |
 |---|---|
@@ -154,7 +154,7 @@ Home loan and complaint CMP-50011 about an incorrect charge.
 
 Loan application LA-24009 rejected; a current account with a low balance.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero seven, and I was born on the 18th May 1999."
+**Verify:** "My number is seven five eight one nine, four zero three six two, and I was born on the 18th May 1999."
 
 | Say | Expect |
 |---|---|
@@ -173,7 +173,7 @@ Loan application LA-24009 rejected; a current account with a low balance.
 
 Card payment TXN-90011 he will say he didn't make: complaint plus escalation.
 
-**Verify:** "My number is nine eight seven six five, zero zero zero zero eight, and I was born on the 9th March 1982."
+**Verify:** "My number is nine three zero four seven, six one eight five two, and I was born on the 9th March 1982."
 
 | Say | Expect |
 |---|---|
@@ -192,7 +192,7 @@ Card payment TXN-90011 he will say he didn't make: complaint plus escalation.
 | `TXN-90011` | 1 days ago | POS Debit - Luxury Electronics Mumbai | −₹48,999 | posted |
 
 
-## Demo Caller
+## Karthik Menon
 
 
 
@@ -210,9 +210,9 @@ Card payment TXN-90011 he will say he didn't make: complaint plus escalation.
 
 | Test | Steps | Expected |
 |---|---|---|
-| Wrong date of birth ×3 | Rahul's number 98765 00002 with three wrong dates of birth, then the right one (3rd November 1985) | Attempts left 2 → 1 → locked; the right date is refused for 15 minutes on any call; nothing personal shared |
+| Wrong date of birth ×3 | Rahul's number 97314 62580 with three wrong dates of birth, then the right one (3rd November 1985) | Attempts left 2 → 1 → locked; the right date is refused for 15 minutes on any call; nothing personal shared |
 | Someone else's record | Verify as Rahul, ask "What's due on my brother's loan VL-31007?" (Fatima's) | Refused by the simulator (NOT_YOUR_RECORD); no figures spoken |
-| One caller, several customers | On one call, wrong dates of birth for 98765 00001, 00003 and 00006, then Meera's correct details | Caller blocked (CALLER_BLOCKED), even correct details fail; a SECURITY escalation on the Escalations tab |
+| One caller, several customers | On one call, wrong dates of birth for 98452 13076, 89523 04716 and 81935 62704, then Meera's correct details | Caller blocked (CALLER_BLOCKED), even correct details fail; a SECURITY escalation on the Escalations tab |
 | Personal question first | Ask "What's my account balance?" before verifying | Asks for mobile and date of birth first; no data returned |
 | Unsupported request | Raise a statement request, then "Book me a flight to Dubai" or "Give me stock tips" | Polite refusal, a routed query (RQ-), the ticket kept |
 | Asking for a person | "I want to talk to a person", then say it again | First: it asks what you need. Second: an ESC- escalation, call-back promise and helpline number |

@@ -40,14 +40,14 @@ Status markers: `[ ]` todo · `[~]` in progress (add your name and the branch) �
 
 | ref | mobile / dob | Supports scenario |
 |---|---|---|
-| CUST-1001 Asha Verma | 9876500001 / 1990-04-12 | Personal loan application `LA-24001` in `DOCUMENT_VERIFICATION`, submitted 6 days ago, `next_step` "None required from you". No loan account yet, so the "first instalment" question has no schedule. |
-| CUST-1002 Rahul Iyer | 9876500002 / 1985-11-03 | Personal loan `PL-31002` (EMI ₹12,450, due in 5 days) **and** vehicle loan `VL-31003` (EMI ₹9,800, due in 12 days), for the correction scenario. Savings account. Ticket `SR-40102` `STATEMENT` `IN_PROGRESS`. |
-| CUST-1003 Fatima Khan | 9876500003 / 1992-07-21 | Vehicle loan `VL-31007` with an **overdue** instalment (₹9,800, 9 days) kept separate from the next one (₹9,800, due in 21 days). |
-| CUST-1004 Arjun Nair | 9876500004 / 1978-02-14 | Savings account. `TXN-88213` transfer ₹15,000 `FAILED`, `recorded_reason` null. `TXN-88214` ₹2,300 `PENDING`. |
-| CUST-1005 Meera Pillai | 9876500005 / 1988-09-30 | Health policy `HP-77001` `ACTIVE`, premium due in 18 days. Claim `CLM-7001` `UNDER_REVIEW`. Motor policy `MP-77002` `LAPSED`. |
-| CUST-1006 Vikram Rao | 9876500006 / 1995-12-05 | Home loan `HL-90182`. Existing complaint `CMP-50011` `INCORRECT_CHARGE` `OPEN`. |
-| CUST-1007 Sana Mirza | 9876500007 / 1999-05-18 | Application `LA-24009` `REJECTED`. Current account with a low balance. |
-| CUST-1008 David Fernandes | 9876500008 / 1982-03-09 | `TXN-90011` card debit ₹48,999 `POSTED`, which the customer will say they didn't make (escalation scenario). |
+| CUST-1001 Asha Verma | 9845213076 / 1990-04-12 | Personal loan application `LA-24001` in `DOCUMENT_VERIFICATION`, submitted 6 days ago, `next_step` "None required from you". No loan account yet, so the "first instalment" question has no schedule. |
+| CUST-1002 Rahul Iyer | 9731462580 / 1985-11-03 | Personal loan `PL-31002` (EMI ₹12,450, due in 5 days) **and** vehicle loan `VL-31003` (EMI ₹9,800, due in 12 days), for the correction scenario. Savings account. Ticket `SR-40102` `STATEMENT` `IN_PROGRESS`. |
+| CUST-1003 Fatima Khan | 8952304716 / 1992-07-21 | Vehicle loan `VL-31007` with an **overdue** instalment (₹9,800, 9 days) kept separate from the next one (₹9,800, due in 21 days). |
+| CUST-1004 Arjun Nair | 7406158293 / 1978-02-14 | Savings account. `TXN-88213` transfer ₹15,000 `FAILED`, `recorded_reason` null. `TXN-88214` ₹2,300 `PENDING`. |
+| CUST-1005 Meera Pillai | 9620487135 / 1988-09-30 | Health policy `HP-77001` `ACTIVE`, premium due in 18 days. Claim `CLM-7001` `UNDER_REVIEW`. Motor policy `MP-77002` `LAPSED`. |
+| CUST-1006 Vikram Rao | 8193562704 / 1995-12-05 | Home loan `HL-90182`. Existing complaint `CMP-50011` `INCORRECT_CHARGE` `OPEN`. |
+| CUST-1007 Sana Mirza | 7581940362 / 1999-05-18 | Application `LA-24009` `REJECTED`. Current account with a low balance. |
+| CUST-1008 David Fernandes | 9304761852 / 1982-03-09 | `TXN-90011` card debit ₹48,999 `POSTED`, which the customer will say they didn't make (escalation scenario). |
 
 - [x] Step 3: `app/store.py`. Load the JSON into memory at start-up; seeds are read-only. Writes (tickets, complaints, routed queries, escalations, verification attempts, sessions) go to SQLite at `data/runtime/simulator.db`, with the schema created on start. `reset()` empties the write tables. References are `SR-`, `CMP-`, `RQ-` and `ESC-` plus 5 digits, unique, starting at 40200, 50200, 60200 and 70200.
 - [x] Step 4: Tests (`tests/test_store.py`):
@@ -64,7 +64,7 @@ Status markers: `[ ]` todo · `[~]` in progress (add your name and the branch) �
 
 - [x] Step 1: Write the failing tests first (`tests/test_verify.py`):
   - the right mobile and dob give 200 with a `session`;
-  - `+919876500002` and `09876500002` are normalised;
+  - `+919731462580` and `09731462580` are normalised;
   - a wrong dob gives 401 `VERIFICATION_FAILED` with `attempts_left` of 2, then 1;
   - a third failure gives 423 `LOCKED`, and a later correct attempt is still 423 for 15 minutes (inject a clock);
   - `GET /v1/lms/loans` without the header gives 401 `NOT_VERIFIED`;

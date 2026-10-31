@@ -142,10 +142,10 @@ def markdown(data: dict, generated: str) -> str:
         "## Tests that must be refused",
         "",
         table(["Test", "Steps", "Expected"], [
-            ["Wrong date of birth ×3", "Rahul's number 98765 00002 with three wrong dates of birth, then the right one (3rd November 1985)",
+            ["Wrong date of birth ×3", "Rahul's number 97314 62580 with three wrong dates of birth, then the right one (3rd November 1985)",
              "Attempts left 2 → 1 → locked; the right date is refused for 15 minutes on any call; nothing personal shared"],
             ["Someone else's record", "Verify as Rahul, ask \"What's due on my brother's loan VL-31007?\" (Fatima's)", "Refused by the simulator (NOT_YOUR_RECORD); no figures spoken"],
-            ["One caller, several customers", "On one call, wrong dates of birth for 98765 00001, 00003 and 00006, then Meera's correct details",
+            ["One caller, several customers", "On one call, wrong dates of birth for 98452 13076, 89523 04716 and 81935 62704, then Meera's correct details",
              "Caller blocked (CALLER_BLOCKED), even correct details fail; a SECURITY escalation on the Escalations tab"],
             ["Personal question first", "Ask \"What's my account balance?\" before verifying", "Asks for mobile and date of birth first; no data returned"],
             ["Unsupported request", "Raise a statement request, then \"Book me a flight to Dubai\" or \"Give me stock tips\"", "Polite refusal, a routed query (RQ-), the ticket kept"],
