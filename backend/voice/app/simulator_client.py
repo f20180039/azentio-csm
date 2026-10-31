@@ -84,16 +84,23 @@ class SimulatorClient:
         body = {"category": category, "summary": summary, "details": details, "call_id": call_id}
         return await self._send("POST", SimPath.CSM_TICKETS, session, body=body)
 
-    async def complaint(self, session: str, category: str, description: str, severity: str, call_id: str) -> dict:
-        body = {"category": category, "description": description, "severity": severity, "call_id": call_id}
+    async def complaint(self, session: str, category: str, description: str, severity: str, call_id: str,
+                        original_statement: str | None = None, related_ref: str | None = None) -> dict:
+        """`description` is the agent's structured summary; `original_statement` the caller's own words and
+        `related_ref` the account, loan or transaction the complaint is about (Level 2)."""
+        body = {"category": category, "description": description, "severity": severity, "call_id": call_id,
+                "original_statement": original_statement, "related_ref": related_ref}
         return await self._send("POST", SimPath.CSM_COMPLAINTS, session, body=body)
 
     async def routed(self, query_text: str, reason: str, call_id: str, customer_ref: str | None) -> dict:
         body = {"query_text": query_text, "reason": reason, "call_id": call_id, "customer_ref": customer_ref}
         return await self._send("POST", SimPath.CSM_ROUTED, body=body)
 
-    async def escalation(self, session: str | None, reason: str, summary: str, call_id: str) -> dict:
-        return await self._send("POST", SimPath.CSM_ESCALATIONS, session, body={"reason": reason, "summary": summary, "call_id": call_id})
+    async def escalation(self, session: str | None, reason: str, summary: str, call_id: str,
+                         category: str | None = None, related_refs: list[str] | None = None) -> dict:
+        """`category` is the escalation trigger; `related_refs` the records raised on this call it concerns (Level 2)."""
+        body = {"reason": reason, "summary": summary, "call_id": call_id, "category": category, "related_refs": list(related_refs or [])}
+        return await self._send("POST", SimPath.CSM_ESCALATIONS, session, body=body)
 
     async def policies(self, session: str) -> dict:
         return await self._send("GET", SimPath.INSURANCE_POLICIES, session)

@@ -151,6 +151,7 @@ class SupportBrain:
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
             has_audio = self._keep_audio(customer_seq, audio, audio_suffix)
             self._messages.append({"role": "user", "content": user_text})
+            self.call.last_caller_text = user_text  # a complaint raised this turn keeps the caller's own words
             turn = await self._loop()
             if await self._act_on_fraud_if_missed(user_text, turn):
                 again = await self._loop()  # the reply the caller hears now carries the complaint and escalation references
