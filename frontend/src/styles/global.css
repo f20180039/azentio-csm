@@ -445,6 +445,10 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .sc-turn-head .sc-lang { margin-inline-end: auto; }
 .sc-turn-alt { line-height: 1.35; }
 .sc-turn-alt-label { font-weight: 600; }
+.sc-tc { display: grid; gap: 4px; }
+.sc-tc-actions { gap: 4px; }
+.sc-tc-form { display: grid; gap: 6px; }
+.sc-tc-form input { width: 100%; box-sizing: border-box; }
 .sc-english-first { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; color: var(--muted); font-weight: 600; white-space: nowrap; cursor: pointer; }
 .sc-audio { width: 100%; max-width: 360px; height: 34px; }
 .sc-retrieved { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }

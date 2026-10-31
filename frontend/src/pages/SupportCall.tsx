@@ -28,6 +28,7 @@ import {
   type SupportOutcome,
   type SupportTurn,
   type ToolTrace,
+  transcriptText,
   turnAudioUrl,
 } from '../api/support';
 import { getPhoneAllowed, placeSupportPhoneCall, type PhoneAllowed } from '../api/phone';
@@ -39,7 +40,7 @@ import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../forma
 import { Route } from '../routes';
 import { Highlight, turnMatches } from '../search';
 import { SpeechLanguage, TurnRole, Verification } from '../vocab';
-import { RatingPanel, TurnFeedbackBlock } from './CallFeedback';
+import { RatingPanel, TranscriptCorrectionBlock, TurnFeedbackBlock } from './CallFeedback';
 import { CallStatusPill } from './SupportDesk';
 
 const POLL_MS = 1000;
@@ -208,9 +209,32 @@ function LanguageChip({ meta }: { meta: SupportTurn['meta'] }) {
 /**
  * A turn's words. A translated turn shows two lines: the original (the record) and its English; "English first" swaps
  * which one is prominent. The secondary line is small, muted and labelled with its language.
+ *
+ * A caller turn a reviewer has corrected leads with the corrected reading; the recognised text follows as "Heard as",
+ * then the English (which translates the recognised text, so it stays with it). "English first" does not reorder these.
+ * A turn the recogniser marked as silent can be corrected too (a false "no speech" is a mis-recognition): its "Heard as"
+ * says so instead of quoting an empty record.
  */
 function TurnText({ t, query, englishFirst }: { t: SupportTurn; query: string; englishFirst: boolean }) {
   const m = t.meta;
+  if (m.transcript_correction) {
+    const silent = m.no_speech || !t.text.trim();
+    return (
+      <>
+        <p lang={m.language} data-testid="turn-corrected">
+          <Highlight text={transcriptText(t)} query={query} />
+        </p>
+        <p lang={silent ? undefined : m.language} data-testid="turn-heard" className="small muted sc-turn-alt">
+          <span className="sc-turn-alt-label">Heard as:</span> {silent ? '(no speech detected)' : <Highlight text={t.text} query={query} />}
+        </p>
+        {m.text_en && (
+          <p lang={SpeechLanguage.ENGLISH} data-testid="turn-english" className="small muted sc-turn-alt">
+            <span className="sc-turn-alt-label">{languageLabel(SpeechLanguage.ENGLISH)}:</span> <Highlight text={m.text_en} query={query} />
+          </p>
+        )}
+      </>
+    );
+  }
   if (!m.text_en) {
     return (
       <p lang={m.language}>
@@ -248,7 +272,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged, englishFirst = fa
             {formatDateTime(t.at)}
           </time>
         </div>
-        {m.no_speech ? <p className="muted sc-nospeech">No speech detected</p> : <TurnText t={t} query={query} englishFirst={englishFirst} />}
+        {m.no_speech && !m.transcript_correction ? <p className="muted sc-nospeech">No speech detected</p> : <TurnText t={t} query={query} englishFirst={englishFirst} />}
         {m.audio && callId && (
           <audio controls preload="none" src={turnAudioUrl(callId, t.seq)} aria-label="What the customer said" className="sc-audio" />
         )}
@@ -263,6 +287,7 @@ function Turn({ t, audio, query = '', mark, callId, onChanged, englishFirst = fa
             </span>
           ) : null}
         </div>
+        {callId && onChanged && <TranscriptCorrectionBlock callId={callId} turn={t} onChanged={onChanged} />}
       </li>
     );
   }

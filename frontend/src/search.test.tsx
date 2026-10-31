@@ -57,6 +57,13 @@ describe('turnMatches', () => {
     expect(turnMatches('gold', kn)).toBe(false);
   });
 
+  it('searches a reviewer\'s corrected transcript as well as the recognised words', () => {
+    const t = turn('my number is 98765 0002', { transcript_correction: { text: 'my number is 98765 00002', author: 'reviewer', at: '2026-10-31T06:00:00Z' } });
+    expect(turnMatches('00002', t)).toBe(true);
+    expect(turnMatches('0002', t)).toBe(true);
+    expect(turnMatches('00003', t)).toBe(false);
+  });
+
   it('matches intents by code and label, and references, as before', () => {
     const t = turn('Can you send me the schedule?', { intents: ['SERVICE_REQUEST'], refs: ['SR-40200'] });
     expect(turnMatches('service request', t)).toBe(true);

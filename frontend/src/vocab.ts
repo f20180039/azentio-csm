@@ -104,6 +104,9 @@ export type LessonStatus = ValueOf<typeof LessonStatus>;
 /** POST /support/lessons text length bounds. */
 export const LessonLength = { MIN: 10, MAX: 300 } as const;
 
+/** A reviewer's corrected caller transcript, after trimming (mirrors the core API's bounds). */
+export const TranscriptLength = { MIN: 1, MAX: 2000 } as const;
+
 /** Prefixes of the references the agent creates in the bank simulator. */
 export const RefPrefix = { TICKET: 'SR-', COMPLAINT: 'CMP-', ROUTED: 'RQ-', ESCALATION: 'ESC-' } as const;
 export type RefPrefix = ValueOf<typeof RefPrefix>;
