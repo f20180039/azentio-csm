@@ -99,6 +99,16 @@ describe('Dashboard', () => {
     expect(screen.getByText('Asked for a discount the playbook does not allow')).toBeInTheDocument();
   });
 
+  it('renders the intent classification line chart with series legend', async () => {
+    getDashboard.mockResolvedValue(sampleDashboard());
+    mount();
+    expect(await screen.findByText('Intent classification trends')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /customer intent classification trends/i })).toBeInTheDocument();
+    expect(screen.getByText('Repayment')).toBeInTheDocument();
+    expect(screen.getByText('Loan status')).toBeInTheDocument();
+    expect(screen.getByText('Complaint')).toBeInTheDocument();
+  });
+
   it('shows a designed empty state when there are no calls', async () => {
     getDashboard.mockResolvedValue(empty());
     mount();
