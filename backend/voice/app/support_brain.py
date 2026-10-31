@@ -35,6 +35,11 @@ TRANSLATED_SCRIPTS = frozenset({SpeechLanguage.KANNADA, SpeechLanguage.HINDI})
 OUTCOME_BY_PREFIX = ((RefPrefix.ESCALATION, Outcome.ESCALATED), (RefPrefix.COMPLAINT, Outcome.COMPLAINT_REGISTERED),
                      (RefPrefix.SERVICE_REQUEST, Outcome.TICKET_CREATED), (RefPrefix.ROUTED, Outcome.ROUTED))
 
+CORRECTION_MAX_CHARS = 2000  # the core API's limit on a transcript correction; the voice service accepts the same text
+CORRECTION_NOTE = ('(Correction from the bank\'s reviewer for an earlier caller turn: the caller actually said: "{text}". '
+                   "Use this instead of what was heard.)")
+HEARD_KEY = {VerifyField.MOBILE: "mobile", VerifyField.DOB: "dob"}  # apply_correction's answer: which identity fields it filled
+
 
 def _clean_reply(text: str) -> str:
     """Strips runaway multi-turn simulations, internal reasoning leaks, and repetitive question loops."""
@@ -205,19 +210,37 @@ class SupportBrain:
                                              **({MetaKey.AUDIO: True} if has_audio else {})})
             return turn
 
-    def _hear_identity(self, text: str) -> None:
+    def _hear_identity(self, text: str) -> set[VerifyField]:
         """Keeps the mobile number and date of birth the caller said, so verify_customer uses them rather than the model's
         copy. A new value replaces the old (latest wins); a turn without one leaves it; a wrong-length number is remembered
-        so the agent can say how many digits it heard. Only numbers this code could not read let the model fill a field."""
+        so the agent can say how many digits it heard. Only numbers this code could not read let the model fill a field.
+        Returns the fields this text filled."""
         call = self.call
+        filled: set[VerifyField] = set()
         if mobile := extract_mobile(text):
             call.heard_mobile, call.heard_digits = mobile, None
+            filled.add(VerifyField.MOBILE)
         elif (run := digit_run(text)) and is_mobile_attempt(run):
             call.heard_digits = run
         if dob := extract_dob(text, call.today):
             call.heard_dob = dob
+            filled.add(VerifyField.DOB)
         if unexplained_numbers(text):
             call.model_may_fill.update(VerifyField)
+        return filled
+
+    async def apply_correction(self, seq: int, text: str) -> dict[str, bool]:
+        """A reviewer corrected what the caller said on turn `seq` (the panel's transcript correction, already on the record):
+        the identity details are read from the corrected words as if the caller had just said them, so a corrected mobile
+        number or date of birth replaces what was misheard (and refills a field forgotten after a bank mismatch), and the
+        model is told to use the correction. Nothing is spoken, the bank is not called and no verification attempt is spent.
+        Returns which identity fields the correction filled. Removing the correction later does not un-hear it."""
+        async with self._lock:
+            text = normalise_spoken_digits(text)
+            filled = self._hear_identity(text)
+            self._messages.append({"role": "user", "content": CORRECTION_NOTE.format(text=text)})
+            logger.info(f"call {self.call.call_id}: reviewer corrected turn {seq}; filled {sorted(str(f) for f in filled)}")
+            return {HEARD_KEY[f]: f in filled for f in VerifyField}
 
     def mark_unheard(self) -> None:
         """The caller interrupted before hearing the last reply: keep it in context, but say it was never heard."""

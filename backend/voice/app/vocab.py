@@ -156,6 +156,7 @@ class Route(StrEnum):
     TWILIO_SUPPORT_WS = "/ws/twilio/support"
     TURN_AUDIO = "/support/calls/{call_id}/turns/{seq}/audio"
     SUPPORT_PAUSE = "/support/calls/{call_id}/pause"
+    SUPPORT_TURN_CORRECTION = "/support/calls/{call_id}/turns/{seq}/correction"
 
 
 HTTP_ERROR_PREFIX = "HTTP_"  # tool error code for a simulator status with no named error: HTTP_<status>, e.g. HTTP_503
