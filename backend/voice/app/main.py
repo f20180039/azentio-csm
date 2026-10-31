@@ -22,7 +22,7 @@ from .prompt import system_prompt
 from .simulator_client import SimulatorClient
 from .speech import CallLanguage, voice_for
 from .spoken import speakable
-from .support_brain import SupportBrain, SupportTurn, op_outcome
+from .support_brain import CORRECTION_MAX_CHARS, SupportBrain, SupportTurn, op_outcome
 from .support_prompt import GREETING
 from .support_tools import CallSession
 from .translate import to_english
@@ -375,6 +375,25 @@ async def support_pause(call_id: UUID, body: SupportPauseIn) -> dict:
         raise HTTPException(404, "no live call")
     await responder.set_paused(body.paused)
     return {"paused": responder.paused}
+
+
+class TurnCorrectionIn(BaseModel):
+    text: str
+
+
+@app.post(Route.SUPPORT_TURN_CORRECTION)
+async def support_turn_correction(call_id: UUID, seq: int, body: TurnCorrectionIn) -> dict:
+    """A reviewer corrected a caller turn on the panel (the core API holds the record): the live agent re-reads the identity
+    details from the corrected words and is told to use them. Only booleans come back; the digits are never echoed."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "text must not be blank")
+    if len(text) > CORRECTION_MAX_CHARS:
+        raise HTTPException(400, f"text must be at most {CORRECTION_MAX_CHARS} characters")
+    brain = state.support.get(str(call_id))
+    if brain is None:
+        raise HTTPException(404, "no live call")
+    return {"applied": True, "heard": await brain.apply_correction(seq, text)}
 
 
 @app.post(Route.SUPPORT_END)
