@@ -21,3 +21,4 @@ __pycache__/
 .claude/
 .run/
 backend/voice/eval/audio/out/
+frontend/.vite/
