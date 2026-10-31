@@ -89,11 +89,34 @@ All bodies are JSON. Errors look like `{"error": CODE, "detail": str}`. Personal
 - `GET /faq/search?q=&limit=3` returns `{"items": [{"id": "FAQ-012", "question", "answer", "score"}]}`, with the best match first. An empty `items` means no approved answer.
 
 **Operations** (HTTP Basic `ops:ops`)
-- `GET /ops/records?kind=ticket|complaint|routed|escalation` lists every record, newest first.
+- `GET /ops/records?kind=ticket|complaint|routed|escalation` lists every record, newest first: `{"items": [{"ref", "kind", "category": str|null, "status": str|null, "summary": str, "customer_ref": str|null, "call_id", "created_at", "escalated": bool|null}]}`. For routed queries, `summary` is the query text plus the reason.
 - `POST /ops/reset` reloads the seed data and empties the writes.
 
 **Health**
 - `GET /health` returns `{"status": "ok"}`.
+
+## Shared contract: call records and audio simulation (Anshuman's services; the operator panel reads these)
+
+**Spring** (`http://localhost:8080/api/v1`, Basic auth as the signed-in web user):
+
+| Request | Body | Returns |
+|---|---|---|
+| `POST /support/calls` | `{"channel": "VOICE\|SIM_AUDIO\|TEXT"}` | 201 `{"id"}` |
+| `POST /support/calls/{id}/turns` | `{"role": "customer\|agent", "text", "at", "meta": {}}` | |
+| `PATCH /support/calls/{id}/turns/{seq}/meta` | `{...}` | merges keys into that turn's meta (used to add intents later) |
+| `POST /support/calls/{id}/end` | `{"outcome": "RESOLVED\|TICKET_CREATED\|COMPLAINT_REGISTERED\|ROUTED\|ESCALATED\|ABANDONED"}` | |
+| `GET /support/calls/{id}` | | `{"id", "channel", "startedAt", "endedAt", "outcome", "verified", "turns": [{"seq", "role", "text", "at", "meta"}]}` |
+| `GET /support/calls?outcome=&limit=50` | | `{"items": [{"id", "channel", "startedAt", "endedAt", "outcome", "verified", "turnCount", "intents": [..]}]}` |
+
+The voice service writes with the `voice/voice` account.
+
+**Turn `meta`:**
+- customer turn: `{"intents": ["REPAYMENT"], "intent_source": "llm|rules", "verified": bool, "verify_failures": int, "locked": bool, "no_speech": bool}`
+- agent turn: `{"tool_trace": [{"name", "args", "result_summary"}], "retrieved": {"<tool>": <tool result JSON>}, "refs": ["SR-40200"]}`
+
+**Voice** (`http://localhost:7861`):
+- `POST /sim/audio`: multipart `files` (one per customer turn, in order), with an optional `call_id` to continue a call. Returns `{"call_id", "turns": [{"file", "transcript", "no_speech", "intents", "verified", "tool_trace", "retrieved", "reply_text", "reply_audio_b64"}]}`.
+- `POST /support/offer`: same body as the existing `/offer` (WebRTC SDP), plus it starts a support call. Returns the SDP answer and `call_id`.
 
 The seed customers and the scenario each one supports are listed in C2. The voice agent's tests mock this contract with `httpx.MockTransport`, so nobody waits on anyone.
 
