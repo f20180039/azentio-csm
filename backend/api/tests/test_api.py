@@ -1,4 +1,4 @@
-"""Unit & Integration tests for FinPulse AI Core API."""
+"""Unit & Integration tests for Azentio-CSM Core API."""
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app

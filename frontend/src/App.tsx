@@ -49,12 +49,12 @@ function Shell() {
     <div className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">CI</span>
-          <span>Case Intelligence</span>
+          <span className="brand-mark" aria-hidden="true">AC</span>
+          <span>Azentio-CSM</span>
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
-          <NavLink to="/agent-desk">FinPulse AI</NavLink>
+          <NavLink to="/agent-desk">Azentio-CSM Desk</NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/queue">Queue</NavLink>
           <NavLink to="/renewals">Renewals</NavLink>

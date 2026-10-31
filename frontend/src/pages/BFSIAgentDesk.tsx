@@ -17,7 +17,7 @@ export function BFSIAgentDesk() {
     {
       id: 'm-1',
       sender: 'bot',
-      text: 'Namaste! Welcome to FinPulse Banking Assistant.\n\nHow can I help you today?\n• Emergency Card Block & Freeze\n• Loan EMI & Prepayment Calculator\n• Motor & Health Claim Intake (FNOL)\n• Account Balances & Transactions',
+      text: 'Namaste! Welcome to Azentio-CSM Banking Assistant.\n\nHow can I help you today?\n• Emergency Card Block & Freeze\n• Loan EMI & Prepayment Calculator\n• Motor & Health Claim Intake (FNOL)\n• Account Balances & Transactions',
       quickReplies: ['Block My Card', 'Check Loan EMI', 'File a Claim', 'Speak with Agent'],
       timestamp: '10:45 AM'
     }
@@ -104,7 +104,7 @@ export function BFSIAgentDesk() {
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--line)', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#00836c' }} />
-          <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--ink)' }}>FinPulse AI — BFSI Conversational Agent Desk</span>
+          <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--ink)' }}>Azentio-CSM — BFSI Conversational Agent Desk</span>
           <span className="metric-badge badge-green">RBI & DPDP 2023 Compliant</span>
         </div>
         <div style={{ display: 'flex', gap: '20px' }}>

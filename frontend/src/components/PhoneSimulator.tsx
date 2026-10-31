@@ -42,10 +42,10 @@ export function PhoneSimulator({ messages, onSendMessage, isLoading }: PhoneSimu
         <div className="phone-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#ffffff', color: '#00836c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-              FP
+              AC
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: '13px' }}>FinPulse Bank AI ✓</div>
+              <div style={{ fontWeight: 600, fontSize: '13px' }}>Azentio-CSM Banking AI ✓</div>
               <div style={{ fontSize: '10.5px', opacity: 0.85 }}>Official WhatsApp Banking</div>
             </div>
           </div>
@@ -84,7 +84,7 @@ export function PhoneSimulator({ messages, onSendMessage, isLoading }: PhoneSimu
 
           {isLoading && (
             <div className="chat-bubble bot" style={{ fontStyle: 'italic', opacity: 0.8 }}>
-              FinPulse AI is verifying...
+              Azentio-CSM is verifying...
             </div>
           )}
         </div>

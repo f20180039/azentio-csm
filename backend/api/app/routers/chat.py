@@ -141,7 +141,7 @@ async def process_chat_message(req: ChatMessageRequest, user: Annotated[TokenDat
         # Default RAG & Policy FAQ Fallback with compliance boundary
         intent = "KNOWLEDGE_RAG"
         response_text = (
-            "Welcome to FinPulse AI Banking Assistant. I can assist you with:\n"
+            "Welcome to Azentio-CSM Banking Assistant. I can assist you with:\n"
             "• Instant Card Block & Freeze\n"
             "• Loan EMI Status & Prepayment Savings Calculator\n"
             "• Insurance Claims (FNOL) & Policy Renewals\n"

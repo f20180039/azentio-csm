@@ -1,10 +1,16 @@
-# Case Intelligence Starter
+# Azentio-CSM: Enterprise BFSI Conversational AI & Autonomous Agent Suite
 
-Reusable scaffolding for document-driven review workflows. Documents come in, structured data comes out, a configurable rules engine scores each case, an LLM explains the findings with quotes it must prove, and a human reviewer decides. Every step lands in a tamper-evident audit log.
+Azentio-CSM is a production-grade, multi-tenant conversational AI platform designed for regulated financial institutions (Commercial Banks, NBFCs, Insurers, and Wealth/Broking firms) to deploy autonomous customer servicing, proactive collections/renewals, loan onboarding, and workforce support across WhatsApp, Web Widget, and Voice IVR.
 
 Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
-**Renewal Desk** (problem #05, CSM voice agent) is the topic built on top: an insurance renewal call that an analyst starts from the Renewals queue and the customer takes in the browser. The agent talks, but the API decides what it may offer.
+**Key Capabilities:**
+- **Omnichannel WhatsApp & Web Simulator**: Realistic smartphone interface for customer journeys with quick replies and real-time step-up authentication.
+- **Unified Python FastAPI Core API** (`backend/api`): Modular `APIRouter`s for `/auth`, `/chat`, `/cbs`, `/flows`, `/analytics`, and `/audit`.
+- **Zero-Trust PII Redaction Engine**: Masks raw Aadhaar, PAN, Card, and Phone numbers in-region before any prompt leaves the security perimeter.
+- **Deterministic FinTech Math**: Guarantees zero hallucinations on interest savings, prepayment calculations, and regulatory fee caps (RBI/IRDAI compliant).
+- **Cryptographic Audit Ledger**: Immutable SHA-256 hash chaining for tamper-evident compliance trails.
+- **Alpha-Fin Design Theme**: Observatory Green (`#00836C`) and Orange Passion (`#F58220`) high-contrast BFSI aesthetic with real-time CX telemetry.
 
 ## Run it
 

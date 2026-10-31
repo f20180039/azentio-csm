@@ -1,4 +1,4 @@
-"""FinPulse AI - Enterprise BFSI Conversational AI Platform Core API."""
+"""Azentio-CSM - Enterprise BFSI Conversational AI Platform Core API."""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="FinPulse AI - BFSI Conversational AI Platform API",
+    title="Azentio-CSM - BFSI Conversational AI Platform API",
     description="Enterprise Conversational AI suite for Banking, Lending, Insurance & Wealth.",
     version="1.0.0",
     docs_url="/swagger-ui.html",
@@ -46,7 +46,7 @@ app.include_router(audit.router, prefix="/api")
 async def health_check():
     return {
         "status": "UP",
-        "service": "FinPulse AI Core API (FastAPI)",
+        "service": "Azentio-CSM Core API (FastAPI)",
         "region": settings.data_localization_region,
         "compliance": ["RBI-Outsourcing", "DPDP-Act-2023", "PCI-DSS-Ready"]
     }

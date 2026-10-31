@@ -1,10 +1,10 @@
-"""Configuration settings for FinPulse AI Core API."""
+"""Configuration settings for Azentio-CSM Core API."""
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "FinPulse AI Core API"
+    app_name: str = "Azentio-CSM Core API"
     environment: str = "development"
     debug: bool = False
     
