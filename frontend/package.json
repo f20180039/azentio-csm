@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:share": "VITE_API_BASE=/api/v1 VITE_SIMULATOR_BASE=/sim/v1 vite",
     "dev:mock": "VITE_MOCK=1 vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
