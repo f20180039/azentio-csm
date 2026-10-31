@@ -5,7 +5,7 @@ import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
 import { opsCustomerPath, opsTicketPath, SimulatorPath } from './paths/simulator';
-import { supportPausePath, turnAudioPath, VoicePath } from './paths/voice';
+import { supportPausePath, supportTurnCorrectionPath, turnAudioPath, VoicePath } from './paths/voice';
 import {
   FeedbackVerdict,
   Intent,
@@ -47,6 +47,12 @@ export interface TranscriptCorrection {
   text: string;
   author: string;
   at: string;
+}
+
+/** What the live agent took from a correction: which identity details it now holds from the corrected words (never the digits). */
+export interface LiveCorrection {
+  applied: boolean;
+  heard: { mobile: boolean; dob: boolean };
 }
 
 export interface TurnMeta {
@@ -385,6 +391,18 @@ const liveSupport = {
     );
   },
 
+  /** After a correction is on the record: the live agent re-reads a corrected mobile number or date of birth for its next verification. */
+  async applyLiveCorrection(callId: string, seq: number, text: string): Promise<LiveCorrection> {
+    const res = await reach('voice service', VOICE_BASE, () =>
+      fetch(`${VOICE_BASE}${supportTurnCorrectionPath(callId, seq)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      }),
+    );
+    return (await res.json()) as LiveCorrection;
+  },
+
   async supportOffer(body: OfferBody, fetchImpl: typeof fetch = fetch): Promise<OfferAnswer> {
     const res = await reach('voice service', VOICE_BASE, () =>
       fetchImpl(`${VOICE_BASE}${VoicePath.SUPPORT_OFFER}`, {
@@ -541,6 +559,7 @@ export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, 
   api.sendFeedback(id, seq, verdict, correction);
 export const correctTranscript = (id: string, seq: number, text: string) => api.correctTranscript(id, seq, text);
 export const clearTranscriptCorrection = (id: string, seq: number) => api.clearTranscriptCorrection(id, seq);
+export const applyLiveCorrection = (id: string, seq: number, text: string) => api.applyLiveCorrection(id, seq, text);
 export const listReview = () => api.listReview();
 export const resolveReview = (id: string, note: string) => api.resolveReview(id, note);
 export const listLessons = (activeOnly?: boolean) => api.listLessons(activeOnly);
