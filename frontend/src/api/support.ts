@@ -541,7 +541,8 @@ async function liveConnectSupportVoice(
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : null;
     const url = req ? req.url : String(input);
-    if (!isSameRequestUrl(url, endpoint)) return nativeFetch(input, init);
+    const method = (req ? req.method : (init?.method ?? 'GET')).toUpperCase();
+    if (!isSameRequestUrl(url, endpoint) || method !== 'POST') return nativeFetch(input, init);
     const raw = req ? await req.text() : String(init?.body ?? '{}');
     const answer = await api.supportOffer(JSON.parse(raw) as OfferBody, nativeFetch);
     if (answer.call_id) h.onCallId(answer.call_id);

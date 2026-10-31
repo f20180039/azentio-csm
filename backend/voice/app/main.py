@@ -419,15 +419,20 @@ async def support_end(body: SupportEndIn) -> dict:
 
 
 class OfferIn(BaseModel):
-    sdp: str
-    type: str
+    sdp: str | None = None
+    type: str | None = None
     pc_id: str | None = None
     restart_pc: bool | None = None
     requestData: dict | None = None
+    candidates: list[dict] | None = None
 
 
 @app.post(Route.API_OFFER)
 async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
+    if body.candidates is not None and not body.sdp:
+        from pipecat.transports.smallwebrtc.request_handler import IceCandidate
+        candidates = [IceCandidate(**c) if isinstance(c, dict) else c for c in body.candidates]
+        return await ice_candidate(SmallWebRTCPatchRequest(pc_id=body.pc_id or "", candidates=candidates))
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.transports.base_transport import TransportParams
     from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
@@ -494,6 +499,11 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
 @app.post(Route.SUPPORT_OFFER)
 async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     """WebRTC mic call to the front desk. A first offer starts a support call; a renegotiation (pc_id) reuses it."""
+    if body.candidates is not None and not body.sdp:
+        from pipecat.transports.smallwebrtc.request_handler import IceCandidate
+        candidates = [IceCandidate(**c) if isinstance(c, dict) else c for c in body.candidates]
+        return await ice_candidate(SmallWebRTCPatchRequest(pc_id=body.pc_id or "", candidates=candidates))
+
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.transports.base_transport import TransportParams
     from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
