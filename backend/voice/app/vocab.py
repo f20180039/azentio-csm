@@ -53,6 +53,14 @@ class EscalationTrigger(StrEnum):
     DISSATISFIED = "DISSATISFIED"          # the caller is unhappy with the help so far
     UNRESOLVED = "UNRESOLVED"              # the agent could not answer or do what was needed
     SENSITIVE = "SENSITIVE"                # fraud, unauthorised transactions, distress: at once
+    # Raised by the brain's backstops only, never offered to the model (see OFFERED_TRIGGERS).
+    AUTH_LOCKED = "AUTH_LOCKED"                            # verification locked after repeated failures
+    REPEATED_MISUNDERSTANDING = "REPEATED_MISUNDERSTANDING"  # the agent kept failing to understand the caller
+
+
+OFFERED_TRIGGERS: tuple[EscalationTrigger, ...] = (EscalationTrigger.CUSTOMER_REQUEST, EscalationTrigger.DISSATISFIED,
+                                                   EscalationTrigger.UNRESOLVED, EscalationTrigger.SENSITIVE)
+"""The triggers the escalate_to_human tool schema offers the model; the other members belong to the backstops."""
 
 
 class HandoffMode(StrEnum):
