@@ -18,6 +18,8 @@ ENFORCE_CALLING_HOURS=false uvicorn app.main:app --port 8080
 |---|---|---|
 | `API_DB_PATH` | `data/runtime/api.db` (under `backend/api`) | SQLite file; the schema is created on start and the renewal seed is upserted |
 | `ENFORCE_CALLING_HOURS` | `true` | Refuse new renewal calls outside 09:00–21:00 IST |
+| `PII_VAULT_PATH` | `data/pii_vault.db` (under `backend/api`) | Separate SQLite file holding the values behind `[KIND#n]` transcript tokens, each Fernet-encrypted |
+| `PII_VAULT_KEY` | unset | Fernet key for the vault (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`). Unset: transcripts are still redacted, but no values are kept |
 | `RENEWAL_PLAYBOOK` | `app/resources/playbooks/health-renewal.yml` | Discount, payment-plan, add-on and hand-off limits |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated browser origins |
 

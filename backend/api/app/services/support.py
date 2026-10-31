@@ -10,6 +10,8 @@ from app.audit import AuditLog
 from app.clock import Clock
 from app.db import Database, dumps, loads
 from app.errors import ApiError
+from app.pii import Redactor
+from app.pii_vault import PiiVault
 from app.vocab import AuditAction, CallKind, CaseStatus, CaseType, Channel, ErrorCode, Outcome, TurnRole
 
 MAX_LIMIT = 200
@@ -69,10 +71,15 @@ def find_call(con: sqlite3.Connection, call_id: str) -> sqlite3.Row:
 
 
 class SupportService:
-    def __init__(self, db: Database, audit: AuditLog, clock: Clock):
+    def __init__(self, db: Database, audit: AuditLog, clock: Clock, vault: PiiVault):
         self.db = db
         self.audit = audit
         self.clock = clock
+        self.vault = vault
+
+    def redactor(self, call_id: str) -> Redactor:
+        """Everything written for a call goes through this first, so the calls DB only ever holds tokens."""
+        return Redactor(self.vault, call_id, self.clock.today())
 
     def start(self, channel: Channel, actor: str) -> dict:
         call_id = str(uuid.uuid4())
@@ -100,8 +107,9 @@ class SupportService:
                 raise ApiError.conflict(ErrorCode.CALL_ENDED)
             turns = loads(c["transcript"], [])
             seq = len(turns) + 1
-            turns.append({"seq": seq, "role": role, "text": text, "at": at or self.clock.instant(),
-                          "meta": dict(meta or {})})
+            redactor = self.redactor(call_id)
+            turns.append({"seq": seq, "role": role, "text": redactor.redact(text), "at": at or self.clock.instant(),
+                          "meta": redactor.redact(dict(meta or {}))})
             con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
         return {"seq": seq}
 
@@ -116,7 +124,7 @@ class SupportService:
                 raise ApiError.not_found(f"Turn {seq} not found on call {call_id}")
             t = turns[seq - 1]
             meta = t.get("meta") if isinstance(t.get("meta"), dict) else {}
-            meta.update(patch)
+            meta.update(self.redactor(call_id).redact(patch))
             t["meta"] = meta
             con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
         return _turn(t)
@@ -133,6 +141,14 @@ class SupportService:
             self.audit.record(con, call_id, actor, AuditAction.CALL_ENDED,
                               {"outcome": outcome, "turnCount": len(loads(c["transcript"], []))})
         return {"id": call_id, "outcome": outcome, "endedAt": now}
+
+    def reveal_pii(self, call_id: str, actor: str) -> dict:
+        """Admin only: the values behind a call's tokens, from the vault; every reveal is audited."""
+        with self.db.tx() as con:
+            self._find(con, call_id)
+            tokens = self.vault.get_all(call_id)
+            self.audit.record(con, call_id, actor, AuditAction.PII_REVEALED, {"tokenCount": len(tokens)})
+        return {"tokens": tokens}
 
     def get(self, call_id: str) -> dict:
         with self.db.read() as con:

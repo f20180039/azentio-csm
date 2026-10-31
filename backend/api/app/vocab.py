@@ -74,6 +74,19 @@ class EscalationTrigger(StrEnum):
     DISSATISFIED = "DISSATISFIED"
 
 
+class PiiKind(StrEnum):
+    """What a redaction token stands for: `[KIND#n]` in a stored transcript, the value in the PII vault."""
+    MOBILE = "MOBILE"
+    DOB = "DOB"
+    AADHAAR = "AADHAAR"
+    PAN = "PAN"
+    EMAIL = "EMAIL"
+    CARD = "CARD"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    DIGITS = "DIGITS"
+    NAME = "NAME"
+
+
 class CaseStatus(StrEnum):
     RECEIVED = "RECEIVED"
     PROCESSING = "PROCESSING"
@@ -188,6 +201,7 @@ class AuditAction(StrEnum):
     REVIEW_RESOLVED = "review.resolved"
     LESSON_PROPOSED = "lesson.proposed"
     LESSON_STATUS_CHANGED = "lesson.status_changed"
+    PII_REVEALED = "PII_REVEALED"
 
 
 CASE_DECISION_AUDIT = {
