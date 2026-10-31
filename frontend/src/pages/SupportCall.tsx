@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AudioOrbs } from '../components/AudioOrbs';
+import { SpeakingBubble, speechStatus, useLiveSpeech } from '../components/LiveSpeech';
 import { ApiError } from '../api/errors';
 import {
   audioDataUrl,
@@ -485,6 +485,7 @@ export function SupportCall() {
   const session = useRef<VoiceSession | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLOListElement>(null);
   const pollFailed = useRef(false);
   const unmounted = useRef(false);
 
@@ -539,9 +540,11 @@ export function SupportCall() {
   );
 
   const turns: SupportTurn[] = call?.turns.length ? call.turns : turnsFromSim(results);
+  const speech = useLiveSpeech(voice === 'on', audio, timelineRef);
+  const speaking = speech.customer ? 'customer' : speech.agent ? 'agent' : null;
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' });
-  }, [turns.length]);
+  }, [turns.length, speaking]);
 
   const audioByReply = new Map(results.filter((r) => r.reply_text && r.reply_audio_b64).map((r) => [r.reply_text!, r.reply_audio_b64!]));
 
@@ -656,12 +659,13 @@ export function SupportCall() {
           <h2 id="timeline-title" className="panel-title">
             Conversation
           </h2>
-          <ol className="sc-timeline" role="log" aria-live="polite" aria-label="Conversation history">
+          <ol ref={timelineRef} className="sc-timeline" role="log" aria-live="polite" aria-label="Conversation history">
             {turns.map((t) => (
               <Turn key={`${t.role}-${t.seq}`} t={t} audio={t.role === 'agent' ? audioByReply.get(t.text) : null} />
             ))}
+            {speaking && <SpeakingBubble who={speaking} />}
           </ol>
-          {turns.length === 0 && (
+          {turns.length === 0 && !speaking && (
             <div className="empty">
               <strong>No conversation yet</strong>
               <span>{callId ? 'Turns appear here as the customer speaks.' : 'Start the microphone or send recorded audio to begin.'}</span>
@@ -695,7 +699,10 @@ export function SupportCall() {
                 {mode === 'mic' ? (
                   <div id="mode-panel-mic" role="tabpanel" aria-labelledby="mode-mic" className="sc-mode-body">
                     <p className="small muted">Talk to the agent through this browser. Its replies play through your speakers.</p>
-                    <AudioOrbs live={voice === 'on'} agentAudio={audio} />
+                    <p className={`sc-mic-status${speaking ? ' active' : ''}`} role="status">
+                      <span className="dot" aria-hidden="true" />
+                      {speechStatus(voice === 'on', speech)}
+                    </p>
                     <div className="row">
                       {voice === 'off' && (
                         <button className="btn primary" onClick={startMic}>
