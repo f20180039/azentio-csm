@@ -1,0 +1,87 @@
+# Render blueprint for the CSM voice agent: core API, bank simulator and operator panel.
+# The voice service is NOT on Render: it needs WebRTC (UDP) for browser mic calls and its local-only guard refuses
+# proxied requests. It runs on the demo laptop. Point it at the hosted API and simulator so every call lands in the
+# shared, persistent database — in the laptop's .env:
+#   RENEWALS_API_BASE=https://azentio-csm-api.onrender.com/api/v1
+#   SIMULATOR_BASE=https://azentio-csm-sim.onrender.com/v1
+#   CORS_ORIGINS=http://localhost:5173,https://azentio-csm-web.onrender.com
+# The hosted panel calls the voice service at http://localhost:7861, so open the panel in a browser on that laptop.
+# Create it from the Render dashboard: New > Blueprint > this repo. Every service deploys from `main` only (branch: main). Secrets marked `sync: false`
+# are asked for once in the dashboard and never stored in git.
+#
+# State that must survive restarts and deploys (calls, transcripts, audit, tickets, complaints) lives in SQLite on a
+# persistent disk for the API and the simulator. Persistent disks need a paid instance (Starter); on the free plan the
+# disk is wiped on every restart. Live agent sessions are in the voice service's memory and reset when it restarts.
+#
+# Service URLs below assume the names are free on Render (https://<name>.onrender.com). If Render adds a suffix,
+# update CORS_ORIGINS and the panel's VITE_* values to the URLs it shows, then redeploy the panel.
+services:
+  - type: web
+    name: azentio-csm-api
+    branch: main
+    runtime: docker
+    rootDir: backend/api
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: api-data
+      mountPath: /app/data/runtime
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: API_DB_PATH
+        value: /app/data/runtime/api.db
+      - key: CORS_ORIGINS
+        value: https://azentio-csm-web.onrender.com
+      - key: VOICE_URL
+        value: http://localhost:7861
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+
+  - type: web
+    name: azentio-csm-sim
+    branch: main
+    runtime: docker
+    rootDir: backend/simulator
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: simulator-data
+      mountPath: /app/data/runtime
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8090"
+      - key: SIMULATOR_DB_PATH
+        value: /app/data/runtime/simulator.db
+      # pydantic-settings reads list settings as JSON
+      - key: CORS_ORIGINS
+        value: '["https://azentio-csm-web.onrender.com"]'
+
+  - type: web
+    name: azentio-csm-web
+    branch: main
+    runtime: docker
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: PORT
+        value: "8080"
+      # passed to the Docker build as build arguments (frontend/Dockerfile ARGs)
+      - key: VITE_API_BASE
+        value: https://azentio-csm-api.onrender.com/api/v1
+      - key: VITE_SIMULATOR_BASE
+        value: https://azentio-csm-sim.onrender.com/v1
+      # the voice service runs on the demo laptop (see the header)
+      - key: VITE_VOICE_BASE
+        value: http://localhost:7861
+      - key: VITE_MOCK
+        value: "0"
