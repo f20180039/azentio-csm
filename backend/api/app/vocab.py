@@ -214,3 +214,10 @@ SUMMARY_STATEMENTS = {
 def sql_in(enum: type[StrEnum]) -> str:
     """A SQL value list for CHECK constraints, derived from the enum."""
     return ", ".join(f"'{v.value}'" for v in enum)
+
+
+class OpOutcome(StrEnum):
+    """Per-tool-call outcome read back from a turn's meta.tool_trace (mirrors the voice service's values)."""
+    OK = "OK"
+    FAILED = "FAILED"
+    DECLINED = "DECLINED"
