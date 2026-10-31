@@ -487,7 +487,7 @@ td.sd-summary { min-width: 240px; max-width: 520px; }
 .chip { font: 500 var(--fs-xs) / 1 var(--font-body); padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
 .chip:hover { color: var(--ink); border-color: var(--muted); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.ref-pill { display: inline-block; font: 500 var(--fs-xs) / 1 var(--font-mono); padding: 4px 7px; border-radius: 4px; background: var(--warn-bg); color: var(--ink); border: 1px solid var(--line); }
+.ref-pill { display: inline-block; white-space: nowrap; font: 500 var(--fs-xs) / 1 var(--font-mono); padding: 4px 7px; border-radius: 4px; background: var(--warn-bg); color: var(--ink); border: 1px solid var(--line); }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 .sc-badge { font-size: var(--fs-sm); padding: 5px 10px; }
