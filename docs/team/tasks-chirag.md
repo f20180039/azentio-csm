@@ -11,7 +11,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 
 ---
 
-- [ ] **C1: Move the simulator to `backend/simulator`, port 8090; restore the Spring API in Compose** (needs: none)
+- [~] (Chirag, feat/c1-simulator-split) **C1: Move the simulator to `backend/simulator`, port 8090; restore the Spring API in Compose** (needs: none)
 
 **Files:** move `backend/api/app/`, `backend/api/requirements.txt`, the Python `backend/api/Dockerfile` and `backend/api/tests/` (the Python tests) to `backend/simulator/`. Restore the Spring Dockerfile at `backend/api/Dockerfile` from `main` (`git show main:api/Dockerfile`). Update `docker-compose.yml`. Point `frontend/src/pages/BFSIAgentDesk.tsx` at nothing removed: see the last step.
 
