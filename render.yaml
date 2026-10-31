@@ -10,8 +10,8 @@
 # are asked for once in the dashboard and never stored in git.
 #
 # State that must survive restarts and deploys (calls, transcripts, audit, tickets, complaints) lives in SQLite on a
-# persistent disk for the API and the simulator. Persistent disks need a paid instance (Starter); on the free plan the
-# disk is wiped on every restart. Live agent sessions are in the voice service's memory and reset when it restarts.
+# persistent disk for the API and the simulator. Persistent disks need a paid instance (plan 0.5c-512mb, the smallest); on the free plan
+# the disk is wiped on every restart. Live agent sessions are in the voice service's memory and reset when it restarts.
 #
 # Service URLs below assume the names are free on Render (https://<name>.onrender.com). If Render adds a suffix,
 # update CORS_ORIGINS and the panel's VITE_* values to the URLs it shows, then redeploy the panel.
@@ -21,8 +21,10 @@ services:
     branch: main
     runtime: docker
     rootDir: backend/api
-    dockerfilePath: ./Dockerfile
-    plan: starter
+    # Render resolves both paths from the repo root, not from rootDir
+    dockerfilePath: ./backend/api/Dockerfile
+    dockerContext: ./backend/api
+    plan: 0.5c-512mb
     healthCheckPath: /health
     disk:
       name: api-data
@@ -49,8 +51,10 @@ services:
     branch: main
     runtime: docker
     rootDir: backend/simulator
-    dockerfilePath: ./Dockerfile
-    plan: starter
+    # Render resolves both paths from the repo root, not from rootDir
+    dockerfilePath: ./backend/simulator/Dockerfile
+    dockerContext: ./backend/simulator
+    plan: 0.5c-512mb
     healthCheckPath: /health
     disk:
       name: simulator-data
@@ -70,8 +74,10 @@ services:
     branch: main
     runtime: docker
     rootDir: frontend
-    dockerfilePath: ./Dockerfile
-    plan: starter
+    # Render resolves both paths from the repo root, not from rootDir
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: 0.5c-512mb
     envVars:
       - key: PORT
         value: "8080"
