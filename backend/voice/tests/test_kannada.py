@@ -77,9 +77,11 @@ def test_kannada_reply_gets_the_kannada_voice():
 
 class FakeCommunicate:
     voices: list[str] = []
+    texts: list[str] = []  # what edge-tts was asked to say (the speakable form, not the transcript)
 
     def __init__(self, text, voice):
         FakeCommunicate.voices.append(voice)
+        FakeCommunicate.texts.append(text)
 
     async def stream(self):
         return
@@ -168,7 +170,9 @@ def test_support_prompt_has_the_language_rule_only_when_kannada_is_on():
     prompt = support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA))
     assert LANGUAGE_RULE in prompt and "English only" not in prompt
     assert "Kannada" not in support_prompt() and "reply in English" in support_prompt()
-    assert "Kannada" in LANGUAGE_RULE and "*_spoken" in LANGUAGE_RULE and "always in English" in LANGUAGE_RULE
+    # X1: the rule no longer points at the *_spoken fields; references and amounts are written and the voice spells them
+    assert "Kannada" in LANGUAGE_RULE and "rupee sign" in LANGUAGE_RULE and "always in English" in LANGUAGE_RULE
+    assert "*_spoken" not in LANGUAGE_RULE and "letter by letter" not in LANGUAGE_RULE
 
 
 def test_classifier_knows_kannada():

@@ -72,12 +72,17 @@ _PUNCT = re.compile(r"[^\w\s]")
 REF_PREFIXES = ("SR", "CMP", "RQ", "ESC", "PL", "VL", "HL", "LA", "HP", "MP", "CLM", "TXN")
 _DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "to": "2", "too": "2", "three": "3", "four": "4", "for": "4",
                 "five": "5", "six": "6", "seven": "7", "eight": "8", "ate": "8", "nine": "9"}
+HOMOPHONES = frozenset({"to", "too", "for", "ate"})  # digits inside a reference, plain words in a sentence
+_PLAIN_DIGIT_WORDS = {w: d for w, d in _DIGIT_WORDS.items() if w not in HOMOPHONES}
+MIN_DIGIT_WORD_RUN = 3  # this many digit words in a row is a number spelled out (a mobile, a reference); fewer are words
 _COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
            "double": 2, "triple": 3, "quadruple": 4}
 _PLURALS = {"zeros": "0", "zeroes": "0", "ones": "1", "twos": "2", "threes": "3", "fours": "4",
             "fives": "5", "sixes": "6", "sevens": "7", "eights": "8", "nines": "9"}
 
 _TOKEN = r"(?:\d+|" + "|".join(sorted(_DIGIT_WORDS, key=len, reverse=True)) + r")\b"
+_PLAIN_TOKEN = r"(?:\d+|" + "|".join(sorted(_PLAIN_DIGIT_WORDS, key=len, reverse=True)) + r")"
+_DIGIT_WORD_RUN = re.compile(r"\b" + _PLAIN_TOKEN + r"(?:[ \t-]+" + _PLAIN_TOKEN + r")+\b", re.I)
 _SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
 _REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
 
@@ -93,7 +98,9 @@ def _to_count(s: str) -> int:
 
 
 def normalise_spoken_digits(text: str) -> str:
-    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' -> '000', 'double 5' -> '55'."""
+    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' -> '000', 'double 5' -> '55', then a run of
+    MIN_DIGIT_WORD_RUN or more digit words ('nine eight seven six five zero zero zero zero two', digits already expanded in
+    between included) into one number, so the transcript stores '9876500002'. 'one statement for two loans' stays words."""
     if not text:
         return text
 
@@ -120,7 +127,14 @@ def normalise_spoken_digits(text: str) -> str:
     text = re.sub(rf"\b({p_count})\s+times\s+({p_digit})\b", repl_times, text, flags=re.I)
     text = re.sub(rf"\b({p_mult})\s+({p_digit})\b", repl_mult, text, flags=re.I)
     text = re.sub(rf"\b({p_count})\s+({p_plural})\b", repl_plural, text, flags=re.I)
-    return text
+    return _DIGIT_WORD_RUN.sub(_join_digit_words, text)
+
+
+def _join_digit_words(m: re.Match) -> str:
+    tokens = [t for t in re.split(r"[ \t-]+", m.group(0)) if t]
+    if sum(1 for t in tokens if not t.isdigit()) < MIN_DIGIT_WORD_RUN:
+        return m.group(0)
+    return "".join(t if t.isdigit() else _PLAIN_DIGIT_WORDS[t.lower()] for t in tokens)
 
 
 KANNADA_DIGITS = str.maketrans("೦೧೨೩೪೫೬೭೮೯", "0123456789")

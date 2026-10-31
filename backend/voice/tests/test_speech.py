@@ -24,6 +24,18 @@ def test_spoken_digit_multipliers_are_expanded():
     )
 
 
+def test_caller_digit_words_become_digits():
+    # a run of three or more digit words is a number the caller spelled out (a mobile, a reference), stored as digits
+    assert normalise_spoken_digits("my number is nine eight seven six five zero zero zero zero two") == "my number is 9876500002"
+    assert normalise_spoken_digits("it is nine eight seven six five, oh oh oh oh two") == "it is 98765, 00002"
+    assert normalise_spoken_digits("Nine Eight Seven six five double zero zero zero two") == "9876500002"
+    # one or two digit words are ordinary words
+    assert normalise_spoken_digits("I want one statement for two loans") == "I want one statement for two loans"
+    assert normalise_spoken_digits("one two") == "one two"
+    assert normalise_spoken_digits("double five") == "55"
+    assert normalise_refs("status of S R four zero one zero two please") == "status of SR-40102 please"
+
+
 def test_references_survive_accented_transcription():
     assert normalise_refs("What's the status of SR for 8213?") == "What's the status of SR-48213?"
     assert normalise_refs("status of S R four zero one zero two please") == "status of SR-40102 please"

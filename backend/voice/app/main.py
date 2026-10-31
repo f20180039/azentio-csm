@@ -21,6 +21,7 @@ from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
 from .simulator_client import SimulatorClient
 from .speech import CallLanguage, voice_for
+from .spoken import speakable
 from .support_brain import SupportBrain, SupportTurn, op_outcome
 from .support_prompt import GREETING
 from .support_tools import CallSession
@@ -292,7 +293,8 @@ async def spoken_reply(text: str, call_language: CallLanguage | None = None) -> 
     import edge_tts
     try:
         audio = bytearray()
-        async for chunk in edge_tts.Communicate(text, voice_for(text, state.settings().tts_voice, call_language)).stream():
+        voice = voice_for(text, state.settings().tts_voice, call_language)
+        async for chunk in edge_tts.Communicate(speakable(text), voice).stream():  # spelled for the voice, text unchanged
             if chunk["type"] == "audio":
                 audio.extend(chunk["data"])
         return base64.b64encode(bytes(audio)).decode() if audio else None

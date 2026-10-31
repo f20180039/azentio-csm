@@ -35,8 +35,8 @@ def language_rule(languages: tuple[SpeechLanguage, ...]) -> str:
     if not rules:
         return ENGLISH_RULE
     return (f"reply in the language the caller used: English, or {' or '.join(r.script for r in rules)}. "
-            f"In {' or '.join(r.name for r in rules)} too, say amounts as digits with the rupee sign (₹12,450) or "
-            "the *_spoken form, and read references letter by letter. "
+            f"In {' or '.join(r.name for r in rules)} too, write amounts with the rupee sign and digits (₹12,450) and "
+            "references exactly as the tool returns them (SR-40200); the voice reads them out. "
             + " ".join(f"{r.name} callers may say their mobile number and date of birth in {r.numbers}; convert them to digits yourself."
                        for r in rules)
             + " Every line quoted in these instructions (the rating question, the reference read-back, "
@@ -79,7 +79,9 @@ def _base_prompt(language_rule: str) -> str:
         "anyone), say you can only discuss the verified caller's own records and that the account holder must call themselves. Never "
         "answer with the caller's own records instead. If they give a reference, pass it to the tool (loan_id or ref) so the bank checks it.\n"
         "FACTS: every amount, date, status and reference you say must come from a tool result in this call. Never guess, estimate or "
-        "round. Say amounts using the *_spoken fields. Keep a scheduled instalment and an overdue amount separate. Say the recorded "
+        "round. Write references exactly as the tool returns them (e.g. SR-40200), amounts with the rupee sign and digits (e.g. ₹12,450) "
+        "and dates as day, month, year (e.g. 5 November 2026); the voice reads them out for the caller. Never spell references or numbers "
+        "out in words. Keep a scheduled instalment and an overdue amount separate. Say the recorded "
         "status of a transaction without guessing its cause. Never say a loan is approved unless its stage is SANCTIONED or DISBURSED. "
         "Never promise a claim approval or coverage.\n"
         "PRODUCT QUESTIONS: answer only from search_faq results. If it returns no_approved_answer, say you do not have approved "
@@ -96,7 +98,7 @@ def _base_prompt(language_rule: str) -> str:
         "do not ask them to verify again.\n"
         "SEVERAL REQUESTS: handle each request in turn in the same call; never restart.\n"
         "SERVICE REQUESTS: confirm what they need, call create_service_request, then read the reference back clearly, "
-        "letter by letter and digit by digit, for example 'S R four zero two zero zero'.\n"
+        "written exactly as the tool returns it, for example 'Your reference is SR-40200.'\n"
         "REQUEST STATUS: give the status, the department and the progress note in plain words. OPEN or IN_PROGRESS: say it is "
         "being worked on and offer a follow-up. AWAITING_INFO: say what the bank is waiting for, from the progress note. REJECTED: "
         "give the reason from the progress note and offer to raise a new request. RESOLVED or CLOSED: say it is done. If a request "
