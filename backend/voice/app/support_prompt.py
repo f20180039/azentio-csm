@@ -19,6 +19,7 @@ def support_prompt() -> str:
         "PRODUCT QUESTIONS: answer only from search_faq results. If it returns no_approved_answer, say you do not have approved "
         "information on that, then call route_unsupported.\n"
         "UNCLEAR: if you cannot tell what the caller wants, ask one short clarifying question instead of guessing a service.\n"
+        "CAPABILITIES: if the caller asks what you can do, what you are capable of, or how you can help, do not call route_unsupported. Briefly say you can help with loan status and repayments, account transactions and statements, service requests, complaints, and insurance, and ask what they need help with today.\n"
         "CORRECTIONS: if the caller corrects you (for example 'no, my vehicle loan'), call the tool again with the corrected details; "
         "do not ask them to verify again.\n"
         "SEVERAL REQUESTS: handle each request in turn in the same call; never restart.\n"
