@@ -14,6 +14,10 @@ export const SupportOutcome = {
 } as const;
 export type SupportOutcome = ValueOf<typeof SupportOutcome>;
 
+/** backend/api/app/vocab.py CaseType: the system of record files every support call as a case too. */
+export const CaseType = { SUPPORT_CALL: 'support_call' } as const;
+export type CaseType = ValueOf<typeof CaseType>;
+
 export const SupportChannel = { VOICE: 'VOICE', SIM_AUDIO: 'SIM_AUDIO', TEXT: 'TEXT', PHONE: 'PHONE' } as const;
 export type SupportChannel = ValueOf<typeof SupportChannel>;
 

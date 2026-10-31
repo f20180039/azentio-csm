@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { AuditEvent, AuditVerifyResult, CaseAction, CaseDetail, Finding, PageText, SecuritySummary } from '../api/types';
 import { evidenceKey, FindingCard } from '../components/FindingCard';
@@ -10,7 +10,7 @@ import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise } from '../format';
 import { Route } from '../routes';
 import { useSession } from '../session';
-import { CaseStatus, FindingStatus, Role } from '../vocab';
+import { CaseStatus, CaseType, FindingStatus, Role } from '../vocab';
 
 type Tab = 'findings' | 'audit';
 
@@ -113,6 +113,7 @@ export function CaseWorkspace() {
     );
   }
   if (!kase) return <p className="muted">Loading case…</p>;
+  if (kase.caseType === CaseType.SUPPORT_CALL) return <Navigate to={Route.caseOrCall(kase)} replace />;
 
   const security = collectSecurity(kase);
   const hidden = security.hidden_text ?? [];
