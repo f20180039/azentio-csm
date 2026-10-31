@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     ops_password: str = "ops"
 
     # Internal microservices
-    agent_url: str = os.getenv("AGENT_URL", "http://localhost:8000")
     voice_url: str = os.getenv("VOICE_URL", "http://localhost:7861")
     
     # Security & Auth

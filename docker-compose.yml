@@ -17,16 +17,6 @@ services:
       timeout: 3s
       retries: 20
 
-  agent:
-    build: ./backend/agent
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      OLLAMA_URL: http://host.docker.internal:11434
-    ports:
-      - "8000:8000"
-
   api:
     build: ./backend/api
     ports:

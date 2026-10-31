@@ -2,7 +2,6 @@
 *.log
 backend/api/target/
 backend/api/data/
-backend/agent/.venv/
 backend/voice/.venv/
 backend/simulator/.venv/
 backend/simulator/data/runtime/
