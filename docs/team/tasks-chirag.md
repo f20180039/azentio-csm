@@ -105,7 +105,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 2: Implement it. Every write stores the `call_id` and a `created_at` timestamp.
 - [ ] Step 3: Commit: `feat(simulator): CSM tickets, complaints, routed queries, escalations and ops listing`.
 
-- [ ] **C6: FAQ search; final clean-up** (needs: C2; content from P1)
+- [ ] **C6: FAQ search; final clean-up** (needs: C2, P1)
 
 **Files:** create `backend/simulator/app/routers/faq.py`. Data lives in `backend/simulator/data/seed/faq.json`. Until Pavan's P1 is merged, use 3 placeholder entries with the same schema: `{id, question, answer, tags, source}`.
 
@@ -117,7 +117,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 3: `grep -rniE "compliant|RBI|DPDP|PCI|zero hallucination|production-grade" backend/simulator` returns nothing. No hard-coded statistics remain anywhere in the simulator.
 - [ ] Step 4: Commit: `feat(simulator): FAQ search with an approved-answer threshold`.
 
-- [ ] **C7: Docker Compose works end to end** (needs: C6 merged, or run it alongside)
+- [ ] **C7: Docker Compose works end to end** (needs: none)
 
 **Files:** `docker-compose.yml`, the Dockerfiles in `backend/api`, `backend/simulator`, `backend/voice` and `frontend`, and the README's "With Docker" section. Don't touch application code.
 
@@ -136,7 +136,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 5: In the README's "With Docker" section, write what you actually ran, including the note that browser microphone calls on macOS need the voice service run natively (WebRTC from Docker Desktop). Delete stale lines (Swagger, Postgres).
 - [ ] Step 6: Commit: `chore(docker): compose runs the Python API, simulator, voice and web end to end`.
 
-- [ ] **C8 (stretch): Hindi and Hinglish callers** (needs: C6; check with Anshuman before starting, because this touches the voice service)
+- [ ] **C8 (stretch): Hindi and Hinglish callers** (needs: C6, approval: Anshuman)
 
 **Files:** `backend/voice/app/speech.py`, `backend/voice/app/speech_file.py`, `backend/voice/app/support_prompt.py`, the TTS voice choice in `backend/voice/app/support_pipeline.py` and `main.py` (`spoken_reply`), `backend/voice/app/config.py`. Add scenarios under `backend/voice/eval/scenarios/` and tests under `backend/voice/tests/`.
 

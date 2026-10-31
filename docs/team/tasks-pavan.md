@@ -125,7 +125,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
 
 ## Next items
 
-- [ ] **P5: Run the scored evaluation and publish the results** (needs: C3–C5 merged into `develop`; check that `docs/team/tasks-chirag.md` shows C3, C4 and C5 as `[x]`)
+- [ ] **P5: Run the scored evaluation and publish the results** (needs: C3, C4, C5)
 
 **Files:** `README.md` (a new "Evaluation results" section), `backend/voice/eval/out/` (reports, git-ignored, so paste the key numbers into the README).
 
@@ -161,7 +161,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
 - [ ] Step 4: Record a 2–3 minute backup video of the best run (screen and audio). Store it in the team drive and link it in the checklist.
 - [ ] Step 5: Commit: `docs(demo): rehearsal checklist and backup video link`.
 
-- [ ] **P7 (only if Chirag takes C8): Hindi and Hinglish scenarios** (needs: C8 started; check `docs/team/tasks-chirag.md`)
+- [ ] **P7 (only if Chirag takes C8): Hindi and Hinglish scenarios** (needs: C8 started)
 
 **Files:** `backend/voice/eval/scenarios/13-hindi-repayment.yaml`, `14-hinglish-statement.yaml`, and the voice map in `backend/voice/eval/audio/render.py` (add `"hi": "hi-IN-SwaraNeural"`; coordinate with Chirag, who may add it too).
 

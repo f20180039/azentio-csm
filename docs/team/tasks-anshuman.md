@@ -12,7 +12,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
 
 ---
 
-- [x] **A1: Simulator client and support tools** (needs: contract)
+- [x] **A1: Simulator client and support tools** (needs: none)
 
 **Files:** create `backend/voice/app/simulator_client.py` and `backend/voice/app/support_tools.py`; modify `config.py` (`SIMULATOR_BASE`, default `http://localhost:8090/v1`). Test: `tests/test_support_tools.py`.
 - `SimulatorClient(settings, transport=None)` with `verify(mobile, dob, call_id) -> dict`. Each record method takes the session it holds and returns the JSON, or `{"error": CODE}` (no exceptions for 401, 403, 404, 422 or 423). It raises `ApiUnavailable` on connection errors.
@@ -76,7 +76,7 @@ Tests (`SupportControllerTest`):
 - Customer-turn intents are back-filled when the classifier finishes.
 - Test: a text call through a fake LLM and mocked simulator posts the turns with that meta.
 
-- [x] **A6: Speech front end tuned from the benchmark** (needs: `spikes/stt-bench/report.md`)
+- [x] **A6: Speech front end tuned from the benchmark** (needs: none)
 
 **Files:** create `backend/voice/app/speech.py`; modify `pipeline.py` and `config.py`.
 - VAD params, pre-roll, the STT model, `prompt` and `language`, FLAC 16 kHz upload, and the invented-transcript filter, with the exact values from the report. Smart Turn and denoise only if the report supports them.
@@ -116,9 +116,9 @@ Tests (`SupportControllerTest`):
   - latency p50/p95.
 - The default is a sample, to protect the shared Groq quota.
 
-- [ ] **A10: Docs and demo** (needs: all)
+- [ ] **A10: Docs and demo** (needs: A9, C3, C4, C5, C6)
 - README sections: the `/sim/audio` JSON, run steps for 4 services, accent/noise results from A9, and the demo script (which seed customer to use for each scenario).
 - A fresh-database run-through of all 12 scenarios.
 
-- [ ] **A11 (stretch): Renewal Desk handoff** (needs: A2, Level 1 done)
+- [ ] **A11 (stretch): Renewal Desk handoff** (needs: A2, A10)
 - `handoff_renewal` maps the simulator's insurance `policy_no` to the Spring renewal policy. The voice service creates the Spring renewal call pre-verified, passing the simulator verification, and switches `Mode` to `RENEWAL` in the same call.
