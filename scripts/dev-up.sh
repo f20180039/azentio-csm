@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# Starts the four services natively (no Docker): Spring API :8080, bank simulator :8090, voice :7861, web :5173.
-# Needs a local Postgres. Logs and PIDs go to .run/. Stop everything with scripts/dev-down.sh.
+# Starts the four services natively (no Docker): system-of-record API :8080 (FastAPI + SQLite), bank simulator :8090,
+# voice :7861, web :5173. Creates any missing Python venvs and node_modules first. Logs and PIDs go to .run/.
+# Stop everything with scripts/dev-down.sh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUN="$ROOT/.run"
 mkdir -p "$RUN"
-DB_NAME="${DB_NAME:-caseintel}"
-DB_URL="${DB_URL:-jdbc:postgresql://localhost:5432/$DB_NAME}"
-DB_USER="${DB_USER:-$(whoami)}"
-DB_PASSWORD="${DB_PASSWORD:-}"
 API_PORT="${API_PORT:-8080}"; SIM_PORT="${SIM_PORT:-8090}"; VOICE_PORT="${VOICE_PORT:-7861}"; WEB_PORT="${WEB_PORT:-5173}"
 WEB="http://localhost:$WEB_PORT"
 for p in $API_PORT $SIM_PORT $VOICE_PORT $WEB_PORT; do
   lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 && { echo "port $p is taken by: $(lsof -nP -iTCP:$p -sTCP:LISTEN | awk 'NR==2{print $1" pid "$2}')"; echo "stop it, or pick other ports, e.g. API_PORT=8081 SIM_PORT=8091 VOICE_PORT=7862 WEB_PORT=5174 $0"; exit 1; }
 done
 
-# (Optional) local postgres check if present
-if command -v pg_isready >/dev/null 2>&1 && pg_isready -q; then
-  psql -Atqc "select 1 from pg_database where datname='$DB_NAME'" postgres 2>/dev/null | grep -q 1 || createdb "$DB_NAME" 2>/dev/null || true
-fi
+PY="${PYTHON:-python3.12}"
+for svc in api simulator voice; do
+  dir="$ROOT/backend/$svc"
+  if [ ! -x "$dir/.venv/bin/python" ]; then
+    echo "creating $svc venv"; "$PY" -m venv "$dir/.venv"
+    "$dir/.venv/bin/python" -m pip install -q -r "$dir/requirements.txt"
+  fi
+done
+[ -d "$ROOT/frontend/node_modules" ] || (cd "$ROOT/frontend" && npm ci --silent)
 
 start() {  # name, dir, command...
   local name=$1 dir=$2; shift 2
@@ -27,7 +29,7 @@ start() {  # name, dir, command...
   echo "started $name (log: .run/$name.log)"
 }
 
-start api "$ROOT/backend/api" env CORS_ORIGINS="$WEB" .venv/bin/python -m uvicorn app.main:app --port "$API_PORT"
+start api "$ROOT/backend/api" env CORS_ORIGINS="$WEB" ENFORCE_CALLING_HOURS="${ENFORCE_CALLING_HOURS:-false}" .venv/bin/python -m uvicorn app.main:app --port "$API_PORT"
 start simulator "$ROOT/backend/simulator" env CORS_ORIGINS="[\"$WEB\"]" .venv/bin/python -m uvicorn app.main:app --port "$SIM_PORT"
 start voice "$ROOT/backend/voice" env SIMULATOR_BASE="http://localhost:$SIM_PORT/v1" RENEWALS_API_BASE="http://localhost:$API_PORT/api/v1" \
   CORS_ORIGINS="$WEB" .venv/bin/python -m uvicorn app.main:app --port "$VOICE_PORT"

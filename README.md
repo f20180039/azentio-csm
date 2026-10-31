@@ -17,7 +17,7 @@ A customer phones the bank's service line and speaks naturally. The front-desk a
 |---|---|---|
 | Voice agent (Pipecat, Groq Whisper and LLM, Edge voice) | `backend/voice` | 7861 |
 | Bank simulator: loan applications, loan accounts, core banking, tickets, insurance, FAQ | `backend/simulator` | 8090 |
-| System of record: calls, turns, audit log, Renewal Desk (Spring Boot, Postgres) | `backend/api` | 8080 |
+| System of record: calls, turns, audit log, Renewal Desk (FastAPI, SQLite) | `backend/api` | 8080 |
 | Operator panel (React) | `frontend` | 5173 |
 
 **Three ways in, one agent:**
@@ -40,7 +40,7 @@ All three use the same speech front end and the same agent, and record the same 
 
 ```bash
 cp .env.example .env            # add GROQ_API_KEY (free at console.groq.com); never an Anthropic key
-scripts/dev-up.sh               # Spring + simulator + voice + web, on a local Postgres
+scripts/dev-up.sh               # API + simulator + voice + web; creates missing venvs; no database server needed
 open http://localhost:5173/support   # sign in as analyst/analyst
 scripts/dev-down.sh
 ```
@@ -85,10 +85,10 @@ docker compose up --build
 | What | Where |
 |---|---|
 | Web app | http://localhost:5173 |
-| API and Swagger | http://localhost:8080/swagger-ui.html |
+| API and OpenAPI docs | http://localhost:8080/docs |
 | Agent | http://localhost:8000/health |
 | Voice | http://localhost:7861/health |
-| Postgres | localhost:5433 (host 5432 is left for a local Postgres) |
+| Bank simulator | http://localhost:8090/health |
 
 Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 
@@ -105,9 +105,9 @@ Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 
 **Without Docker**
 
-1. Create a database: `createdb caseintel`, or reuse an existing one by passing `DB_URL`.
+1. Easiest: `scripts/dev-up.sh` starts everything below. To run services by hand:
 2. Start the agent: `cd backend/agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
-3. Start the API: `cd backend/api && DB_URL=jdbc:postgresql://localhost:5432/caseintel ./mvnw spring-boot:run`
+3. Start the API: `cd backend/api && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && ENFORCE_CALLING_HOURS=false .venv/bin/uvicorn app.main:app --port 8080` (SQLite file at `API_DB_PATH`, default `data/runtime/api.db`)
 4. Start the voice service: `cd backend/voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
 5. Start the web app: `cd frontend && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
 
@@ -136,7 +136,7 @@ cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth
 
 | Service | Command | Coverage |
 |---|---|---|
-| api | `./mvnw test` (add `-Dintegration` for the Postgres tests) | Scoring and routing, pack loading, core rules, audit hash chain, four-eyes, rate limit, backoff |
+| api | `cd backend/api && .venv/bin/python -m pytest -q` | Support call contract, renewal identity check and lockout, offer limits and handoff, roles, audit hash chain |
 | agent | `.venv/bin/pytest -q` | Hidden text, injection scoring, PII masking, quote verification, schema repair, provider fallback, `/v1/extract` |
 | voice | `.venv/bin/pytest -q` | Tool wiring and refusals, call brain loop, prompt, spoken-number handling, config, HTTP endpoints, pipeline setup |
 | web | `npm test` | API error handling, response shapes, finding card, evidence highlight, mock-mode flow, renewals queue and call screen |
@@ -159,12 +159,12 @@ Rule 3 of Azentio.ai Build Labs asks for this. The rows marked "Before the event
 
 | Component | What it is | Built |
 |---|---|---|
-| `api/` | Spring Boot service: cases, upload dedupe, Postgres job queue, rule-pack engine, scoring and routing, review decisions, audit hash chain, RBAC | Before the event |
+| `backend/api/` | FastAPI + SQLite system of record (replaced the starter's Spring Boot service on 31 Oct; the document case pipeline was dropped with it): support call records, renewal calls with identity check, offer limits and handoff, case list and decisions, audit hash chain, roles | During the event |
 | `agent/` | FastAPI service: PDF text extraction, hidden-text and injection checks, PII masking, LLM gateway with fallback, quote verification, eval harness | Before the event |
 | `web/` | React reviewer app: queue, case workspace, audit view, rule packs | Before the event |
 | `agent/app/voice/tts.py` | Text to speech (edge-tts, ElevenLabs), copied and trimmed from the team member's own earlier project solarfile-reels (private repo, access on request; `backend/app/pipeline/tts.py`, commit `f089eaa`, Aug 2026) | Before the event, for a different project |
 | `demo` rule pack and `samples/` | Proves the pipeline end to end on generic invoices | Before the event |
-| Topic layer: Renewal Desk | The `renewals` package in `api/` (call state, identity check, discount and offer limits, handoff, audit), the `voice/` service, the web Renewals and Call pages, and `agent/datagen/renewals.py` (synthetic policies) | During the event (29 Oct 2026) |
+| Topic layer: Renewal Desk | The renewals routes in `backend/api/` (call state, identity check, discount and offer limits, handoff, audit), the `voice/` service, the web Renewals and Call pages, and `agent/datagen/renewals.py` (synthetic policies) | During the event (29 Oct 2026) |
 | `voice/app/edge_tts_service.py` | Pipecat text-to-speech service around edge-tts, ported from a throwaway latency spike written during the event (29 Oct 2026). Event work, not pre-built | During the event (29 Oct 2026) |
 
 **Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`backend/agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `backend/agent/app/pdf.py` and the test fixtures that build PDFs would change.
