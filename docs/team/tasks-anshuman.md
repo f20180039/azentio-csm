@@ -50,7 +50,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
   - the correction path calls `get_loans(type=vehicle)` after `get_loans(type=personal)`;
   - an unsupported request after a ticket calls `create_service_request`, then `route_unsupported`.
 
-- [~] (Anshuman, feat/A3-intents) **A3: Parallel intent classifier** (needs: none)
+- [x] **A3: Parallel intent classifier** (needs: none)
 
 **Files:** create `backend/voice/app/intents.py`. Test: `tests/test_intents.py`.
 - `Intent` `StrEnum` (the 12 labels).
@@ -68,7 +68,7 @@ Tests (`SupportControllerTest`):
 - start, then a turn with meta, then end, then GET returns the meta in order;
 - the renewal tests still pass.
 
-- [ ] **A5: Voice records turn metadata; support calls** (needs: A1, A3, A4)
+- [x] **A5: Voice records turn metadata; support calls** (needs: A1, A3, A4)
 
 **Files:** modify `api_client.py`, `pipeline.py` and `main.py`.
 - `POST /support/offer` (WebRTC) and `POST /support/text-call` start a `SUPPORT` call.
