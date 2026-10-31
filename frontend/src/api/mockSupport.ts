@@ -10,6 +10,7 @@ import type {
   OfferAnswer,
   OfferBody,
   OpsRecord,
+  PiiTokens,
   RecordKind,
   ReviewItem,
   SimAudioResult,
@@ -25,9 +26,10 @@ import type {
 } from './support';
 import type { VoiceSession } from './voice';
 import { currentUsername } from './client';
-import { FeedbackVerdict, LessonStatus, RatingSource, ReviewReason, SupportChannel as Channel, SupportOutcome as Outcome, TurnRole } from '../vocab';
+import { FeedbackVerdict, LessonStatus, PiiKind, RatingSource, ReviewReason, SupportChannel as Channel, SupportOutcome as Outcome, TurnRole } from '../vocab';
 import { ApiError } from './errors';
 import { LessonLength } from '../vocab';
+import { isDemoAdmin } from '../demoUsers';
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
@@ -60,17 +62,21 @@ export const SAMPLE_PROFILE: CustomerProfile = {
   complaints: [],
 };
 
+/* The API stores personal data as [KIND#n] tokens and keeps the values in its vault; the scripted call mirrors that. */
+const MOBILE_TOKEN = '[MOBILE#1]';
+const DOB_TOKEN = '[DOB#1]';
+
 /** Verified repayment call with a mid-call correction and a ticket (sample customer CUST-1002). */
 export const REPAYMENT_SCRIPT: Step[] = [
   { role: 'customer', text: 'Hi, when is my next EMI due?', meta: { intents: ['REPAYMENT'], intent_source: 'llm', verified: false, verify_failures: 0, locked: false, no_speech: false } },
   { role: 'agent', text: 'I can help with that. Before I share loan details, please tell me your registered mobile number and date of birth.', meta: { tool_trace: [], retrieved: {}, refs: [] } },
-  { role: 'customer', text: 'It is 98765 00002, and I was born on the third of November 1985.', meta: { intents: ['REPAYMENT'], intent_source: 'rules', verified: true, verify_failures: 0, locked: false, no_speech: false } },
+  { role: 'customer', text: `It is ${MOBILE_TOKEN}, and I was born on ${DOB_TOKEN}.`, meta: { intents: ['REPAYMENT'], intent_source: 'rules', verified: true, verify_failures: 0, locked: false, no_speech: false } },
   {
     role: 'agent',
     text: `Thank you, Rahul, you are verified. Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,
     meta: {
       tool_trace: [
-        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'Verified CUST-1002' },
+        { name: 'verify_customer', args: { mobile: MOBILE_TOKEN, dob: DOB_TOKEN }, result_summary: 'Verified CUST-1002' },
         { name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002' },
       ],
       retrieved: {
@@ -176,6 +182,14 @@ SAMPLE_ROUTED_CALL.turns[2].feedback = [
 ];
 
 export const SAMPLE_ESCALATION_CALL = sampleCall('sample-call-escalation', 'VOICE', ESCALATION_SCRIPT, 7, 'ESCALATED');
+
+/** What the vault holds for each sample call: the values behind the tokens in its turns (SAMPLE_PROFILE's customer). */
+export const SAMPLE_PII: Record<string, PiiTokens> = {
+  [SAMPLE_VERIFIED_CALL.id]: {
+    [MOBILE_TOKEN]: { kind: PiiKind.MOBILE, value: SAMPLE_PROFILE.customer.mobile },
+    [DOB_TOKEN]: { kind: PiiKind.DOB, value: SAMPLE_PROFILE.customer.dob },
+  },
+};
 
 export const SAMPLE_LESSONS: Lesson[] = [
   {
@@ -306,6 +320,16 @@ export const mockSupport = {
   async getCall(id: string): Promise<SupportCall> {
     await delay(60);
     return structuredClone(find(id));
+  },
+
+  /** Mirrors the API: admin only (403 otherwise), the values behind the call's tokens. */
+  async getCallPii(id: string): Promise<PiiTokens> {
+    await delay(60);
+    if (!isDemoAdmin(currentUsername())) {
+      throw new ApiError({ status: 403, title: 'Forbidden', detail: 'Only an administrator can reveal personal data.' });
+    }
+    find(id);
+    return structuredClone(SAMPLE_PII[id] ?? {});
   },
 
   async listCalls(outcome?: SupportOutcome): Promise<SupportCallSummary[]> {

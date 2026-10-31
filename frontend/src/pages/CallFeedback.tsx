@@ -8,6 +8,7 @@ import {
   type CallRating,
   type TurnFeedback,
 } from '../api/support';
+import { PiiText } from '../components/PiiText';
 import { Stars, StarInput } from '../components/Stars';
 import { useToast } from '../components/Toasts';
 import { displayName } from '../demoUsers';
@@ -46,7 +47,11 @@ export function RatingPanel({ callId, rating, ended, onSaved }: { callId: string
             <Stars score={rating.score} size={20} />
             <span className="num">{rating.score}/5</span>
           </div>
-          {rating.comment && <p className="rating-comment">“{rating.comment}”</p>}
+          {rating.comment && (
+            <p className="rating-comment">
+              “<PiiText text={rating.comment} />”
+            </p>
+          )}
           <span className="small muted">
             {RATING_SOURCE_LABEL[rating.source] ?? rating.source} · {formatDateTime(rating.at)}
           </span>
@@ -93,7 +98,7 @@ function FeedbackList({ items }: { items: TurnFeedback[] }) {
           {f.correction && (
             <p className="fb-correction">
               <span className="small muted">Should have said: </span>
-              {f.correction}
+              <PiiText text={f.correction} />
             </p>
           )}
         </li>
