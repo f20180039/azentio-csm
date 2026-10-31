@@ -1,57 +1,40 @@
-"""Case Intelligence endpoints."""
-from fastapi import APIRouter, Depends, HTTPException
+"""Cases (one per call): staff read, reviewers decide."""
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.auth import User, get_current_user
+from app.auth import User, reviewer, staff
+from app.paths import ApiPath
+from app.services.container import Services, services
+from app.services.support import parse
+from app.vocab import CaseStatus
 
-router = APIRouter(prefix="/cases", tags=["Cases"])
+router = APIRouter(prefix=ApiPath.CASES, tags=["Cases"])
 
 
 class DecisionRequest(BaseModel):
-    action: str
-    comment: str | None = None
+    action: str | None = None
+    reason: str | None = None
 
 
 @router.get("")
-def list_cases(user: User = Depends(get_current_user)):
-    return {
-        "items": [
-            {
-                "id": "CASE-101",
-                "caseType": "demo",
-                "customerRef": "CUST-1001",
-                "status": "OPEN",
-                "score": 0.35,
-                "createdAt": "2026-10-31T05:00:00Z",
-                "summary": "Income verification check",
-            },
-            {
-                "id": "CASE-102",
-                "caseType": "demo",
-                "customerRef": "CUST-1004",
-                "status": "REVIEW",
-                "score": 0.82,
-                "createdAt": "2026-10-31T05:15:00Z",
-                "summary": "High risk duplicate transfer flagged",
-            },
-        ]
-    }
+def list_cases(status: str | None = None, caseType: str | None = None, page: int = 0, size: int = 20,
+               _: User = Depends(staff), s: Services = Depends(services)):
+    parsed = parse(CaseStatus, "status", status) if status else None
+    return s.cases.list(parsed, caseType, page, size)
 
 
-@router.get("/{case_id}")
-def get_case(case_id: str, user: User = Depends(get_current_user)):
-    return {
-        "id": case_id,
-        "caseType": "demo",
-        "customerRef": "CUST-1001",
-        "status": "OPEN",
-        "score": 0.35,
-        "createdAt": "2026-10-31T05:00:00Z",
-        "summary": "Income verification check",
-        "findings": [],
-    }
+@router.get(ApiPath.CASE)
+def get_case(case_id: UUID, _: User = Depends(staff), s: Services = Depends(services)):
+    return s.cases.get(str(case_id))
 
 
-@router.post("/{case_id}/decision")
-def record_decision(case_id: str, body: DecisionRequest, user: User = Depends(get_current_user)):
-    return {"id": case_id, "action": body.action, "recorded": True}
+@router.post(ApiPath.CASE_DECISION)
+def decide(case_id: UUID, body: DecisionRequest, user: User = Depends(reviewer), s: Services = Depends(services)):
+    return s.cases.decide(str(case_id), body.action, body.reason, user.username)
+
+
+@router.get(ApiPath.CASE_AUDIT)
+def audit(case_id: UUID, _: User = Depends(staff), s: Services = Depends(services)):
+    return s.cases.audit_for(str(case_id))
