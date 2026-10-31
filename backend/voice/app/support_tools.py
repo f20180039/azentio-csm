@@ -1,5 +1,6 @@
 """The front-desk agent's tools. Personal tools refuse here, before any HTTP call, when the caller is not verified; the
 simulator enforces the same rule again, so a prompt-injected tool call still gets nothing."""
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -136,7 +137,11 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
     s = call.session
     match name:
         case SupportTool.VERIFY_CUSTOMER:
-            out = await client.verify(digits(args["mobile"]), args["date_of_birth"], call.call_id)
+            mobile, dob = digits(args.get("mobile") or ""), str(args.get("date_of_birth") or "")
+            if len(mobile) != 10 or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dob):  # never spend an attempt on details not given
+                return {**NOT_VERIFIED, "note": "Ask the caller for their registered 10-digit mobile number and date of birth; "
+                                                "call verify_customer only with what they actually said."}
+            out = await client.verify(mobile, dob, call.call_id)
             if "session" in out:
                 call.session, call.customer, call.locked = out["session"], out.get("customer"), False
                 return {"verified": True, "customer": out.get("customer")}
