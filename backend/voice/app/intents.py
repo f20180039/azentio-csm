@@ -10,6 +10,7 @@ import httpx
 from loguru import logger
 
 from .llm_chain import PROVIDERS
+from .vocab import IntentSource
 
 
 class Intent(StrEnum):
@@ -31,7 +32,7 @@ class Intent(StrEnum):
 class IntentResult:
     intents: list[Intent]
     confidence: float
-    source: str  # "llm" | "rules"
+    source: IntentSource
 
 
 def _rx(*patterns: str) -> re.Pattern:
@@ -136,10 +137,10 @@ def rules_classify(text: str) -> IntentResult:
     if (pos := _identity_at(text)) is not None:
         found[Intent.IDENTITY] = pos
     if not found and (greet := _CHITCHAT.search(text)) and len(text[greet.end():].split()) <= 3:  # "Hi, I have an issue with…" is not small talk
-        return IntentResult([Intent.CHITCHAT], 0.7, "rules")
+        return IntentResult([Intent.CHITCHAT], 0.7, IntentSource.RULES)
     if not found:
-        return IntentResult([Intent.UNCLEAR], 0.3, "rules")
-    return IntentResult(sorted(found, key=found.get), 0.6, "rules")
+        return IntentResult([Intent.UNCLEAR], 0.3, IntentSource.RULES)
+    return IntentResult(sorted(found, key=found.get), 0.6, IntentSource.RULES)
 
 
 SYSTEM_PROMPT = """You label a bank customer's latest utterance with service intents.
@@ -186,7 +187,7 @@ def _parse(content: str) -> IntentResult | None:
         confidence = min(max(float(data.get("confidence", 0.5)), 0.0), 1.0)
     except (TypeError, ValueError):
         confidence = 0.5
-    return IntentResult(intents, confidence, "llm")
+    return IntentResult(intents, confidence, IntentSource.LLM)
 
 
 async def classify(text: str, history_tail: list[dict], *, api_key: str, model: str,

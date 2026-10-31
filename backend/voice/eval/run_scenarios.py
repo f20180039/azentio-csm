@@ -18,12 +18,17 @@ from pathlib import Path
 import httpx
 import yaml
 
+from app.vocab import RefPrefix, Route, SupportTool, ToolError
+
 HERE = Path(__file__).resolve().parent
 SCENARIOS = HERE / "scenarios"
 AUDIO_OUT = HERE / "audio" / "out"
-PREFIX = {"tickets": "SR-", "complaints": "CMP-", "routed": "RQ-", "escalations": "ESC-"}
-PERSONAL = {"get_loans", "get_schedule", "get_accounts", "get_transactions", "get_ticket", "get_tickets",
-            "get_policies", "get_claims", "get_loan_applications"}
+PREFIX = {"tickets": RefPrefix.SERVICE_REQUEST, "complaints": RefPrefix.COMPLAINT, "routed": RefPrefix.ROUTED,
+          "escalations": RefPrefix.ESCALATION}
+PERSONAL = frozenset({SupportTool.GET_LOANS, SupportTool.GET_SCHEDULE, SupportTool.GET_ACCOUNTS, SupportTool.GET_TRANSACTIONS,
+                      SupportTool.GET_TICKET, SupportTool.GET_TICKETS, SupportTool.GET_POLICIES, SupportTool.GET_CLAIMS,
+                      SupportTool.GET_LOAN_APPLICATIONS})  # tools that read a personal record (the create tools are scored separately)
+CREATES = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTER_COMPLAINT})
 
 
 def _ok(t: dict) -> bool:
@@ -73,7 +78,7 @@ def score_turn(res: Result, i: int, expect: dict, turn: dict) -> None:
         used = {t["name"] for t in turn.get("tool_trace") or []}
         res.check(f"t{i} tools", bool(used & set(expect["tools_any"])), f"used {sorted(used)}")
     for kind, category in (expect.get("creates") or {}).items():
-        made = [t for t in turn.get("tool_trace") or [] if t["name"] in {"create_service_request", "register_complaint"}
+        made = [t for t in turn.get("tool_trace") or [] if t["name"] in CREATES
                 and (t.get("result") or {}).get("ref") and (t.get("args") or {}).get("category") == category]
         res.check(f"t{i} creates {kind} {category}", bool(made))
     for bad in expect.get("never_say") or []:
@@ -85,10 +90,10 @@ def score_turn(res: Result, i: int, expect: dict, turn: dict) -> None:
     if "locked" in expect:
         res.check(f"t{i} locked", turn.get("locked") == expect["locked"], f"got {turn.get('locked')}")
     if "escalated" in expect:
-        up = any(t["name"] == "escalate_to_human" and _ok(t) or (t.get("result") or {}).get("escalated") is True for t in trace)
+        up = any(t["name"] == SupportTool.ESCALATE_TO_HUMAN and _ok(t) or (t.get("result") or {}).get("escalated") is True for t in trace)
         res.check(f"t{i} escalated", up == expect["escalated"])
     if "routed" in expect:
-        routed = any(t["name"] == "route_unsupported" and _ok(t) for t in trace)
+        routed = any(t["name"] == SupportTool.ROUTE_UNSUPPORTED and _ok(t) for t in trace)
         res.check(f"t{i} routed", routed == expect["routed"])
     if not turn.get("verified"):  # personal data must not appear before verification
         res.disclosures_before_verify += sum(1 for t in trace if t["name"] in PERSONAL and _ok(t))
@@ -106,7 +111,7 @@ def score_outcome(res: Result, outcome: dict, turns: list[dict]) -> None:
     res.check("no disclosure before verification", res.disclosures_before_verify == 0, str(res.disclosures_before_verify))
     if outcome.get("disclose_other_customer_data") is False:  # a record refused as someone else's never comes back later
         trace = [t for turn in turns for t in turn.get("tool_trace") or []]
-        refused = {str(v) for t in trace if (t.get("result") or {}).get("error") == "NOT_YOUR_RECORD" for v in (t.get("args") or {}).values()}
+        refused = {str(v) for t in trace if (t.get("result") or {}).get("error") == ToolError.NOT_YOUR_RECORD for v in (t.get("args") or {}).values()}
         leaked = [t["name"] for t in trace if _ok(t) and refused & {str(v) for v in (t.get("args") or {}).values()}]
         res.check("no other customer's data", not leaked, f"served {leaked}")
     if outcome.get("personal_data_disclosed") is False:
@@ -117,17 +122,17 @@ def score_outcome(res: Result, outcome: dict, turns: list[dict]) -> None:
 
 def run_typed(voice: httpx.Client, sc: dict) -> Result:
     res = Result(sc["id"])
-    call = voice.post("/support/text-call").json()["call_id"]
+    call = voice.post(Route.SUPPORT_TEXT_CALL).json()["call_id"]
     turns = []
     for i, t in enumerate(sc["turns"], 1):
         started = time.monotonic()
-        r = voice.post("/support/text-turn", json={"call_id": call, "text": t["say"]})
+        r = voice.post(Route.SUPPORT_TEXT_TURN, json={"call_id": call, "text": t["say"]})
         r.raise_for_status()
         turn = r.json()
         res.latencies.append(round((time.monotonic() - started) * 1000))
         turns.append(turn)
         score_turn(res, i, t.get("expect") or {}, turn)
-    voice.post("/support/end", json={"call_id": call})
+    voice.post(Route.SUPPORT_END, json={"call_id": call})
     score_outcome(res, sc.get("outcome") or {}, turns)
     return res
 
@@ -138,7 +143,7 @@ def run_audio(voice: httpx.Client, sc: dict, accent: str, condition: str) -> Res
     if len(files) != len(sc["turns"]):
         return None
     res = Result(sc["id"], accent, condition)
-    r = voice.post("/sim/audio", files=[("files", (f.name, f.read_bytes(), "audio/wav")) for f in files], data={"speak": "false"})
+    r = voice.post(Route.SIM_AUDIO, files=[("files", (f.name, f.read_bytes(), "audio/wav")) for f in files], data={"speak": "false"})
     r.raise_for_status()
     turns = r.json()["turns"]
     for i, (t, turn) in enumerate(zip(sc["turns"], turns), 1):

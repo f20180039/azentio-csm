@@ -6,6 +6,7 @@ from enum import StrEnum
 from .api_client import ApiUnavailable
 from .simulator_client import SimulatorClient
 from .spoken import spoken_inr
+from .vocab import SupportTool, ToolError
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
@@ -47,11 +48,11 @@ class CallSession:
         return self.session is not None
 
 
-NOT_VERIFIED = {"error": "NOT_VERIFIED", "note": "Ask for the registered mobile number and date of birth first, then call verify_customer."}
+NOT_VERIFIED = {"error": ToolError.NOT_VERIFIED, "note": "Ask for the registered mobile number and date of birth first, then call verify_customer."}
 
 
-def _tool(name: str, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:
-    return {"type": "function", "function": {"name": name, "description": description,
+def _tool(name: SupportTool, description: str, properties: dict | None = None, required: list[str] | None = None) -> dict:
+    return {"type": "function", "function": {"name": name.value, "description": description,
                                              "parameters": {"type": "object", "properties": properties or {}, "required": required or []}}}
 
 
@@ -60,38 +61,41 @@ def _enum(values: type[StrEnum], description: str) -> dict:
 
 
 SUPPORT_TOOL_SCHEMAS: list[dict] = [
-    _tool("verify_customer", "Verify the caller with their registered 10-digit mobile number and date of birth. Required before any personal tool.",
+    _tool(SupportTool.VERIFY_CUSTOMER, "Verify the caller with their registered 10-digit mobile number and date of birth. Required before any personal tool.",
           {"mobile": {"type": "string", "description": "10-digit mobile number, digits only"},
            "date_of_birth": {"type": "string", "description": "YYYY-MM-DD"}}, ["mobile", "date_of_birth"]),
-    _tool("get_loan_applications", "The verified caller's loan applications and their current stage."),
-    _tool("get_loans", "The verified caller's loan accounts: next instalment, overdue amount, outstanding principal.",
+    _tool(SupportTool.GET_LOAN_APPLICATIONS, "The verified caller's loan applications and their current stage."),
+    _tool(SupportTool.GET_LOANS, "The verified caller's loan accounts: next instalment, overdue amount, outstanding principal.",
           {"product_type": {"type": "string", "enum": ["personal", "vehicle", "home"], "description": "Filter by loan type when the caller names one"}}),
-    _tool("get_schedule", "Repayment schedule of one of the caller's loans.", {"loan_id": {"type": "string"}}, ["loan_id"]),
-    _tool("get_accounts", "The verified caller's bank accounts and balances."),
-    _tool("get_transactions", "Recent transactions; filter by status or by a transaction reference the caller gives.",
+    _tool(SupportTool.GET_SCHEDULE, "Repayment schedule of one of the caller's loans.", {"loan_id": {"type": "string"}}, ["loan_id"]),
+    _tool(SupportTool.GET_ACCOUNTS, "The verified caller's bank accounts and balances."),
+    _tool(SupportTool.GET_TRANSACTIONS, "Recent transactions; filter by status or by a transaction reference the caller gives.",
           {"status": {"type": "string", "enum": ["POSTED", "PENDING", "FAILED"]}, "ref": {"type": "string"}}),
-    _tool("get_tickets", "The verified caller's existing service requests."),
-    _tool("get_ticket", "Status of one service request by its reference, e.g. SR-40102.", {"ref": {"type": "string"}}, ["ref"]),
-    _tool("create_service_request", "Raise a service request (statement, repayment schedule, document, address change) and get its reference.",
+    _tool(SupportTool.GET_TICKETS, "The verified caller's existing service requests."),
+    _tool(SupportTool.GET_TICKET, "Status of one service request by its reference, e.g. SR-40102.", {"ref": {"type": "string"}}, ["ref"]),
+    _tool(SupportTool.CREATE_SERVICE_REQUEST, "Raise a service request (statement, repayment schedule, document, address change) and get its reference.",
           {"category": _enum(TicketCategory, "Request type"), "summary": {"type": "string", "description": "One line: what the caller asked for"},
            "details": {"type": "object", "description": "Key details collected, e.g. loan_id, period, delivery"}}, ["category", "summary"]),
-    _tool("register_complaint", "Record a complaint (failed transaction, incorrect charge, unauthorised transaction, poor service) and get its reference.",
+    _tool(SupportTool.REGISTER_COMPLAINT, "Record a complaint (failed transaction, incorrect charge, unauthorised transaction, poor service) and get its reference.",
           {"category": _enum(ComplaintCategory, "Complaint type"), "description": {"type": "string"},
            "severity": _enum(Severity, "HIGH for fraud, unauthorised debits or large losses")}, ["category", "description", "severity"]),
-    _tool("get_policies", "The verified caller's insurance policies, premium due dates and coverage status."),
-    _tool("get_claims", "The verified caller's insurance claims and their status."),
-    _tool("search_faq", "Search the bank's approved product and service answers. Use for general questions; no verification needed.",
+    _tool(SupportTool.GET_POLICIES, "The verified caller's insurance policies, premium due dates and coverage status."),
+    _tool(SupportTool.GET_CLAIMS, "The verified caller's insurance claims and their status."),
+    _tool(SupportTool.SEARCH_FAQ, "Search the bank's approved product and service answers. Use for general questions; no verification needed.",
           {"query": {"type": "string"}}, ["query"]),
-    _tool("route_unsupported", "Log a question the desk cannot answer or may not do, so the right team follows up. Use after politely declining.",
+    _tool(SupportTool.ROUTE_UNSUPPORTED, "Log a question the desk cannot answer or may not do, so the right team follows up. Use after politely declining.",
           {"query_text": {"type": "string", "description": "The caller's request in their words"}, "reason": {"type": "string"}},
           ["query_text", "reason"]),
-    _tool("escalate_to_human", "Hand the call to a human representative: fraud, unauthorised transactions, distress, repeated failure, or on request.",
+    _tool(SupportTool.ESCALATE_TO_HUMAN, "Hand the call to a human representative: fraud, unauthorised transactions, distress, repeated failure, or on request.",
           {"reason": {"type": "string"}, "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["reason", "summary"]),
-    _tool("end_call", "End the call after saying goodbye."),
+    _tool(SupportTool.END_CALL, "End the call after saying goodbye."),
 ]
 
-PERSONAL = {"get_loan_applications", "get_loans", "get_schedule", "get_accounts", "get_transactions", "get_tickets", "get_ticket",
-            "create_service_request", "register_complaint", "get_policies", "get_claims"}
+PERSONAL = frozenset({SupportTool.GET_LOAN_APPLICATIONS, SupportTool.GET_LOANS, SupportTool.GET_SCHEDULE, SupportTool.GET_ACCOUNTS,
+                      SupportTool.GET_TRANSACTIONS, SupportTool.GET_TICKETS, SupportTool.GET_TICKET, SupportTool.CREATE_SERVICE_REQUEST,
+                      SupportTool.REGISTER_COMPLAINT, SupportTool.GET_POLICIES, SupportTool.GET_CLAIMS})
+REF_RAISING = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTER_COMPLAINT, SupportTool.ROUTE_UNSUPPORTED,
+                         SupportTool.ESCALATE_TO_HUMAN})
 
 
 def digits(text: str) -> str:
@@ -103,20 +107,20 @@ async def run_support_tool(client: SimulatorClient, call: CallSession, name: str
     """Never raises: a down simulator or bad arguments come back as {"error": ...} for the agent to explain."""
     try:
         if name in PERSONAL and call.locked:
-            return {"error": "LOCKED", "note": "Verification is locked after repeated failures. Offer a human representative; share nothing."}
+            return {"error": ToolError.LOCKED, "note": "Verification is locked after repeated failures. Offer a human representative; share nothing."}
         if name in PERSONAL and not call.verified:
             return NOT_VERIFIED
         result = await _dispatch(client, call, name, args)
     except ApiUnavailable:
-        return {"error": "SYSTEM_UNAVAILABLE", "note": "Say the system is unavailable right now and offer to raise a callback."}
+        return {"error": ToolError.SYSTEM_UNAVAILABLE, "note": "Say the system is unavailable right now and offer to raise a callback."}
     except (KeyError, TypeError, ValueError) as e:
-        return {"error": "BAD_ARGUMENTS", "detail": f"{type(e).__name__}: {e}"[:200]}
-    if result.get("error") == "NOT_YOUR_RECORD":
+        return {"error": ToolError.BAD_ARGUMENTS, "detail": f"{type(e).__name__}: {e}"[:200]}
+    if result.get("error") == ToolError.NOT_YOUR_RECORD:
         result = {**result, "note": "That record belongs to someone else. Decline, and disclose nothing about it."}
-    if result.get("error") == "NOT_VERIFIED":
+    if result.get("error") == ToolError.NOT_VERIFIED:
         call.session = None
     ref = result.get("ref")
-    if isinstance(ref, str) and name in {"create_service_request", "register_complaint", "route_unsupported", "escalate_to_human"}:
+    if isinstance(ref, str) and name in REF_RAISING:
         call.refs.append(ref)
     return with_spoken(result)
 
@@ -124,55 +128,55 @@ async def run_support_tool(client: SimulatorClient, call: CallSession, name: str
 async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args: dict) -> dict:
     s = call.session
     match name:
-        case "verify_customer":
+        case SupportTool.VERIFY_CUSTOMER:
             out = await client.verify(digits(args["mobile"]), args["date_of_birth"], call.call_id)
             if "session" in out:
                 call.session, call.customer, call.locked = out["session"], out.get("customer"), False
                 return {"verified": True, "customer": out.get("customer")}
-            if out.get("error") == "LOCKED":
+            if out.get("error") == ToolError.LOCKED:
                 call.locked = True
             else:
                 call.verify_failures += 1
                 if out.get("attempts_left") == 0:  # the third failure locks; don't wait for a fourth try to find out
                     call.locked = True
-                    out = {**out, "error": "LOCKED", "note": "Verification is now locked. Share nothing personal; offer a human representative."}
+                    out = {**out, "error": ToolError.LOCKED, "note": "Verification is now locked. Share nothing personal; offer a human representative."}
             return out
-        case "get_loan_applications":
+        case SupportTool.GET_LOAN_APPLICATIONS:
             return await client.applications(s)
-        case "get_loans":
+        case SupportTool.GET_LOANS:
             return await client.loans(s, args.get("product_type"))
-        case "get_schedule":
+        case SupportTool.GET_SCHEDULE:
             return await client.schedule(s, args["loan_id"])
-        case "get_accounts":
+        case SupportTool.GET_ACCOUNTS:
             return await client.accounts(s)
-        case "get_transactions":
+        case SupportTool.GET_TRANSACTIONS:
             return await client.transactions(s, args.get("status"), args.get("ref"))
-        case "get_tickets":
+        case SupportTool.GET_TICKETS:
             return await client.tickets(s)
-        case "get_ticket":
+        case SupportTool.GET_TICKET:
             return await client.ticket(s, args["ref"].strip().upper())
-        case "create_service_request":
+        case SupportTool.CREATE_SERVICE_REQUEST:
             return await client.create_ticket(s, TicketCategory(args["category"]), args["summary"], args.get("details") or {}, call.call_id)
-        case "register_complaint":
+        case SupportTool.REGISTER_COMPLAINT:
             return await client.complaint(s, ComplaintCategory(args["category"]), args["description"],
                                           Severity(args.get("severity") or "MEDIUM"), call.call_id)
-        case "get_policies":
+        case SupportTool.GET_POLICIES:
             return await client.policies(s)
-        case "get_claims":
+        case SupportTool.GET_CLAIMS:
             return await client.claims(s)
-        case "search_faq":
+        case SupportTool.SEARCH_FAQ:
             out = await client.faq(args["query"])
             return out if out.get("items") else {"no_approved_answer": True,
                                                  "note": "No approved answer. Say so, do not improvise; offer to route the question."}
-        case "route_unsupported":
+        case SupportTool.ROUTE_UNSUPPORTED:
             customer_ref = (call.customer or {}).get("customer_ref")
             return await client.routed(args["query_text"], args["reason"], call.call_id, customer_ref)
-        case "escalate_to_human":
+        case SupportTool.ESCALATE_TO_HUMAN:
             return await client.escalation(s, args["reason"], args.get("summary") or args["reason"], call.call_id)
-        case "end_call":
+        case SupportTool.END_CALL:
             return {"ended": True}
         case _:
-            return {"error": "UNKNOWN_TOOL"}
+            return {"error": ToolError.UNKNOWN_TOOL}
 
 
 def with_spoken(value):
