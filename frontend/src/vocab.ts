@@ -24,6 +24,10 @@ export type SupportChannel = ValueOf<typeof SupportChannel>;
 export const TurnRole = { CUSTOMER: 'customer', AGENT: 'agent' } as const;
 export type TurnRole = ValueOf<typeof TurnRole>;
 
+/** backend/voice/app/vocab.py SpeechLanguage: caller languages (Whisper codes); a translated turn's meta.language. */
+export const SpeechLanguage = { ENGLISH: 'en', KANNADA: 'kn', HINDI: 'hi' } as const;
+export type SpeechLanguage = ValueOf<typeof SpeechLanguage>;
+
 /** backend/voice/app/intents.py Intent. */
 export const Intent = {
   LOAN_APPLICATION: 'LOAN_APPLICATION',
@@ -68,6 +72,21 @@ export type TxnDirection = ValueOf<typeof TxnDirection>;
 export const RecordKind = { TICKET: 'ticket', COMPLAINT: 'complaint', ROUTED: 'routed', ESCALATION: 'escalation' } as const;
 export type RecordKind = ValueOf<typeof RecordKind>;
 
+/** backend/simulator/app/enums.py TicketStatus: where a service request stands; the panel moves it with PATCH /ops/tickets/{ref}. */
+export const TicketStatus = {
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  AWAITING_INFO: 'AWAITING_INFO',
+  REJECTED: 'REJECTED',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+} as const;
+export type TicketStatus = ValueOf<typeof TicketStatus>;
+
+/** backend/voice/app/vocab.py OpOutcome: how one tool call went, on every tool_trace entry. */
+export const OpOutcome = { OK: 'OK', FAILED: 'FAILED', DECLINED: 'DECLINED' } as const;
+export type OpOutcome = ValueOf<typeof OpOutcome>;
+
 /** POST /support/calls/{id}/rating source. */
 export const RatingSource = { VOICE: 'VOICE', PANEL: 'PANEL' } as const;
 export type RatingSource = ValueOf<typeof RatingSource>;
@@ -84,6 +103,9 @@ export type LessonStatus = ValueOf<typeof LessonStatus>;
 
 /** POST /support/lessons text length bounds. */
 export const LessonLength = { MIN: 10, MAX: 300 } as const;
+
+/** A reviewer's corrected caller transcript, after trimming (mirrors the core API's bounds). */
+export const TranscriptLength = { MIN: 1, MAX: 2000 } as const;
 
 /** Prefixes of the references the agent creates in the bank simulator. */
 export const RefPrefix = { TICKET: 'SR-', COMPLAINT: 'CMP-', ROUTED: 'RQ-', ESCALATION: 'ESC-' } as const;

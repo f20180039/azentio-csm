@@ -122,3 +122,48 @@ Tests (`SupportControllerTest`):
 
 - [ ] **A11 (stretch): Renewal Desk handoff** (needs: A2, A10)
 - `handoff_renewal` maps the simulator's insurance `policy_no` to the Spring renewal policy. The voice service creates the Spring renewal call pre-verified, passing the simulator verification, and switches `Mode` to `RENEWAL` in the same call.
+
+---
+
+## Level 2 (31 Oct): plan `docs/superpowers/plans/2026-10-31-l2-gaps-and-hindi.md`
+
+Tasks L1 and L2 touch the simulator with Chirag's OK. Contract additions are listed in the main plan under "Shared contract: Level 2 (added 31 Oct)".
+
+- [x] **L0: Save the Level 2 brief** (needs: none)
+- `docs/brief/problem-05-level2.md`, verbatim from the challenge pack, the 7 capabilities as headings; AGENTS.md "Where things are" row.
+
+- [x] **L1: Ticket statuses, department, progress and status updates (simulator)** (needs: L0)
+- `TicketStatus` + `AWAITING_INFO`, `REJECTED`; `Department`; tickets carry `department`, `progress`, `eta_days`; `PATCH /v1/ops/tickets/{ref}`; seed SR-40103 (REJECTED), SR-40104 (AWAITING_INFO), SR-40105 (RESOLVED). Test: `tests/test_ticket_status.py`.
+
+- [x] **L2: Complaint statement and reference, escalation category and linked records (simulator)** (needs: L0)
+- Complaints keep `original_statement` and `related_ref`; escalations carry `category` (`EscalationCategory` + six values) and `related_refs`; both on `/ops/records`. Test: `tests/test_l2_records.py`.
+
+- [x] **L3: Voice tools send the new fields; the agent explains ticket statuses** (needs: L1, L2)
+- `register_complaint` sends the caller's last words and an optional `related_ref`; `escalate_to_human` sends its trigger as `category` and the call's refs as `related_refs`; REQUEST STATUS prompt rule. Test: `tests/test_l2_tools.py`.
+
+- [x] **L4: Escalation backstops: verification lock and repeated misunderstanding** (needs: L3)
+- `_escalate_if_stuck`: one `AUTH_LOCKED` hand-over when the call locks, one `REPEATED_MISUNDERSTANDING` after three `UNCLEAR` turns; a failed hand-over is never claimed. Test: `tests/test_escalation_backstops.py`.
+
+- [x] **L5: Operation outcome per tool call, failed count per call** (needs: none)
+- `OpOutcome` `OK|FAILED|DECLINED` on every `tool_trace` entry (voice) and `failedOps` on the call list (core API). Tests: `tests/test_op_outcome.py`, `backend/api/tests/test_support.py`.
+
+- [x] **L6: Panel: statuses, failures, departments, statements, linked records, status control** (needs: L1, L2, L5)
+- Status-toned ticket pills, department and progress, "N failed" pill, outcome pill per Retrieved card, complaint statement in quotes with its "About" ref, escalation ref pills, Save-based ticket status control (`PATCH /ops/tickets/{ref}`). Tests: `SupportDesk`, `SupportCall`, `CustomerCard`.
+
+- [x] **H1: Hindi as a caller language** (needs: none)
+- `SpeechLanguage.HINDI`, `hi-IN-SwaraNeural`, script detection with combining marks, Hindi STT prompt and fixed lines, greeting offers each enabled language, `VOICE_LANGUAGES=en,kn,hi`. Test: `tests/test_hindi.py`.
+
+- [x] **H2: Hindi measured and in the scenario set** (needs: H1)
+- Renderer voice `hi-IN-MadhurNeural`, accent `hi` in the harness, scenarios 15–16, `docs/stt-benchmark.md` § Hindi from a measured run (23 requests). The audio scenario run is still "Not run" there.
+
+- [x] **T1: English translation of Kannada and Hindi turns (voice)** (needs: H1)
+- `translate.to_english`, turn meta `text_en` and `language`, `VOICE_TRANSLATE_MODEL`; the reply never waits for it; `finish()` gives it 3 s. Test: `tests/test_translate.py`.
+
+- [x] **T2: Panel: English beside Kannada and Hindi turns** (needs: T1)
+- Language chip, English line under each translated turn, "English first" switch, search over `text_en`. Tests: `SupportCall`, `search`.
+
+- [x] **L7: Demo script and docs** (needs: L1, L2, L3, L4, L5, L6, H1, H2, T1, T2)
+- README Level 2 walk-through and Hindi/Kannada run steps; contract additions in the main plan; these rows.
+
+- P1/P2 transcript redaction: on hold by owner decision, parked on branch `feat/pii-redaction` (not on `develop`).
+- V1 (`fix/verification-capture`, hotfix to `develop` on its own): verification uses the caller's own mobile and date of birth, keeps a correctly heard value, re-asks only what is missing without spending an attempt; the README's step 5a depends on it.

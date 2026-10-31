@@ -1,4 +1,5 @@
 import { createElement, Fragment, type ReactNode } from 'react';
+import { intentLabel, type SupportTurn } from './api/support';
 
 /** URL search params owned by the search boxes. */
 export const SearchParam = { QUERY: 'q', RECORDS_QUERY: 'rq' } as const;
@@ -32,6 +33,15 @@ export function matches(query: string, ...fields: SearchField[]): boolean {
   if (!terms.length) return true;
   const haystack = flatten(fields);
   return terms.every((t) => haystack.some((h) => h.includes(t)));
+}
+
+/**
+ * A conversation turn matches on its words, a reviewer's corrected reading of them, their English (when translated),
+ * its intents by code and label, and its references.
+ */
+export function turnMatches(q: string, t: SupportTurn): boolean {
+  const intents = t.meta.intents ?? [];
+  return matches(q, t.text, t.meta.transcript_correction?.text, t.meta.text_en, intents, intents.map(intentLabel), t.meta.refs);
 }
 
 /** Normalises text char by char, keeping where each normalised char came from, so hits map back to the original. */

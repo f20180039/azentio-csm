@@ -56,6 +56,7 @@ class CallSession:
     # carried numbers this code could not read (Kannada or Hindi number words, a two-digit year); a bank mismatch takes the field out again
     today: date = field(default_factory=date.today)  # for judging a date of birth; fixed in tests
     last_caller_text: str = ""  # the caller's latest words, kept verbatim on a complaint as its original_statement
+    unclear_streak: int = 0  # customer turns in a row whose only intent was UNCLEAR; silence leaves it, understanding resets it
 
     @property
     def verified(self) -> bool:
