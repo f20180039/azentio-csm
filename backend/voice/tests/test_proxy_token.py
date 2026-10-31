@@ -1,5 +1,6 @@
 """Tunnel guard with a proxy-only secret: a request through the tunnel reaches a non-public route only when the panel's
 dev-server proxy added x-voice-proxy-token matching VOICE_PROXY_TOKEN. Without a configured token nothing changes."""
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from loguru import logger
@@ -52,6 +53,15 @@ def test_tunnelled_request_without_token_is_refused(client):
     assert c.get(LLM_STATUS, headers=tunnelled(TOKEN)).json() != refused
 
 
+def test_duplicate_token_headers_are_refused(client):
+    """Exactly one x-voice-proxy-token header must carry the secret; a right one beside a wrong one admits nothing."""
+    c = client(Settings(voice_proxy_token=TOKEN))
+    header = main.PROXY_TOKEN_HEADER.decode()
+    pairs = [(k, v) for k, v in TUNNEL.items()] + [(header, TOKEN), (header, "wrong-" + TOKEN)]
+    assert c.get(LLM_STATUS, headers=httpx.Headers(pairs)).status_code == 403
+    assert c.get(LLM_STATUS, headers=httpx.Headers(pairs[:-1])).status_code == 200
+
+
 def test_tunnelled_request_with_the_right_token_is_allowed(client):
     c = client(Settings(voice_proxy_token=TOKEN))
     r = c.get(LLM_STATUS, headers=tunnelled(TOKEN))
@@ -77,6 +87,8 @@ def test_short_token_counts_as_unset(client, tmp_path, monkeypatch, logs):
     assert s.voice_proxy_token == TOKEN and TOKEN not in repr(s)
     monkeypatch.delenv("VOICE_PROXY_TOKEN")
     env.write_text(f"VOICE_PROXY_TOKEN={TOKEN}\n")
+    assert load_settings(env).voice_proxy_token == TOKEN
+    env.write_text(f"VOICE_PROXY_TOKEN=  {TOKEN} \n")  # padded in .env: stripped, so it equals what the panel's proxy trims
     assert load_settings(env).voice_proxy_token == TOKEN
     assert load_settings(None).voice_proxy_token == ""
 
@@ -115,6 +127,8 @@ def test_tunnelled_websocket_needs_the_token(client):
                 ws.receive_text()
         assert e.value.code == 1008
         with c.websocket_connect(ECHO_WS, headers=tunnelled(TOKEN)) as ws:
+            assert ws.receive_text() == "reached"
+        with c.websocket_connect(ECHO_WS, headers={main.PROXY_TOKEN_HEADER.decode(): "whatever"}) as ws:  # local: unchanged
             assert ws.receive_text() == "reached"
         with pytest.raises(WebSocketDisconnect) as e:  # no token configured: the header alone opens nothing
             with client().websocket_connect(ECHO_WS, headers=tunnelled(TOKEN)) as ws:

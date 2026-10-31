@@ -138,11 +138,11 @@ PUBLIC_PATHS = (Route.TWILIO_WS, Route.TWILIO_TWIML, Route.HEALTH,
 
 
 def proxy_token_matches(headers: list[tuple[bytes, bytes]], configured: str) -> bool:
-    """True only when a proxy secret is configured and the request's x-voice-proxy-token equals it (constant time)."""
+    """True only when a proxy secret is configured and the request's single x-voice-proxy-token equals it (constant time)."""
     if not configured:
         return False
-    expected = configured.encode()
-    return any(name.lower() == PROXY_TOKEN_HEADER and hmac.compare_digest(value, expected) for name, value in headers)
+    values = [value for name, value in headers if name.lower() == PROXY_TOKEN_HEADER]
+    return len(values) == 1 and hmac.compare_digest(values[0], configured.encode())
 
 
 class LocalOnly:

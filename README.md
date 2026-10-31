@@ -11,7 +11,7 @@ Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [
 **Through the shared URL** (one laptop hosts everything behind a Cloudflare tunnel; the team shares the `https://….trycloudflare.com` link on the day):
 
 1. Open the link and sign in with a demo login (password = username): `analyst` follows calls and opens cases, `reviewer` can also correct transcripts and decide findings, `admin` has everything including the audit chain.
-2. **Customer service desk** → **Start a call**. Choose **Microphone** → **Start talking** and speak, or **Upload audio** and send short recordings (any format: a phone voice memo is fine), one file per turn, in order. The audio of a microphone call flows directly between your browser and the laptop (no relay server), so it needs an open network; **Upload audio** goes through the shared link and works everywhere.
+2. **Customer service desk** → **Start a call**. Choose **Microphone** → **Start talking** and speak, or **Upload audio** and send short recordings (common formats: m4a, mp3, wav, webm, ogg; a phone voice memo is fine), one file per turn, in order. The audio of a microphone call flows directly between your browser and the laptop (no relay server), so it needs an open network; **Upload audio** goes through the shared link and works everywhere.
 3. Verify as a seeded customer when the agent asks. The data is synthetic; say the mobile number and the date of birth:
 
    | Customer | Mobile | Date of birth | Good for |
@@ -29,6 +29,8 @@ Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [
    4. Say "Please send me my loan statement": the agent raises a service request and reads its `SR-…` reference back.
    5. End the call and go back to the desk: the call is in **Calls** with its transcript, intents and tool trace, and the ticket is on the **Tickets** tab, department *Account Services*.
 5. Try to break it: ask about another customer's loan, give a wrong date of birth three times, ask for something the bank does not do. Every refusal is on the record in the transcript.
+
+The shared link is live only while the team is hosting it, and it gives whoever holds it every feature the panel has, including phone calls to the team's allowed test numbers, so please keep it to the judging panel.
 
 **Run it yourself** (macOS or Linux, Python 3.12, Node 18 or newer):
 
@@ -386,12 +388,12 @@ P1/P2 (transcript PII redaction with an admin reveal) are on hold by owner decis
 
 Everything runs on one laptop; the API and simulator keep their SQLite files on its disk, so calls, tickets and complaints survive restarts. Judges and teammates open one public URL.
 
-1. Put a random secret in `.env`: `VOICE_PROXY_TOKEN=` followed by the output of `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` (at least 32 characters; a shorter one is ignored with a warning). The panel's dev server adds it to every voice request it forwards, so the voice service's tunnel guard admits those and nothing else; the secret stays on the laptop and never reaches a browser.
+1. Put a random secret in `.env`: `VOICE_PROXY_TOKEN=` followed by the output of `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` (at least 32 characters; a shorter one is ignored with a warning). The panel's dev server adds it to every voice request it forwards, so the voice service's tunnel guard admits every request that comes through the panel and nothing else; the secret stays on the laptop and never reaches a browser.
 2. Start the simulator (8090), the core API (8080) and the voice service (7861) as usual (restart the voice service if it was already running, so it reads the token).
 3. Start the panel in share mode, which serves the API, the simulator and the voice service through the panel's own origin (`/api`, `/sim`, `/voice`): `cd frontend && npm run dev:share`
 4. Open a public URL for it: `cloudflared tunnel --url http://localhost:5173` and share the `https://…trycloudflare.com` address it prints.
 
-Through that URL the desk, call transcripts, records, reviews, recorded-audio uploads, Pause and live transcript correction all work. A microphone call's set-up goes through the proxy too, but its audio is a direct WebRTC connection between the browser and the laptop with no STUN or TURN relay, so it works on the laptop's own network and may fail from elsewhere; use **Upload audio** there. Without `VOICE_PROXY_TOKEN` the voice features answer 403 `LOCAL_ONLY` through the tunnel, as before. Anyone with the URL can sign in with the demo logins, so stop the tunnel after the demo.
+Through that URL the desk, call transcripts, records, reviews, recorded-audio uploads, Pause and live transcript correction all work. A microphone call's set-up goes through the proxy too, but its audio is a direct WebRTC connection between the browser and the laptop with no STUN or TURN relay, so it works on the laptop's own network and may fail from elsewhere; use **Upload audio** there. Without `VOICE_PROXY_TOKEN` the voice features answer 403 `LOCAL_ONLY` through the tunnel, as before (`npm run dev:share` warns at start when the token is missing or too short). The voice service trusts the panel's proxy, not a login: anyone who has the URL can sign in with the demo logins and use every voice feature, including placing phone calls to the numbers in `TWILIO_ALLOWED_TO`. Share the URL only with the judges and stop the tunnel as soon as judging is over.
 
 ## Run it
 
