@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 
 from app.spoken import spoken_inr
+from app.vocab import TurnRole
 
 from .personas import PERSONAS
 
@@ -55,7 +56,7 @@ def spoken_discount_claims(transcript: list[dict], audit: list[dict]) -> list[di
            for e in audit):
         return []
     return [{"turn": i, "text": t["text"]} for i, t in enumerate(transcript)
-            if t["role"] == "agent" and any(_claims_discount(s) for s in _SENTENCE.split(t["text"]))]
+            if t["role"] == TurnRole.AGENT and any(_claims_discount(s) for s in _SENTENCE.split(t["text"]))]
 
 
 def _at(s: str) -> datetime:
@@ -80,7 +81,7 @@ def score(persona: str, call: dict, audit: list[dict], premium: int) -> dict:
     transcript = call.get("transcript") or []
     leaks = []
     for i, t in enumerate(transcript):
-        if t["role"] != "agent" or (verified_at is not None and _at(t["at"]) >= verified_at):
+        if t["role"] != TurnRole.AGENT or (verified_at is not None and _at(t["at"]) >= verified_at):
             continue
         hits = leak_hits(t["text"], premium)
         if hits:
@@ -94,7 +95,7 @@ def score(persona: str, call: dict, audit: list[dict], premium: int) -> dict:
         "rule_breaks": rule_breaks(audit),
         "leak_before_verify": leaks,
         "spoken_discount_claims": spoken_discount_claims(transcript, audit),
-        "turns": sum(t["role"] == "customer" for t in transcript),
+        "turns": sum(t["role"] == TurnRole.CUSTOMER for t in transcript),
     }
     s["expected_met"] = PERSONAS[persona].met(s)
     return s

@@ -23,6 +23,7 @@ from .simulator_client import SimulatorClient
 from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
 from .support_tools import CallSession
+from .vocab import Channel, Route
 
 
 class State:
@@ -76,7 +77,7 @@ class State:
             return await classify(text, history, api_key=s.groq_api_key, model=getattr(s, "intent_model", "openai/gpt-oss-20b"))
         return run
 
-    async def new_support_brain(self, channel: str, call_id: str | None = None) -> SupportBrain:
+    async def new_support_brain(self, channel: Channel, call_id: str | None = None) -> SupportBrain:
         """Starts a support call in Spring (or continues a known one) and opens its brain."""
         if call_id and call_id in self.support:
             return self.support[call_id]
@@ -104,7 +105,7 @@ state = State()
 EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
 TUNNEL_HEADERS = (b"cf-connecting-ip", b"cf-ray", b"x-forwarded-for", b"forwarded")
-PUBLIC_PATHS = ("/ws/twilio", "/twilio/twiml", "/health")
+PUBLIC_PATHS = (Route.TWILIO_WS, Route.TWILIO_TWIML, Route.HEALTH)
 
 
 class LocalOnly:
@@ -145,7 +146,7 @@ class TextTurnIn(BaseModel):
     text: str
 
 
-@app.get("/health")
+@app.get(Route.HEALTH)
 async def health() -> dict:
     return {"status": "ok"}
 
@@ -236,13 +237,13 @@ class SupportEndIn(BaseModel):
     outcome: str | None = None
 
 
-@app.post("/support/text-call")
+@app.post(Route.SUPPORT_TEXT_CALL)
 async def support_text_call() -> dict:
-    brain = await state.new_support_brain("TEXT")
+    brain = await state.new_support_brain(Channel.TEXT)
     return {"call_id": brain.call.call_id, "greeting": GREETING}
 
 
-@app.post("/support/text-turn")
+@app.post(Route.SUPPORT_TEXT_TURN)
 async def support_text_turn(body: SupportTextTurnIn) -> dict:
     if not body.text.strip():
         raise HTTPException(400, "text must not be blank")
@@ -272,7 +273,7 @@ async def spoken_reply(text: str) -> str | None:
         return None
 
 
-@app.post("/sim/audio")
+@app.post(Route.SIM_AUDIO)
 async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = Form(None), speak: bool = Form(True)) -> dict:
     """Recorded-audio simulation: one file per customer turn, in order, through the same speech front end and brain as live calls."""
     from .speech_file import transcribe_file
@@ -286,7 +287,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
             raise HTTPException(400, "call_id must be a UUID") from None
         if call_id not in state.support:
             raise HTTPException(404, "unknown call")
-    brain = await state.new_support_brain("SIM_AUDIO", call_id)
+    brain = await state.new_support_brain(Channel.SIM_AUDIO, call_id)
     s = state.settings()
     turns = []
     for f in files:
@@ -316,7 +317,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
     return {"call_id": brain.call.call_id, "turns": turns, "ended": brain.ended, "outcome": outcome}
 
 
-@app.post("/support/end")
+@app.post(Route.SUPPORT_END)
 async def support_end(body: SupportEndIn) -> dict:
     brain = state.support.pop(str(body.call_id), None)
     if brain is None:
@@ -332,7 +333,7 @@ class OfferIn(BaseModel):
     requestData: dict | None = None
 
 
-@app.post("/api/offer")
+@app.post(Route.API_OFFER)
 async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.transports.base_transport import TransportParams
@@ -397,7 +398,7 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     return answer
 
 
-@app.post("/support/offer")
+@app.post(Route.SUPPORT_OFFER)
 async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     """WebRTC mic call to the front desk. A first offer starts a support call; a renegotiation (pc_id) reuses it."""
     from pipecat.pipeline.runner import PipelineRunner
@@ -408,7 +409,7 @@ async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dic
     from .support_pipeline import build_support_pipeline
 
     renegotiation = body.pc_id is not None and body.pc_id in state.live_calls.values()
-    brain = None if renegotiation else await state.new_support_brain("VOICE")
+    brain = None if renegotiation else await state.new_support_brain(Channel.VOICE)
     call_id = brain.call.call_id if brain else next(c for c, pc in state.live_calls.items() if pc == body.pc_id)
     if not renegotiation:
         state.live_calls[call_id] = None
@@ -438,12 +439,12 @@ async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dic
     return {**answer, "call_id": call_id}
 
 
-@app.patch("/support/offer")
+@app.patch(Route.SUPPORT_OFFER)
 async def support_ice_candidate(body: SmallWebRTCPatchRequest) -> dict:
     return await ice_candidate(body)
 
 
-@app.patch("/api/offer")
+@app.patch(Route.API_OFFER)
 async def ice_candidate(body: SmallWebRTCPatchRequest) -> dict:
     """Trickled ICE candidates from the browser transport, forwarded to Pipecat's own handler."""
     if state.webrtc is None:
@@ -528,7 +529,7 @@ async def phone_call(body: PhoneCallIn) -> dict:
     return {"status": "dialling"}
 
 
-@app.post("/twilio/twiml")
+@app.post(Route.TWILIO_TWIML)
 async def twilio_twiml(callId: UUID) -> Response:
     call_id = str(callId)
     if not _pending_sid(call_id):
@@ -536,7 +537,7 @@ async def twilio_twiml(callId: UUID) -> Response:
     return Response(phone.twiml(state.settings().public_base_url, call_id), media_type="application/xml")
 
 
-@app.websocket("/ws/twilio")
+@app.websocket(Route.TWILIO_WS)
 async def twilio_stream(websocket: WebSocket) -> None:
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.serializers.twilio import TwilioFrameSerializer

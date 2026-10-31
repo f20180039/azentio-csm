@@ -12,6 +12,7 @@ from .brain import ChatClient, ToolTrace
 from .simulator_client import SimulatorClient
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, run_support_tool
+from .vocab import MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -19,7 +20,8 @@ RETRIEVED_LIMIT = 4000  # characters of a tool result kept for the panel
 
 Classifier = Callable[[str, list[dict]], Awaitable[object]]
 
-OUTCOME_BY_PREFIX = (("ESC-", "ESCALATED"), ("CMP-", "COMPLAINT_REGISTERED"), ("SR-", "TICKET_CREATED"), ("RQ-", "ROUTED"))
+OUTCOME_BY_PREFIX = ((RefPrefix.ESCALATION, Outcome.ESCALATED), (RefPrefix.COMPLAINT, Outcome.COMPLAINT_REGISTERED),
+                     (RefPrefix.SERVICE_REQUEST, Outcome.TICKET_CREATED), (RefPrefix.ROUTED, Outcome.ROUTED))
 
 
 @dataclass
@@ -56,11 +58,11 @@ def _trim(result: dict) -> dict:
     return result if len(raw) <= RETRIEVED_LIMIT else {"truncated": raw[:RETRIEVED_LIMIT]}
 
 
-def outcome_for(refs: list[str]) -> str:
+def outcome_for(refs: list[str]) -> Outcome:
     for prefix, outcome in OUTCOME_BY_PREFIX:
         if any(r.startswith(prefix) for r in refs):
             return outcome
-    return "RESOLVED"
+    return Outcome.RESOLVED
 
 
 class SupportBrain:
@@ -74,25 +76,26 @@ class SupportBrain:
         self.ended = False
 
     async def open(self) -> None:
-        await self._record("agent", GREETING, {"greeting": True})
+        await self._record(TurnRole.AGENT, GREETING, {MetaKey.GREETING: True})
 
     async def reply(self, user_text: str) -> SupportTurn:
         async with self._lock:
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
-            customer_seq = await self._record("customer", user_text, self._verification())
+            customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
             self._messages.append({"role": "user", "content": user_text})
             turn = await self._loop()
             self._messages.append({"role": "assistant", "content": turn.text})
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
             turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
-            await self._record("agent", turn.text, {"tool_trace": [{"name": t.name, "args": t.args, "result_summary": summarise(t.result)}
-                                                                   for t in turn.tool_calls],
-                                                    "retrieved": {t.name: _trim(t.result) for t in turn.tool_calls},
-                                                    "refs": turn.refs, "verified": self.call.verified})
+            await self._record(TurnRole.AGENT, turn.text,
+                               {MetaKey.TOOL_TRACE: [{"name": t.name, "args": t.args, "result_summary": summarise(t.result)}
+                                                     for t in turn.tool_calls],
+                                MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
+                                MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
             found = await intents
             turn.intents, turn.intent_source = found
-            await self._patch(customer_seq, {**self._verification(), "intents": turn.intents, "intent_source": turn.intent_source})
+            await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source})
             return turn
 
     def mark_unheard(self) -> None:
@@ -105,7 +108,7 @@ class SupportBrain:
     async def no_speech(self, reason: str) -> None:
         """A customer turn with nothing to answer (silence, or noise the model turned into words): recorded, not replied to."""
         async with self._lock:
-            await self._record("customer", "", {**self._verification(), "no_speech": True, "reason": reason, "intents": []})
+            await self._record(TurnRole.CUSTOMER, "", {**self._verification(), MetaKey.NO_SPEECH: True, MetaKey.REASON: reason, MetaKey.INTENTS: []})
 
     async def finish(self, outcome: str | None = None) -> str:
         outcome = outcome or outcome_for(self.call.refs)
@@ -139,8 +142,8 @@ class SupportBrain:
             if not isinstance(args, dict):
                 raise ValueError("arguments must be a JSON object")
         except ValueError as e:
-            return ToolTrace(name, {}, {"error": "BAD_ARGUMENTS", "detail": f"invalid JSON: {e}"[:200]})
-        if name == "end_call":
+            return ToolTrace(name, {}, {"error": ToolError.BAD_ARGUMENTS, "detail": f"invalid JSON: {e}"[:200]})
+        if name == SupportTool.END_CALL:
             self.ended = True
         return ToolTrace(name, args, await run_support_tool(self._sim, self.call, name, args))
 
@@ -155,9 +158,9 @@ class SupportBrain:
             return [], None
 
     def _verification(self) -> dict:
-        return {"verified": self.call.verified, "verify_failures": self.call.verify_failures, "locked": self.call.locked}
+        return {MetaKey.VERIFIED: self.call.verified, MetaKey.VERIFY_FAILURES: self.call.verify_failures, MetaKey.LOCKED: self.call.locked}
 
-    async def _record(self, role: str, text: str, meta: dict) -> int:
+    async def _record(self, role: TurnRole, text: str, meta: dict) -> int:
         self._seq += 1
         if not self._calls:
             return self._seq

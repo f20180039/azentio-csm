@@ -1,9 +1,27 @@
+from enum import StrEnum
+
 import httpx
 
 from .api_client import ApiUnavailable
 from .config import Settings
 
 SESSION_HEADER = "X-Customer-Session"
+
+
+class SimPath(StrEnum):
+    """The bank simulator's endpoints, relative to SIMULATOR_BASE."""
+    VERIFY = "/verify"
+    LOS_APPLICATIONS = "/los/applications"
+    LMS_LOANS = "/lms/loans"
+    CBS_ACCOUNTS = "/cbs/accounts"
+    CBS_TRANSACTIONS = "/cbs/transactions"
+    CSM_TICKETS = "/csm/tickets"
+    CSM_COMPLAINTS = "/csm/complaints"
+    CSM_ROUTED = "/csm/routed"
+    CSM_ESCALATIONS = "/csm/escalations"
+    INSURANCE_POLICIES = "/insurance/policies"
+    INSURANCE_CLAIMS = "/insurance/claims"
+    FAQ_SEARCH = "/faq/search"
 
 
 class SimulatorClient:
@@ -34,50 +52,50 @@ class SimulatorClient:
         return data
 
     async def verify(self, mobile: str, dob: str, call_id: str) -> dict:
-        return await self._send("POST", "/verify", body={"mobile": mobile, "dob": dob, "call_id": call_id})
+        return await self._send("POST", SimPath.VERIFY, body={"mobile": mobile, "dob": dob, "call_id": call_id})
 
     async def applications(self, session: str) -> dict:
-        return await self._send("GET", "/los/applications", session)
+        return await self._send("GET", SimPath.LOS_APPLICATIONS, session)
 
     async def loans(self, session: str, product_type: str | None = None) -> dict:
-        return await self._send("GET", "/lms/loans", session, params={"type": product_type} if product_type else None)
+        return await self._send("GET", SimPath.LMS_LOANS, session, params={"type": product_type} if product_type else None)
 
     async def schedule(self, session: str, loan_id: str) -> dict:
-        return await self._send("GET", f"/lms/loans/{loan_id}/schedule", session)
+        return await self._send("GET", f"{SimPath.LMS_LOANS}/{loan_id}/schedule", session)
 
     async def accounts(self, session: str) -> dict:
-        return await self._send("GET", "/cbs/accounts", session)
+        return await self._send("GET", SimPath.CBS_ACCOUNTS, session)
 
     async def transactions(self, session: str, status: str | None = None, ref: str | None = None, limit: int = 10) -> dict:
         params = {k: v for k, v in {"status": status, "ref": ref, "limit": limit}.items() if v}
-        return await self._send("GET", "/cbs/transactions", session, params=params)
+        return await self._send("GET", SimPath.CBS_TRANSACTIONS, session, params=params)
 
     async def tickets(self, session: str) -> dict:
-        return await self._send("GET", "/csm/tickets", session)
+        return await self._send("GET", SimPath.CSM_TICKETS, session)
 
     async def ticket(self, session: str, ref: str) -> dict:
-        return await self._send("GET", f"/csm/tickets/{ref}", session)
+        return await self._send("GET", f"{SimPath.CSM_TICKETS}/{ref}", session)
 
     async def create_ticket(self, session: str, category: str, summary: str, details: dict, call_id: str) -> dict:
         body = {"category": category, "summary": summary, "details": details, "call_id": call_id}
-        return await self._send("POST", "/csm/tickets", session, body=body)
+        return await self._send("POST", SimPath.CSM_TICKETS, session, body=body)
 
     async def complaint(self, session: str, category: str, description: str, severity: str, call_id: str) -> dict:
         body = {"category": category, "description": description, "severity": severity, "call_id": call_id}
-        return await self._send("POST", "/csm/complaints", session, body=body)
+        return await self._send("POST", SimPath.CSM_COMPLAINTS, session, body=body)
 
     async def routed(self, query_text: str, reason: str, call_id: str, customer_ref: str | None) -> dict:
         body = {"query_text": query_text, "reason": reason, "call_id": call_id, "customer_ref": customer_ref}
-        return await self._send("POST", "/csm/routed", body=body)
+        return await self._send("POST", SimPath.CSM_ROUTED, body=body)
 
     async def escalation(self, session: str | None, reason: str, summary: str, call_id: str) -> dict:
-        return await self._send("POST", "/csm/escalations", session, body={"reason": reason, "summary": summary, "call_id": call_id})
+        return await self._send("POST", SimPath.CSM_ESCALATIONS, session, body={"reason": reason, "summary": summary, "call_id": call_id})
 
     async def policies(self, session: str) -> dict:
-        return await self._send("GET", "/insurance/policies", session)
+        return await self._send("GET", SimPath.INSURANCE_POLICIES, session)
 
     async def claims(self, session: str) -> dict:
-        return await self._send("GET", "/insurance/claims", session)
+        return await self._send("GET", SimPath.INSURANCE_CLAIMS, session)
 
     async def faq(self, query: str, limit: int = 3) -> dict:
-        return await self._send("GET", "/faq/search", params={"q": query, "limit": limit})
+        return await self._send("GET", SimPath.FAQ_SEARCH, params={"q": query, "limit": limit})

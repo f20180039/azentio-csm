@@ -4,8 +4,10 @@ from uuid import UUID
 import httpx
 
 from .config import Settings
+from .vocab import Channel, Outcome, TurnRole
 
 MUST_HANDOFF_CODES = {"MUST_HANDOFF", "VERIFY_LOCKED"}
+SUPPORT_CALLS = "/support/calls"
 
 
 class ApiUnavailable(Exception):
@@ -107,15 +109,15 @@ class SupportCallsApi:
         except ValueError:
             return {}
 
-    async def start(self, channel: str) -> str:
-        return (await self._send("POST", "/support/calls", {"channel": channel}))["id"]
+    async def start(self, channel: Channel) -> str:
+        return (await self._send("POST", SUPPORT_CALLS, {"channel": channel}))["id"]
 
-    async def turn(self, call_id: str, role: str, text: str, meta: dict) -> dict:
+    async def turn(self, call_id: str, role: TurnRole, text: str, meta: dict) -> dict:
         at = datetime.now(timezone.utc).isoformat()
-        return await self._send("POST", f"/support/calls/{call_id}/turns", {"role": role, "text": text, "at": at, "meta": meta})
+        return await self._send("POST", f"{SUPPORT_CALLS}/{call_id}/turns", {"role": role, "text": text, "at": at, "meta": meta})
 
     async def patch_meta(self, call_id: str, seq: int, meta: dict) -> dict:
-        return await self._send("PATCH", f"/support/calls/{call_id}/turns/{seq}/meta", meta)
+        return await self._send("PATCH", f"{SUPPORT_CALLS}/{call_id}/turns/{seq}/meta", meta)
 
-    async def end(self, call_id: str, outcome: str) -> dict:
-        return await self._send("POST", f"/support/calls/{call_id}/end", {"outcome": outcome})
+    async def end(self, call_id: str, outcome: Outcome | str) -> dict:
+        return await self._send("POST", f"{SUPPORT_CALLS}/{call_id}/end", {"outcome": outcome})
