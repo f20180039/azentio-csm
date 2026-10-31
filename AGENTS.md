@@ -41,7 +41,11 @@ If neither matches, ask the human which person they are. **Work only on tasks in
 
 **The contract and the code**
 - The **Shared contract** in `docs/superpowers/plans/2026-10-31-csm-voice-agent.md` is fixed. Don't rename endpoints, fields or enum values; ask the human to check with Anshuman first.
-- Fixed vocabularies (intents, categories, statuses) are `StrEnum`s, validated at the API boundary.
+- **No repeated string literals for fixed vocabularies.** Route paths, endpoint paths, tool names, error codes, statuses, categories, outcomes, channels, roles and reference prefixes are enums or named constants, defined once and imported everywhere.
+  - Python: a `StrEnum`, validated at the API boundary (unknown value gives 422).
+  - Java: an `enum`.
+  - TypeScript: a `const` object plus its derived union type (`export const Outcome = {...} as const; export type Outcome = typeof Outcome[keyof typeof Outcome]`).
+  - One-off log lines, user-facing sentences and prompt text stay as plain strings.
 - Every task comes with tests, and the suite stays green.
 
 **Git**
