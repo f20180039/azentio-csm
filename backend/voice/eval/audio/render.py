@@ -95,6 +95,7 @@ async def render(source: str, accents: list[str], conditions: list[str], limit: 
             for condition in conditions:
                 dest = out / source / accent / condition / f"{row['id']}{suffix}.wav"
                 if not dest.exists():
+                    dest.parent.mkdir(parents=True, exist_ok=True)
                     with tempfile.TemporaryDirectory() as td:
                         clean = Path(td) / "clean.wav"
                         await _synthesize(row["text"], voice, clean)
