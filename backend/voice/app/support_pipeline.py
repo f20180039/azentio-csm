@@ -5,6 +5,8 @@ import os
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     EndWorkerFrame,
     Frame,
     TranscriptionFrame,
@@ -22,13 +24,50 @@ from .edge_tts_service import EdgeTTSService
 from .speech import build_stt, build_vad, keep_transcript
 from .support_brain import SupportBrain
 from .support_prompt import GREETING
+from .vocab import Outcome
 
 GOODBYE_GRACE_SECS = 4.0
 FALLBACK = "Sorry, I didn't catch that. Could you say it again?"
 SYSTEM_DOWN = "Sorry, I'm having trouble reaching our systems. Please hold on or try again in a moment."
 
 
-SETTLE_SECS = float(os.environ.get("VOICE_TURN_SETTLE_SECS", "1.0"))  # quiet time after the caller's last words before the agent answers
+SETTLE_SECS = float(os.environ.get("VOICE_TURN_SETTLE_SECS", "1.5"))  # quiet time after the caller's last words before the agent answers
+IDLE_PROMPT_SECS = float(os.environ.get("VOICE_IDLE_PROMPT_SECS", "5"))  # silence after the agent speaks before it checks in
+IDLE_HANGUP_SECS = float(os.environ.get("VOICE_IDLE_HANGUP_SECS", "3"))  # further silence after the check-in before it hangs up
+STILL_THERE = "Are you still there?"
+IDLE_GOODBYE = "I haven't heard anything, so I'll end the call now. Thank you for calling Azentio Demo Bank."
+
+
+class IdleWatch:
+    """Silence after the agent finishes speaking: check in once after `prompt_after`, hang up `hangup_after` later.
+    Any caller speech resets it; it is paused while the caller speaks or a reply is being prepared."""
+
+    def __init__(self, on_prompt, on_hangup, prompt_after: float = IDLE_PROMPT_SECS, hangup_after: float = IDLE_HANGUP_SECS):
+        self._on_prompt, self._on_hangup = on_prompt, on_hangup
+        self._prompt_after, self._hangup_after = prompt_after, hangup_after
+        self.prompted = False
+        self._timer: asyncio.Task | None = None
+
+    def caller_active(self) -> None:
+        self.prompted = False
+        self.pause()
+
+    def pause(self) -> None:
+        if self._timer and not self._timer.done():
+            self._timer.cancel()
+
+    def agent_done(self) -> None:
+        self.pause()
+        self._timer = asyncio.create_task(self._wait())
+
+    async def _wait(self) -> None:
+        if not self.prompted:
+            await asyncio.sleep(self._prompt_after)
+            self.prompted = True
+            await self._on_prompt()
+        else:
+            await asyncio.sleep(self._hangup_after)
+            await self._on_hangup()
 
 
 class TurnGate:
@@ -45,6 +84,11 @@ class TurnGate:
         self._parts: list[str] = []
         self._timer: asyncio.Task | None = None
         self._replies: set[asyncio.Task] = set()
+
+    @property
+    def busy(self) -> bool:
+        """A caller turn is being gathered or answered, so silence is not idleness."""
+        return bool(self._parts) or any(not t.done() for t in self._replies)
 
     def user_started(self) -> None:
         self.speaking = True
@@ -90,10 +134,22 @@ class SupportResponder(FrameProcessor):
         super().__init__(**kwargs)
         self._brain = brain
         self._gate = TurnGate(self._answer)
+        self._idle = IdleWatch(self._check_in, self._hang_up)
+        self.abandoned = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            if not self._gate.busy:
+                self._idle.agent_done()
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._idle.pause()
+            await self.push_frame(frame, direction)
+            return
         if isinstance(frame, VADUserStartedSpeakingFrame):
+            self._idle.caller_active()
             self._gate.user_started()
             await self.broadcast_interruption()
             await self.push_frame(frame, direction)
@@ -105,9 +161,19 @@ class SupportResponder(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
             text = keep_transcript(frame)
             if text:
+                self._idle.caller_active()
                 self._gate.transcript(text)
             return
         await self.push_frame(frame, direction)
+
+    async def _check_in(self) -> None:
+        await self.push_frame(TTSSpeakFrame(STILL_THERE))
+
+    async def _hang_up(self) -> None:
+        self.abandoned = True
+        await self.push_frame(TTSSpeakFrame(IDLE_GOODBYE))
+        await asyncio.sleep(GOODBYE_GRACE_SECS)
+        await self.push_frame(EndWorkerFrame(reason="caller_silent"))
 
     async def _answer(self, text: str, generation: int) -> None:
         try:
@@ -150,6 +216,6 @@ def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTranspo
         nonlocal finished
         if not finished:
             finished = True
-            await brain.finish()
+            await brain.finish(Outcome.ABANDONED if responder.abandoned and not brain.call.refs else None)
 
     return task

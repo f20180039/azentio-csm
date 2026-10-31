@@ -69,3 +69,47 @@ def test_unheard_reply_is_marked_in_context():
     run(brain.reply("when is my EMI"))
     brain.mark_unheard()
     assert brain._messages[-1]["content"].startswith("(Not heard: the caller interrupted")
+
+
+def test_silence_after_the_agent_checks_in_then_hangs_up():
+    from app.support_pipeline import IdleWatch
+
+    async def scenario():
+        events = []
+
+        async def prompt():
+            events.append("still there?")
+
+        async def hangup():
+            events.append("hang up")
+        idle = IdleWatch(prompt, hangup, prompt_after=0.05, hangup_after=0.03)
+        idle.agent_done()                 # agent finished its reply
+        await asyncio.sleep(0.08)
+        idle.agent_done()                 # agent finished saying "are you still there?"
+        await asyncio.sleep(0.06)
+        return events
+    assert run(scenario()) == ["still there?", "hang up"]
+
+
+def test_caller_speech_resets_the_silence_check():
+    from app.support_pipeline import IdleWatch
+
+    async def scenario():
+        events = []
+
+        async def note(e):
+            events.append(e)
+        idle = IdleWatch(lambda: note("prompt"), lambda: note("hangup"), prompt_after=0.05, hangup_after=0.03)
+        idle.agent_done()
+        await asyncio.sleep(0.08)         # checked in once
+        idle.caller_active()              # the caller answers
+        idle.agent_done()                 # agent replies, then silence again
+        await asyncio.sleep(0.03)
+        return events, idle.prompted
+    events, prompted = run(scenario())
+    assert events == ["prompt"] and prompted is False  # no hang-up: the next silence starts with a fresh check-in
+
+
+def test_live_call_timings_default_to_the_agreed_values():
+    from app import support_pipeline as sp
+    assert (sp.SETTLE_SECS, sp.IDLE_PROMPT_SECS, sp.IDLE_HANGUP_SECS) == (1.5, 5.0, 3.0)
