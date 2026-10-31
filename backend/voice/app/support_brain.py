@@ -16,7 +16,8 @@ from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole
+from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
+                    ToolError, TurnRole)
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -78,7 +79,6 @@ def summarise(result: dict) -> str:
 
 
 FAILED_ERRORS = frozenset({ToolError.SYSTEM_UNAVAILABLE, ToolError.BAD_ARGUMENTS, ToolError.UNKNOWN_TOOL})
-HTTP_ERROR_PREFIX = "HTTP_"  # the simulator client's code for a status with no named error, e.g. HTTP_503
 
 
 def op_outcome(result: dict) -> OpOutcome:

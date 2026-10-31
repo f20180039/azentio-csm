@@ -41,6 +41,7 @@ def test_text_call_turn_and_end_record_a_support_call():
     turn = c.post("/support/text-turn", json={"call_id": CALL, "text": "9876500002, 3 Nov 85, vehicle loan EMI?"}).json()
     assert turn["verified"] is True and turn["retrieved"]["get_loans"]["items"][0]["loan_id"] == "VL-31003"
     assert [t["name"] for t in turn["tool_trace"]] == ["verify_customer", "get_loans"]
+    assert [t["outcome"] for t in turn["tool_trace"]] == ["OK", "OK"]
     assert c.post("/support/end", json={"call_id": CALL}).json() == {"outcome": "RESOLVED"}
     assert ("POST", "/api/v1/support/calls", {"channel": "TEXT"}) in spring
     assert spring[-1][1].endswith(f"/support/calls/{CALL}/end")

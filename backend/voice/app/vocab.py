@@ -134,6 +134,9 @@ class Route(StrEnum):
     SUPPORT_PAUSE = "/support/calls/{call_id}/pause"
 
 
+HTTP_ERROR_PREFIX = "HTTP_"  # tool error code for a simulator status with no named error: HTTP_<status>, e.g. HTTP_503
+
+
 class OpOutcome(StrEnum):
     """How one tool call went, recorded on every tool_trace entry: OK did the work; FAILED means the bank system or the
     call itself broke (SYSTEM_UNAVAILABLE, BAD_ARGUMENTS, UNKNOWN_TOOL, HTTP 5xx); DECLINED means a rule refused it
