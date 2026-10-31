@@ -4,6 +4,7 @@ backend/api/target/
 backend/api/data/
 backend/voice/.venv/
 backend/simulator/.venv/
+backend/api/.venv/
 backend/simulator/data/runtime/
 backend/simulator/data/*.db
 data/simulator/
