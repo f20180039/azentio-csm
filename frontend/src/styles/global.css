@@ -1,25 +1,163 @@
-/* Layout: fixed top bar, full-width work area; tables and split panes carry the density. */
+/* ------------------------------------------------------------
+   ALPHA-FIN THEME: BFSI CONVERSATIONAL AI AGENT DESK
+   ------------------------------------------------------------ */
+.bfsi-desk-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr 340px;
+  gap: 16px;
+  padding: 16px;
+  height: calc(100vh - 54px);
+  overflow: hidden;
+  background: var(--paper);
+}
+
+@media (max-width: 1200px) {
+  .bfsi-desk-layout {
+    grid-template-columns: 380px 1fr;
+  }
+}
+
+.phone-simulator-frame {
+  background: #111b18;
+  border-radius: 36px;
+  padding: 12px;
+  box-shadow: 0 20px 48px rgba(0, 50, 40, 0.28), 0 0 0 8px #263832;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 720px;
+  position: relative;
+}
+
+.phone-screen {
+  background: var(--surface-2);
+  border-radius: 28px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.phone-header {
+  background: linear-gradient(135deg, #00594a 0%, #00836c 100%);
+  color: #ffffff;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.phone-messages {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-bubble {
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.chat-bubble.bot {
+  align-self: flex-start;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 2px;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: #00836c;
+  color: #ffffff;
+  border-bottom-right-radius: 2px;
+}
+
+.quick-reply-chip {
+  background: var(--surface);
+  border: 1px solid #00836c;
+  color: #00836c;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-reply-chip:hover {
+  background: #00836c;
+  color: #ffffff;
+}
+
+.panel-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(10, 31, 26, 0.04);
+}
+
+.metric-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-green {
+  background: #d8efe8;
+  color: #00594a;
+}
+
+.badge-orange {
+  background: #fdecd9;
+  color: #c95f04;
+}
+
+.audit-stream-row {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 :root {
-  --paper: #f3f5f4;
+  --paper: #f2f6f4;
   --surface: #ffffff;
   --surface-2: #f7f9f8;
-  --ink: #16211e;
+  --ink: #0a1f1a;
   --muted: #5a6a65;
-  --line: #d6dfdb;
-  --accent: #1d6b57;
+  --line: #dfe7e3;
+  --accent: #00836c; /* Alpha-Fin Observatory Green */
   --accent-ink: #ffffff;
-  --accent-soft: #e1eee9;
-  --ok: #22784a;
+  --accent-soft: #d8efe8;
+  --brand-orange: #f58220; /* Alpha-Fin Orange Passion */
+  --brand-orange-soft: #fdecd9;
+  --ok: #0ca30c;
   --ok-bg: #e2f2e8;
-  --warn: #946000;
-  --warn-bg: #faefd6;
-  --bad: #b13428;
+  --warn: #f58220;
+  --warn-bg: #fdecd9;
+  --bad: #d03b3b;
   --bad-bg: #fae3df;
-  --info: #2a5d8f;
-  --info-bg: #e3edf7;
+  --info: #00836c;
+  --info-bg: #d8efe8;
   --hl: #ffeb99;
   --hl-active: #ffd24d;
-  --shadow: 0 8px 28px rgba(15, 30, 25, 0.16);
+  --shadow: 0 8px 28px rgba(10, 31, 26, 0.12);
 
   --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
