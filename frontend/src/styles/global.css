@@ -573,3 +573,27 @@ td.persona-cell > span { display: block; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---- live call: orbs that move with the caller's microphone and the agent's voice ---- */
+.orbs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; align-items: center; justify-items: center;
+  padding: 18px 12px 10px; margin: 6px 0 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--line); }
+.orb-col { display: grid; justify-items: center; gap: 8px; }
+.orb { --level: 0; position: relative; width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; }
+.orb::before, .orb::after { content: ""; position: absolute; inset: 0; border-radius: 50%; }
+.orb::before { background: var(--orb-glow); opacity: calc(.25 + var(--level) * .55); transform: scale(calc(1 + var(--level) * .55)); transition: transform 90ms linear, opacity 90ms linear; }
+.orb::after { border: 2px solid var(--orb-ring); opacity: calc(var(--level) * .9); transform: scale(calc(1.05 + var(--level) * .8)); transition: transform 120ms linear, opacity 120ms linear; }
+.orb-core { position: relative; z-index: 1; width: 44px; height: 44px; border-radius: 50%; background: var(--orb-core); box-shadow: var(--shadow);
+  transform: scale(calc(1 + var(--level) * .18)); transition: transform 90ms linear; }
+.orb.you { --orb-core: var(--accent); --orb-glow: color-mix(in srgb, var(--accent) 35%, transparent); --orb-ring: var(--accent); }
+.orb.agent { --orb-core: var(--navy, #0d2340); --orb-glow: color-mix(in srgb, var(--navy, #0d2340) 22%, transparent); --orb-ring: var(--navy, #0d2340); }
+.orbs:not(.live) .orb-core { opacity: .45; }
+.orbs.live .orb:not(.on) .orb-core { animation: orb-breathe 2.8s ease-in-out infinite; }
+@keyframes orb-breathe { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1); } }
+.orb-label { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.orb.on + .orb-label { color: var(--ink); }
+.orb-status { grid-column: 1 / -1; margin: 2px 0 0; font-size: var(--fs-sm); color: var(--muted); }
+.orbs[data-speaker="customer"] .orb-status, .orbs[data-speaker="agent"] .orb-status { color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .orb::before, .orb::after, .orb-core { transform: none !important; transition: none; animation: none !important; }
+  .orb.on .orb-core { outline: 3px solid var(--orb-ring); outline-offset: 4px; }
+}

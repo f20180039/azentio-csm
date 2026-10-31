@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { AudioOrbs } from '../components/AudioOrbs';
 import { ApiError } from '../api/errors';
 import {
   audioDataUrl,
@@ -694,6 +695,7 @@ export function SupportCall() {
                 {mode === 'mic' ? (
                   <div id="mode-panel-mic" role="tabpanel" aria-labelledby="mode-mic" className="sc-mode-body">
                     <p className="small muted">Talk to the agent through this browser. Its replies play through your speakers.</p>
+                    <AudioOrbs live={voice === 'on'} agentAudio={audio} />
                     <div className="row">
                       {voice === 'off' && (
                         <button className="btn primary" onClick={startMic}>
