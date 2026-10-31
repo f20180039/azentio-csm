@@ -15,8 +15,10 @@ for p in $API_PORT $SIM_PORT $VOICE_PORT $WEB_PORT; do
   lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 && { echo "port $p is taken by: $(lsof -nP -iTCP:$p -sTCP:LISTEN | awk 'NR==2{print $1" pid "$2}')"; echo "stop it, or pick other ports, e.g. API_PORT=8081 SIM_PORT=8091 VOICE_PORT=7862 WEB_PORT=5174 $0"; exit 1; }
 done
 
-pg_isready -q || { echo "Postgres is not running on localhost:5432"; exit 1; }
-psql -Atqc "select 1 from pg_database where datname='$DB_NAME'" postgres | grep -q 1 || createdb "$DB_NAME"
+# (Optional) local postgres check if present
+if command -v pg_isready >/dev/null 2>&1 && pg_isready -q; then
+  psql -Atqc "select 1 from pg_database where datname='$DB_NAME'" postgres 2>/dev/null | grep -q 1 || createdb "$DB_NAME" 2>/dev/null || true
+fi
 
 start() {  # name, dir, command...
   local name=$1 dir=$2; shift 2
@@ -25,8 +27,7 @@ start() {  # name, dir, command...
   echo "started $name (log: .run/$name.log)"
 }
 
-start api "$ROOT/backend/api" env DB_URL="$DB_URL" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" SERVER_PORT="$API_PORT" \
-  CORS_ORIGINS="$WEB" ENFORCE_CALLING_HOURS=false ./mvnw -q spring-boot:run
+start api "$ROOT/backend/api" env CORS_ORIGINS="$WEB" .venv/bin/python -m uvicorn app.main:app --port "$API_PORT"
 start simulator "$ROOT/backend/simulator" env CORS_ORIGINS="[\"$WEB\"]" .venv/bin/python -m uvicorn app.main:app --port "$SIM_PORT"
 start voice "$ROOT/backend/voice" env SIMULATOR_BASE="http://localhost:$SIM_PORT/v1" RENEWALS_API_BASE="http://localhost:$API_PORT/api/v1" \
   CORS_ORIGINS="$WEB" .venv/bin/python -m uvicorn app.main:app --port "$VOICE_PORT"

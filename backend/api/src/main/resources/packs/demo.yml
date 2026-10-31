@@ -1,8 +1,0 @@
-caseType: demo
-label: Demo documents
-routing: { autoClearBelow: 0.2, escalateAtOrAbove: 0.8 }
-rules:
-  CORE-DUPLICATE-DOC:   { weight: 0.5, rationale: "Same file already seen in another case" }
-  CORE-HIDDEN-TEXT:     { weight: 0.6, rationale: "Text a human cannot see is a manipulation signal" }
-  CORE-INJECTION:       { weight: 0.8, rationale: "Instructions aimed at the AI inside a document" }
-  DEMO-LARGE-AMOUNT:    { weight: 0.3, rationale: "Amounts above the configured threshold", params: { threshold: 100000 } }

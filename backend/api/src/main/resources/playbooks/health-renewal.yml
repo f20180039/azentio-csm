@@ -1,8 +1,0 @@
-id: health-renewal
-version: 3
-greeting: "Hello, this call is recorded. I'm the renewals assistant from Lotusleaf General Insurance. Am I speaking with {holderName}?"
-maxDiscountPercent: 0
-paymentPlans: [annual, quarterly]
-removableOptionalAddons: true
-maxOutOfPlaybookRequests: 2
-maxVerifyFailures: 3

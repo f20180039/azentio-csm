@@ -1,15 +1,23 @@
-FROM maven:3.9-eclipse-temurin-17 AS build
-WORKDIR /src
-COPY pom.xml .
-RUN mvn -q -B dependency:go-offline
-COPY src ./src
-RUN mvn -q -B package -DskipTests
+FROM python:3.12-slim
 
-FROM eclipse-temurin:17-jre
-RUN useradd --system --uid 10001 app && mkdir -p /data/uploads && chown app /data/uploads
 WORKDIR /app
-COPY --from=build /src/target/case-intel-api-*.jar app.jar
-USER app
-ENV STORAGE_DIR=/data/uploads
+
+# Install system utilities
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source
+COPY app/ app/
+
+# Runtime data volume
+RUN mkdir -p /app/data
+VOLUME /app/data
+
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -29,21 +29,12 @@ services:
 
   api:
     build: ./backend/api
-    depends_on:
-      postgres:
-        condition: service_healthy
-      agent:
-        condition: service_healthy
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/caseintel
-      AGENT_URL: http://agent:8000
-      CORS_ORIGINS: http://localhost:5173
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
-      ENFORCE_CALLING_HOURS: ${ENFORCE_CALLING_HOURS:-true}
-    volumes:
-      - uploads:/data/uploads
     ports:
       - "8080:8080"
+    environment:
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ./data/api:/app/data
 
   simulator:
     build: ./backend/simulator
