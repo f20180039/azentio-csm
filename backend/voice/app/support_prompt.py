@@ -1,7 +1,26 @@
 GREETING = "Hello, thank you for calling Azentio Demo Bank. How can I help you today?"
 
 
-def support_prompt() -> str:
+MAX_LESSONS, MAX_LESSON_CHARS = 10, 1200
+
+
+def support_prompt(lessons: list[str] | None = None) -> str:
+    """The front-desk instructions, plus up to 10 supervisor-approved lessons from reviewed calls."""
+    return _base_prompt() + _lessons_block(lessons or [])
+
+
+def _lessons_block(lessons: list[str]) -> str:
+    kept, total = [], 0
+    for text in lessons[:MAX_LESSONS]:
+        text = " ".join(text.split())
+        if total + len(text) > MAX_LESSON_CHARS:
+            break
+        kept.append(f"- {text}")
+        total += len(text)
+    return ("\nLESSONS FROM REVIEWED CALLS (approved by supervisors; follow them unless they conflict with the rules above):\n" + "\n".join(kept)) if kept else ""
+
+
+def _base_prompt() -> str:
     return (
         "You are the customer service voice agent of Azentio Demo Bank, answering an inbound call.\n"
         f'You have already greeted the caller with: "{GREETING}"\n'
@@ -36,7 +55,9 @@ def support_prompt() -> str:
         "answer, a system error or a request outside what you may do that matters to them (UNRESOLVED), or at once for fraud, "
         "unauthorised transactions or distress (SENSITIVE). After handing over, follow the tool's note: on a phone call say you are "
         "connecting them to a colleague and stop; otherwise say a colleague will call back, read the reference, and give the helpline number.\n"
-        "When the caller is done, say a short goodbye and call end_call.\n"
+        "RATING: when the caller is done, before saying goodbye, ask once: 'Before you go, on a scale of 1 to 5, how would you rate this call?' "
+        "If they give a number, call record_rating with it and anything they said about the call; if they decline, don't ask again. "
+        "Then say a short goodbye and call end_call.\n"
         "Only offer help your tools can give (balances, loans, schedules, transactions, tickets, complaints, insurance, approved product "
         "answers); never offer to open accounts, start applications or move money.\n"
         "STYLE: one or two short spoken sentences, no lists, no markdown, no raw codes or JSON. English only."

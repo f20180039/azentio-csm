@@ -96,6 +96,9 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
           "CUSTOMER_REQUEST when they ask for a person (first ask what they need and try to help: the first such request is refused).",
           {"trigger": _enum(EscalationTrigger, "Why a person is needed"), "reason": {"type": "string"},
            "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["trigger", "reason", "summary"]),
+    _tool(SupportTool.RECORD_RATING, "Record the caller's 1-5 rating of this call, and any comment, after you asked for it.",
+          {"score": {"type": "integer", "minimum": 1, "maximum": 5}, "comment": {"type": "string", "description": "What they said about the call, if anything"}},
+          ["score"]),
     _tool(SupportTool.END_CALL, "End the call after saying goodbye."),
 ]
 

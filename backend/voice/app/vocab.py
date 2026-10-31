@@ -33,6 +33,7 @@ class SupportTool(StrEnum):
     ROUTE_UNSUPPORTED = "route_unsupported"
     ESCALATE_TO_HUMAN = "escalate_to_human"
     END_CALL = "end_call"
+    RECORD_RATING = "record_rating"
 
 
 class ToolError(StrEnum):

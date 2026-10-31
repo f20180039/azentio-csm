@@ -152,3 +152,27 @@ def test_no_double_routing_when_the_model_already_routed():
     turn = asyncio.run(brain.reply("Book me a flight"))
     assert [t.name for t in turn.tool_calls] == ["route_unsupported"]
     assert sum(r.url.path.endswith("/csm/routed") for r in sim.requests) == 1
+
+
+def test_a_spoken_rating_is_recorded_on_the_call():
+    llm = Scripted(tool_call("record_rating", {"score": 4, "comment": "quick and clear"}), text("Thank you! Goodbye."))
+    brain, _, spring = make(llm)
+    turn = asyncio.run(brain.reply("I'd say four, it was quick and clear."))
+    assert turn.tool_calls[0].result == {"recorded": True, "score": 4} and brain.rating == 4
+    assert ("POST", f"/api/v1/support/calls/{CALL}/rating", {"score": 4, "comment": "quick and clear", "source": "VOICE"}) in spring
+
+
+def test_an_out_of_range_rating_is_refused_not_stored():
+    brain, _, spring = make(Scripted(tool_call("record_rating", {"score": 9}), text("Sorry, from 1 to 5?")))
+    turn = asyncio.run(brain.reply("nine"))
+    assert turn.tool_calls[0].result["error"] == "BAD_ARGUMENTS" and brain.rating is None
+    assert not [c for c in spring if c[1].endswith("/rating")]
+
+
+def test_approved_lessons_join_the_instructions_within_limits():
+    from app.support_prompt import MAX_LESSONS, support_prompt
+    assert "LESSONS FROM REVIEWED CALLS" not in support_prompt()
+    lessons = [f"Lesson number {i}: confirm the loan type before quoting an EMI." for i in range(15)]
+    p = support_prompt(lessons)
+    assert p.count("\n- Lesson number") <= MAX_LESSONS and "Lesson number 0" in p and "Lesson number 14" not in p
+    assert "ask once" in support_prompt() and "record_rating" in support_prompt()

@@ -8,6 +8,7 @@ from .vocab import Channel, Outcome, TurnRole
 
 MUST_HANDOFF_CODES = {"MUST_HANDOFF", "VERIFY_LOCKED"}
 SUPPORT_CALLS = "/support/calls"
+SUPPORT_LESSONS = "/support/lessons"
 
 
 class ApiUnavailable(Exception):
@@ -121,3 +122,10 @@ class SupportCallsApi:
 
     async def end(self, call_id: str, outcome: Outcome | str) -> dict:
         return await self._send("POST", f"{SUPPORT_CALLS}/{call_id}/end", {"outcome": outcome})
+
+    async def rating(self, call_id: str, score: int, comment: str | None) -> dict:
+        return await self._send("POST", f"{SUPPORT_CALLS}/{call_id}/rating", {"score": score, "comment": comment, "source": "VOICE"})
+
+    async def active_lessons(self) -> list[str]:
+        out = await self._send("GET", f"{SUPPORT_LESSONS}?active=true")
+        return [i["text"] for i in out.get("items", []) if i.get("text")]

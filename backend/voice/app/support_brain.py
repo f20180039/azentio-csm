@@ -86,9 +86,10 @@ def outcome_for(refs: list[str]) -> Outcome:
 
 class SupportBrain:
     def __init__(self, llm: ChatClient, sim: SimulatorClient, calls: SupportCallsApi | None, call: CallSession,
-                 classify: Classifier | None = None):
+                 classify: Classifier | None = None, lessons: list[str] | None = None):
         self._llm, self._sim, self._calls, self.call, self._classify = llm, sim, calls, call, classify
-        self._messages: list[dict] = [{"role": "system", "content": support_prompt()}, {"role": "assistant", "content": GREETING}]
+        self._messages: list[dict] = [{"role": "system", "content": support_prompt(lessons)}, {"role": "assistant", "content": GREETING}]
+        self.rating: int | None = None
         self._lock = asyncio.Lock()
         self._seq = 0
         self._pending: set[asyncio.Task] = set()
@@ -176,7 +177,26 @@ class SupportBrain:
             return ToolTrace(name, {}, {"error": ToolError.BAD_ARGUMENTS, "detail": f"invalid JSON: {e}"[:200]})
         if name == SupportTool.END_CALL:
             self.ended = True
+        if name == SupportTool.RECORD_RATING:
+            return ToolTrace(name, args, await self._record_rating(args))
         return ToolTrace(name, args, await run_support_tool(self._sim, self.call, name, args))
+
+    async def _record_rating(self, args: dict) -> dict:
+        try:
+            score = int(args.get("score"))
+        except (TypeError, ValueError):
+            return {"error": ToolError.BAD_ARGUMENTS, "note": "The score must be a whole number from 1 to 5."}
+        if not 1 <= score <= 5:
+            return {"error": ToolError.BAD_ARGUMENTS, "note": "The score must be from 1 to 5; ask again or skip it."}
+        comment = (str(args.get("comment") or "").strip() or None)
+        self.rating = score
+        if self._calls:
+            try:
+                await self._calls.rating(self.call.call_id, score, comment)
+            except ApiUnavailable as e:
+                logger.warning(f"rating not recorded: {e}")
+                return {"recorded": False, "note": "Thank them anyway; the rating could not be saved."}
+        return {"recorded": True, "score": score}
 
     async def _intents(self, text: str, history: list[dict]) -> tuple[list[str], str | None]:
         if not self._classify:
