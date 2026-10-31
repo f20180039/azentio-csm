@@ -275,6 +275,17 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
   ],
 };
 
+/** The seed customers the sample records belong to, named as the simulator's customers.json names them. */
+const SAMPLE_CUSTOMER_NAMES: Record<string, string> = {
+  [SAMPLE_PROFILE.customer.customer_ref]: `${SAMPLE_PROFILE.customer.first_name} ${SAMPLE_PROFILE.customer.last_name}`,
+  'CUST-1006': 'Vikram Rao',
+  'CUST-1008': 'David Fernandes',
+};
+// Mirrors the simulator: every ops item carries customer_name beside customer_ref (null when there is no customer).
+for (const items of Object.values(SAMPLE_RECORDS)) {
+  for (const r of items) r.customer_name = r.customer_ref ? (SAMPLE_CUSTOMER_NAMES[r.customer_ref] ?? null) : null;
+}
+
 const calls = new Map<string, SupportCall>();
 /** Mock-mode copy of the bank records, so a status change sticks until the page reloads. */
 let records: Record<RecordKind, OpsRecord[]> | null = null;

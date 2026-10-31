@@ -95,10 +95,27 @@ def test_ops_records_need_basic_auth(client):
     items = records(client, "routed")
     assert len(items) == 1
     item = items[0]
-    assert set(item) == {"ref", "kind", "category", "status", "summary", "customer_ref", "call_id", "created_at",
-                         "escalated", "department", "progress", "original_statement", "related_ref", "related_refs"}
+    assert set(item) == {"ref", "kind", "category", "status", "summary", "customer_ref", "customer_name", "call_id",
+                         "created_at", "escalated", "department", "progress", "original_statement", "related_ref",
+                         "related_refs"}
     assert item["kind"] == "routed" and item["call_id"] == "c6"
     assert "Weather?" in item["summary"] and "Out of scope" in item["summary"]
+    assert item["customer_ref"] is None and item["customer_name"] is None
+
+
+def test_ops_records_carry_the_customers_name_beside_the_ref(client):
+    # N1: people read "Rahul Iyer" on the desk; the CUST- id stays as a secondary cross-reference.
+    headers = session_for(client, "CUST-1002")
+    client.post("/v1/csm/tickets", headers=headers, json={"category": "STATEMENT", "summary": "x", "call_id": "c"})
+    client.post("/v1/csm/complaints", headers=headers, json={
+        "category": "SERVICE_EXPERIENCE", "description": "x", "severity": "LOW", "call_id": "c"})
+    client.post("/v1/csm/escalations", headers=headers, json={"reason": "CUSTOMER_REQUEST", "summary": "x", "call_id": "c"})
+    by_ref = {r["ref"]: r for r in records(client)}
+    raised = [r for r in by_ref.values() if r["call_id"] == "c"]
+    assert {r["kind"] for r in raised} >= {"ticket", "complaint", "escalation"}
+    assert all(r["customer_ref"] == "CUST-1002" and r["customer_name"] == "Rahul Iyer" for r in raised)
+    assert by_ref["SR-40102"]["customer_name"] == "Rahul Iyer"  # seeded ticket too
+    assert all(r["customer_name"] is None for r in by_ref.values() if r["customer_ref"] is None)
 
 
 def test_ops_records_newest_first_and_unknown_kind_422(client):

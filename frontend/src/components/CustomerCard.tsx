@@ -41,13 +41,15 @@ export function CustomerCard({ profile }: { profile: CustomerProfile }) {
     profile.tickets.length + profile.complaints.length + profile.transactions.length;
   return (
     <div className="cust-card">
+      {/* People see names, not ids: the full name leads; the customer id is a secondary fact for staff cross-referencing. */}
+      <h3 className="cust-name">
+        {c.first_name} {c.last_name}
+      </h3>
       <dl className="facts">
-        <dt>Name</dt>
-        <dd>
-          {c.first_name} {c.last_name}
-        </dd>
         <dt>Customer</dt>
-        <dd className="mono">{c.customer_ref}</dd>
+        <dd className="mono small muted" title="Customer ID">
+          {c.customer_ref}
+        </dd>
         <dt>Mobile</dt>
         <dd className="num">{formatMobile(c.mobile)}</dd>
         <dt>Date of birth</dt>

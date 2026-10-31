@@ -65,6 +65,7 @@ function recordMatches(q: string, r: OpsRecord): boolean {
     r.status && humanise(r.status),
     r.summary,
     r.customer_ref,
+    r.customer_name,
     r.call_id,
     r.department,
     r.progress,
@@ -152,6 +153,27 @@ function RefPills({ refs, query }: { refs: string[]; query: string }) {
         </span>
       ))}
     </>
+  );
+}
+
+/** People see names, not ids: the customer's name leads; the CUST- id follows small and muted for staff cross-referencing.
+ * Falls back to the id alone when a record carries no name; nothing at all when it has no customer. */
+function CustomerLabel({ r, query }: { r: OpsRecord; query: string }) {
+  if (!r.customer_ref) return null;
+  if (!r.customer_name) {
+    return (
+      <span className="mono muted">
+        <Highlight text={r.customer_ref} query={query} />
+      </span>
+    );
+  }
+  return (
+    <span className="sd-customer">
+      <Highlight text={r.customer_name} query={query} />
+      <span className="mono muted sd-customer-id" title="Customer ID">
+        <Highlight text={r.customer_ref} query={query} />
+      </span>
+    </span>
   );
 }
 
@@ -507,15 +529,11 @@ function RecordsPanel() {
                 <td className="sd-wrap sd-summary">
                   <Highlight text={r.summary} query={query} />
                   <RecordDetail r={r} query={query} />
-                  <div className="small muted">
-                    {r.customer_ref && (
-                      <span className="mono">
-                        <Highlight text={r.customer_ref} query={query} />
-                      </span>
-                    )}
+                  <div className="small">
+                    <CustomerLabel r={r} query={query} />
                     {r.call_id && (
                       <>
-                        {r.customer_ref && ' · '}
+                        {r.customer_ref && <span className="muted"> · </span>}
                         <Link to={Route.supportCall(r.call_id)}>Open call</Link>
                       </>
                     )}

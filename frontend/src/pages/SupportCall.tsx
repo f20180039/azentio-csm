@@ -9,6 +9,7 @@ import {
   connectSupportVoice,
   getCustomerProfile,
   pauseCall,
+  verifiedCustomerName,
   verifiedCustomerRef,
   endCall,
   getCall,
@@ -686,6 +687,7 @@ export function SupportCall() {
 
   // the verified caller's bank profile; refetched as turns arrive, so records raised on this call show up
   const customerRef = verifiedCustomerRef(turns);
+  const customerName = verifiedCustomerName(turns); // people see names, not ids, even before the profile arrives
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   useEffect(() => {
@@ -985,11 +987,20 @@ export function SupportCall() {
             ) : profile?.customer.customer_ref === customerRef ? (
               <CustomerCard profile={profile} />
             ) : profileError ? (
-              <p className="small muted">
-                Verified as <span className="mono">{customerRef}</span>; details unavailable ({profileError}).
+              <p className="small">
+                Verified as {customerName ?? customerRef}
+                {customerName && (
+                  <>
+                    {' '}
+                    <span className="mono muted" title="Customer ID">
+                      {customerRef}
+                    </span>
+                  </>
+                )}
+                ; details unavailable ({profileError}).
               </p>
             ) : (
-              <p className="small muted">Loading {customerRef}…</p>
+              <p className="small muted">Loading {customerName ? `${customerName}'s details` : customerRef}…</p>
             )}
           </section>
 

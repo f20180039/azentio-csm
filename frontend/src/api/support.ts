@@ -177,14 +177,32 @@ export interface CustomerProfile {
 
 const VERIFY_TOOL = 'verify_customer';
 
-/** The customer the agent verified on this call (the latest successful verify_customer), or null before verification. */
-export function verifiedCustomerRef(turns: SupportTurn[]): string | null {
+/** What verify_customer puts in a turn's retrieved meta: the simulator sends first_name; last_name is optional. */
+interface VerifiedCustomer {
+  customer_ref?: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+function verifiedCustomer(turns: SupportTurn[]): VerifiedCustomer | null {
   for (let i = turns.length - 1; i >= 0; i--) {
-    const result = turns[i].meta.retrieved?.[VERIFY_TOOL] as { verified?: boolean; customer?: { customer_ref?: string } } | undefined;
-    const ref = result?.customer?.customer_ref;
-    if (ref && result?.verified !== false) return ref;
+    const result = turns[i].meta.retrieved?.[VERIFY_TOOL] as { verified?: boolean; customer?: VerifiedCustomer } | undefined;
+    if (result?.customer?.customer_ref && result.verified !== false) return result.customer;
   }
   return null;
+}
+
+/** The customer the agent verified on this call (the latest successful verify_customer), or null before verification. */
+export function verifiedCustomerRef(turns: SupportTurn[]): string | null {
+  return verifiedCustomer(turns)?.customer_ref ?? null;
+}
+
+/** People see names, not ids: the verified caller's name as the call knows it ("Rahul", or "Rahul Iyer" when the last name
+ * came too), or null before verification. The panel leads with this wherever the profile is not loaded yet. */
+export function verifiedCustomerName(turns: SupportTurn[]): string | null {
+  const c = verifiedCustomer(turns);
+  const name = [c?.first_name, c?.last_name].filter(Boolean).join(' ');
+  return name || null;
 }
 
 export interface SupportCallSummary {
@@ -240,6 +258,8 @@ export interface OpsRecord {
   status: string | null;
   summary: string;
   customer_ref: string | null;
+  /** The customer's full name ("Rahul Iyer") for people-facing screens; null when the record has no customer. Additive. */
+  customer_name?: string | null;
   call_id: string | null;
   created_at: string;
   escalated: boolean | null;
