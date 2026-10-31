@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel
 
-from app.auth import User, admin, reviewer, staff_or_voice, voice
+from app.auth import User, reviewer, staff_or_voice, voice
 from app.paths import ApiPath
 from app.services.container import Services, services
 from app.services.support import parse
@@ -78,12 +78,6 @@ def list_calls(outcome: str | None = None, limit: int = 50, _: User = Depends(st
 def rate(call_id: UUID, body: RatingRequest, user: User = Depends(staff_or_voice), s: Services = Depends(services)):
     source = parse(RatingSource, "source", body.source)
     return s.review.rate(str(call_id), body.score, body.comment, source, user)
-
-
-@router.get(ApiPath.SUPPORT_CALL_PII)
-def reveal_pii(call_id: UUID, user: User = Depends(admin), s: Services = Depends(services)):
-    """The values behind a call's `[KIND#n]` tokens. Admin only; each reveal is audited as PII_REVEALED."""
-    return s.support.reveal_pii(str(call_id), user.username)
 
 
 @router.post(ApiPath.SUPPORT_TURN_FEEDBACK, status_code=201)

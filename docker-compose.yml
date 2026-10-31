@@ -7,8 +7,6 @@ services:
     build: ./backend/api
     environment:
       API_DB_PATH: /app/data/runtime/api.db
-      PII_VAULT_PATH: /app/data/runtime/pii_vault.db
-      PII_VAULT_KEY: ${PII_VAULT_KEY:-}
       ENFORCE_CALLING_HOURS: ${ENFORCE_CALLING_HOURS:-false}
       CORS_ORIGINS: http://localhost:${WEB_PORT:-5173}
     ports:
