@@ -43,12 +43,12 @@ function Chip({ token, kind, note }: { token: string; kind: string; note: string
 
 /**
  * Text that may carry `[KIND#n]` tokens. Each token renders as a grey "Mobile (redacted)" chip, or as the value
- * when `revealed` has it; leave `revealed` out to use the nearest PiiRevealProvider (an explicit null is always
- * redacted). Search hits are still marked around the chips, never inside a revealed value.
+ * when `revealed` (or the nearest PiiRevealProvider) has it. Search hits are still marked, around the chips and
+ * inside revealed values.
  */
 export function PiiText({ text, revealed, query = '' }: { text: string; revealed?: PiiTokens | null; query?: string }): ReactNode {
   const fromContext = useContext(RevealCtx);
-  const tokens = revealed !== undefined ? revealed : fromContext; // an explicit null means redacted, whatever the provider holds
+  const tokens = revealed ?? fromContext;
   const parts: ReactNode[] = [];
   let pos = 0;
   TOKEN_RE.lastIndex = 0;
@@ -59,9 +59,8 @@ export function PiiText({ text, revealed, query = '' }: { text: string; revealed
     const held = tokens?.[token];
     if (held && typeof held.value === 'string') {
       parts.push(
-        // never marked as a search hit: the search box is URL-backed, so it must not invite typing personal data into it
         <span key={m.index} className="pii-value" data-pii={token} title={`${piiKindLabel(held.kind)} ${token}`}>
-          {held.value}
+          <Highlight text={held.value} query={query} />
         </span>,
       );
     } else {

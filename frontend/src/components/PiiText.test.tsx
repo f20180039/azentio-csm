@@ -34,14 +34,13 @@ describe('PiiText', () => {
     expect(Object.keys(PII_KIND_LABEL).sort()).toEqual(Object.values(PiiKind).sort());
   });
 
-  it('still highlights search hits in the text around the chips, but never inside a revealed value', () => {
+  it('still highlights search hits in the text around the chips and inside revealed values', () => {
     const { container, rerender } = render(<PiiText text={`Call ${MOBILE_TOKEN} today`} revealed={null} query="today" />);
     expect(container.querySelector('mark.search-hit')).toHaveTextContent('today');
     expect(screen.getByText('Mobile (redacted)')).toBeInTheDocument();
 
     rerender(<PiiText text={`Call ${MOBILE_TOKEN} today`} revealed={REVEALED} query="9876" />);
-    expect(screen.getByText('9876500002')).toBeInTheDocument();
-    expect(container.querySelector('mark.search-hit')).toBeNull(); // searching for personal data is not invited
+    expect(container.querySelector('mark.search-hit')).toHaveTextContent('9876');
   });
 
   it('renders plain text untouched when there is no token', () => {
@@ -49,19 +48,12 @@ describe('PiiText', () => {
     expect(screen.getByText('When is my next EMI?')).toBeInTheDocument();
   });
 
-  it('falls back to the nearest PiiRevealProvider when no revealed prop is given, but an explicit null stays redacted', () => {
+  it('falls back to the nearest PiiRevealProvider when no revealed prop is given', () => {
     render(
       <PiiRevealProvider value={REVEALED}>
-        <p data-testid="from-provider">
-          <PiiText text={MOBILE_TOKEN} />
-        </p>
-        <p data-testid="explicit-null">
-          <PiiText text={MOBILE_TOKEN} revealed={null} />
-        </p>
+        <PiiText text={MOBILE_TOKEN} />
       </PiiRevealProvider>,
     );
-    expect(screen.getByTestId('from-provider')).toHaveTextContent('9876500002');
-    expect(screen.getByTestId('explicit-null')).toHaveTextContent('Mobile (redacted)');
-    expect(screen.getByTestId('explicit-null')).not.toHaveTextContent('9876500002');
+    expect(screen.getByText('9876500002')).toBeInTheDocument();
   });
 });

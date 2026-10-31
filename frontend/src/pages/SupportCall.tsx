@@ -586,14 +586,10 @@ export function SupportCall() {
   const [pausing, setPausing] = useState(false);
   const [results, setResults] = useState<SimTurn[]>(() => (location.state as { results?: SimTurn[] } | null)?.results ?? []);
   const [ending, setEnding] = useState<'closed' | 'open' | 'busy'>('closed');
-  // personal data behind the [KIND#n] tokens: admin only, fetched on demand, held in memory and dropped on toggle-off.
-  // Tokens repeat per call ([MOBILE#1] on every call), so the map is tied to the call it was fetched for.
-  const [revealed, setRevealed] = useState<{ callId: string; tokens: PiiTokens } | null>(null);
+  // personal data behind the [KIND#n] tokens: admin only, fetched on demand, held in memory and dropped on toggle-off
+  const [revealed, setRevealed] = useState<PiiTokens | null>(null);
   const [revealing, setRevealing] = useState(false);
   const admin = isDemoAdmin(currentUsername());
-  const callIdRef = useRef(callId);
-  callIdRef.current = callId;
-  const shown: PiiTokens | null = revealed && revealed.callId === callId ? revealed.tokens : null;
   const session = useRef<VoiceSession | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -628,27 +624,23 @@ export function SupportCall() {
   }, [callId, ended, refresh]);
 
   useEffect(() => {
-    // revealed values belong to one call; moving to another drops them and any reveal still in flight
-    setRevealed(null);
-    setRevealing(false);
+    setRevealed(null); // revealed values belong to one call; moving to another drops them
   }, [callId]);
 
   async function toggleReveal() {
-    if (shown) {
+    if (revealed) {
       setRevealed(null);
       return;
     }
-    const id = callId;
-    if (!id) return;
+    if (!callId) return;
     setRevealing(true);
     try {
-      const tokens = await getCallPii(id);
-      if (unmounted.current || id !== callIdRef.current) return; // a late answer for a call no longer on screen
-      setRevealed({ callId: id, tokens });
+      const tokens = await getCallPii(callId);
+      if (!unmounted.current) setRevealed(tokens);
     } catch (e) {
-      if (!unmounted.current && id === callIdRef.current) toastRef.current.error(e);
+      if (!unmounted.current) toastRef.current.error(e);
     } finally {
-      if (!unmounted.current && id === callIdRef.current) setRevealing(false);
+      if (!unmounted.current) setRevealing(false);
     }
   }
 
@@ -817,7 +809,7 @@ export function SupportCall() {
   const badgeSource = call ?? { turns, verified: false };
 
   return (
-    <PiiRevealProvider value={shown}>
+    <PiiRevealProvider value={revealed}>
       <div className="case-head">
         <Link to={Route.SUPPORT} className="small">
           ← Customer service desk
@@ -850,10 +842,10 @@ export function SupportCall() {
                 className="btn"
                 onClick={() => void toggleReveal()}
                 disabled={revealing}
-                aria-pressed={!!shown}
+                aria-pressed={!!revealed}
                 title="Personal data is stored as tokens; revealing it is recorded in the audit trail."
               >
-                {revealing ? 'Revealing…' : shown ? 'Hide personal data' : 'Show personal data'}
+                {revealing ? 'Revealing…' : revealed ? 'Hide personal data' : 'Show personal data'}
               </button>
             )}
             {callId && !ended && (
