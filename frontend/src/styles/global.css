@@ -361,6 +361,10 @@ td.rationale { white-space: normal; min-width: 260px; }
 .guard-panel { padding: 14px 16px; display: grid; gap: 10px; }
 .guard-panel h2 { margin: 0; font-size: var(--fs-md); }
 .guard-panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cust-card { display: grid; gap: 12px; }
+.cust-group h3 { margin: 0 0 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.cust-group ul { gap: 6px; }
+.cust-overdue { color: var(--bad); font-weight: 600; }
 .guard-panel li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: start; }
 .guard-panel .sc-chips { display: flex; gap: 4px; }
 .guard-panel .sc-chips li { display: block; }

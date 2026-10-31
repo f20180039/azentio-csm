@@ -145,6 +145,7 @@ class Route(StrEnum):
     FAQ_SEARCH = "/faq/search"
     OPS_RECORDS = "/ops/records"
     OPS_RESET = "/ops/reset"
+    OPS_CUSTOMER = "/ops/customers/{customer_ref}"
 
 
 API_PREFIX = "/v1"

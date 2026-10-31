@@ -10,6 +10,8 @@ export interface VoiceHandlers {
 
 export interface VoiceSession {
   disconnect: () => Promise<void>;
+  /** Mutes or unmutes the microphone track; the connection and the agent's audio stay up. */
+  setMicEnabled?: (on: boolean) => void;
 }
 
 /**

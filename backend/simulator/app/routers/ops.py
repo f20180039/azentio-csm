@@ -1,4 +1,4 @@
-"""Operations view (HTTP Basic): every record the agent raised, and a demo reset."""
+"""Operations view (HTTP Basic): every record the agent raised, one customer's full profile, and a demo reset."""
 import secrets
 from typing import Annotated
 
@@ -28,6 +28,25 @@ router = APIRouter(prefix=API_PREFIX, tags=["Operations"], dependencies=[Depends
 @router.get(Route.OPS_RECORDS)
 def records(store: StoreDep, kind: RecordKind | None = None) -> dict:
     return {"items": store.list_records(kind)}
+
+
+@router.get(Route.OPS_CUSTOMER)
+def customer_profile(customer_ref: str, store: StoreDep) -> dict:
+    """Everything the bank holds for one customer, seeded and raised in calls, for the operator panel's customer card."""
+    customer = store.get_customer(customer_ref)
+    if customer is None:
+        raise ApiError(404, ErrorCode.NOT_FOUND, "No customer with that reference.")
+    return {
+        "customer": customer,
+        "accounts": store.get_accounts(customer_ref),
+        "loans": store.get_loans(customer_ref),
+        "applications": store.get_applications(customer_ref),
+        "transactions": store.get_transactions(customer_ref),
+        "policies": store.get_policies(customer_ref),
+        "claims": store.get_claims(customer_ref),
+        "tickets": store.get_tickets(customer_ref),
+        "complaints": store.get_complaints(customer_ref),
+    }
 
 
 @router.post(Route.OPS_RESET)

@@ -131,3 +131,4 @@ class Route(StrEnum):
     TWILIO_SUPPORT_TWIML = "/twilio/support/twiml"
     TWILIO_SUPPORT_WS = "/ws/twilio/support"
     TURN_AUDIO = "/support/calls/{call_id}/turns/{seq}/audio"
+    SUPPORT_PAUSE = "/support/calls/{call_id}/pause"

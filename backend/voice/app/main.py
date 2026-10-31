@@ -347,6 +347,22 @@ async def turn_audio(call_id: str, seq: int):
     return FileResponse(path, media_type=recordings.MEDIA_TYPES.get(path.suffix, "application/octet-stream"))
 
 
+class SupportPauseIn(BaseModel):
+    paused: bool
+
+
+@app.post(Route.SUPPORT_PAUSE)
+async def support_pause(call_id: UUID, body: SupportPauseIn) -> dict:
+    """Pause or resume a live call for side talk: while paused the agent ignores the caller and does not hang up on silence."""
+    from .support_pipeline import LIVE
+
+    responder = LIVE.get(str(call_id))
+    if responder is None:
+        raise HTTPException(404, "no live call")
+    await responder.set_paused(body.paused)
+    return {"paused": responder.paused}
+
+
 @app.post(Route.SUPPORT_END)
 async def support_end(body: SupportEndIn) -> dict:
     brain = state.support.pop(str(body.call_id), None)
@@ -447,11 +463,14 @@ async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dic
         state.webrtc = SmallWebRTCRequestHandler()
 
     async def run(task) -> None:
+        from .support_pipeline import LIVE
+
         try:
             await PipelineRunner(handle_sigint=False).run(task)
         finally:
             state.live_calls.pop(call_id, None)
             state.support.pop(call_id, None)
+            LIVE.pop(call_id, None)
 
     async def on_connection(connection) -> None:
         transport = SmallWebRTCTransport(params=TransportParams(audio_in_enabled=True, audio_out_enabled=True), webrtc_connection=connection)

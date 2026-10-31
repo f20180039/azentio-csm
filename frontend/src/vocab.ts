@@ -61,6 +61,10 @@ export const Verification = { NOT_VERIFIED: 'NOT_VERIFIED', VERIFIED: 'VERIFIED'
 export type Verification = ValueOf<typeof Verification>;
 
 /** Bank simulator /ops/records?kind= */
+/** Transaction direction on the bank simulator's records. */
+export const TxnDirection = { CREDIT: 'CREDIT', DEBIT: 'DEBIT' } as const;
+export type TxnDirection = ValueOf<typeof TxnDirection>;
+
 export const RecordKind = { TICKET: 'ticket', COMPLAINT: 'complaint', ROUTED: 'routed', ESCALATION: 'escalation' } as const;
 export type RecordKind = ValueOf<typeof RecordKind>;
 
