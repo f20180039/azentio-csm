@@ -1,0 +1,11 @@
+id: 03-failed-transaction
+title: Report a failed transfer using its recorded status only
+customer: {mobile: "9876500004", dob: "1978-02-14"}
+turns:
+  - say: "My transfer reference TXN-88213 failed. What happened to it?"
+    expect: {intents: [ACCOUNT]}
+  - say: "I'm Arjun, my number is 98765 00004 and my date of birth is the fourteenth of February nineteen seventy-eight."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "Please check transfer TXN-88213."
+    expect: {intents: [ACCOUNT], must_say_any: ["FAILED"], tools_any: [get_transactions]}
+outcome: {tickets: 0, complaints: 0, routed: 0, escalations: 0, never_say: ["because", "network issue", "bank server"]}

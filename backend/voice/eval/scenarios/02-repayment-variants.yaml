@@ -1,0 +1,17 @@
+id: 02-repayment-variants
+title: Four ways to ask about the next EMI
+customer: {mobile: "9876500002", dob: "1985-11-03"}
+turns:
+  - say: "When is my next EMI?"
+    expect: {intents: [REPAYMENT]}
+  - say: "My number is 98765 00002 and I was born on the third of November nineteen eighty-five."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "When is my next EMI?"
+    expect: {intents: [REPAYMENT], tools_any: [get_loans, get_schedule]}
+  - say: "How much do I need to pay next month?"
+    expect: {intents: [REPAYMENT], must_say_any: ["12,450", "twelve thousand four hundred fifty"]}
+  - say: "Tell me my next loan instalment."
+    expect: {intents: [REPAYMENT]}
+  - say: "What's the due date for my personal loan?"
+    expect: {intents: [REPAYMENT]}
+outcome: {tickets: 0, complaints: 0, routed: 0, escalations: 0}

@@ -1,0 +1,13 @@
+id: 09-correction-vehicle-loan
+title: Correct the requested loan type mid-call
+customer: {mobile: "9876500002", dob: "1985-11-03"}
+turns:
+  - say: "When is my personal loan EMI due?"
+    expect: {intents: [REPAYMENT]}
+  - say: "My number is 98765 00002 and my date of birth is the third of November nineteen eighty-five."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "When is my personal loan EMI due?"
+    expect: {intents: [REPAYMENT], tools_any: [get_loans]}
+  - say: "No, I meant my vehicle loan."
+    expect: {intents: [REPAYMENT], must_say_any: ["9,800", "nine thousand eight hundred"], tools_any: [get_loans]}
+outcome: {tickets: 0, complaints: 0, routed: 0, escalations: 0}

@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-RUN useradd --create-home voice
+RUN useradd --create-home --user-group voice 2>/dev/null || useradd --create-home -g voice voice
 USER voice
 
 EXPOSE 7861
