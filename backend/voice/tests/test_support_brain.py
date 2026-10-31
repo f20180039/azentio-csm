@@ -131,3 +131,24 @@ def test_window_keeps_recent_turns_whole_and_shortens_old_tool_results():
     tools = [m for m in w if m["role"] == "tool"]
     assert [len(t["content"]) for t in tools[:-1]] == [600 + len("…(shortened)")] * 2 and len(tools[-1]["content"]) == 2000
     assert all(any(t.get("tool_call_id") == c["id"] for t in tools) for m in w for c in m.get("tool_calls") or [])
+
+
+def test_an_unsupported_request_the_model_did_not_route_is_routed_by_the_backstop():
+    async def classify(t, history):
+        return Found(["UNSUPPORTED"], "llm")
+
+    brain, sim, _ = make(Scripted(text("Sorry, I can't give stock tips. I can help with loans or accounts.")), classify)
+    turn = asyncio.run(brain.reply("Can you give me some stock tips?"))
+    assert [t.name for t in turn.tool_calls] == ["route_unsupported"] and turn.refs == ["RQ-60200"]
+    assert any(r.url.path.endswith("/csm/routed") for r in sim.requests)
+
+
+def test_no_double_routing_when_the_model_already_routed():
+    async def classify(t, history):
+        return Found(["UNSUPPORTED"], "llm")
+
+    llm = Scripted(tool_call("route_unsupported", {"query_text": "flight", "reason": "travel"}), text("I can't book flights."))
+    brain, sim, _ = make(llm, classify)
+    turn = asyncio.run(brain.reply("Book me a flight"))
+    assert [t.name for t in turn.tool_calls] == ["route_unsupported"]
+    assert sum(r.url.path.endswith("/csm/routed") for r in sim.requests) == 1

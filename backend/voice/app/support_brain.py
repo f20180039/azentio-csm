@@ -9,6 +9,7 @@ from loguru import logger
 
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
+from .intents import Intent
 from .simulator_client import SimulatorClient
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, run_support_tool
@@ -104,6 +105,9 @@ class SupportBrain:
             self._messages.append({"role": "user", "content": user_text})
             turn = await self._loop()
             self._messages.append({"role": "assistant", "content": turn.text})
+            found = await intents  # usually done long before the reply; needed here for the routing backstop
+            turn.intents, turn.intent_source = found
+            await self._route_if_missed(user_text, turn)
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
             turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
             await self._record(TurnRole.AGENT, turn.text,
@@ -111,8 +115,6 @@ class SupportBrain:
                                                      for t in turn.tool_calls],
                                 MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
                                 MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
-            found = await intents
-            turn.intents, turn.intent_source = found
             await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source})
             return turn
 
@@ -127,6 +129,17 @@ class SupportBrain:
         """A customer turn with nothing to answer (silence, or noise the model turned into words): recorded, not replied to."""
         async with self._lock:
             await self._record(TurnRole.CUSTOMER, "", {**self._verification(), MetaKey.NO_SPEECH: True, MetaKey.REASON: reason, MetaKey.INTENTS: []})
+
+    async def _route_if_missed(self, user_text: str, turn: SupportTurn) -> None:
+        """Backstop for the acceptance rule 'route unsupported requests': if the caller's request was detected as
+        unsupported and the model declined without routing it (or escalating), route it here."""
+        if str(Intent.UNSUPPORTED) not in turn.intents:
+            return
+        if any(t.name in (SupportTool.ROUTE_UNSUPPORTED, SupportTool.ESCALATE_TO_HUMAN) for t in turn.tool_calls):
+            return
+        args = {"query_text": user_text, "reason": "Outside the desk's services (detected as unsupported)"}
+        result = await run_support_tool(self._sim, self.call, SupportTool.ROUTE_UNSUPPORTED, args)
+        turn.tool_calls.append(ToolTrace(SupportTool.ROUTE_UNSUPPORTED, args, result))
 
     async def finish(self, outcome: str | None = None) -> str:
         outcome = outcome or outcome_for(self.call.refs)
