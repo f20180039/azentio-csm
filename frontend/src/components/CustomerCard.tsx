@@ -3,6 +3,9 @@ import type { CustomerProfile } from '../api/support';
 import { formatInr, humanise } from '../format';
 import { TxnDirection } from '../vocab';
 
+/** The tooltip on a CUST- id wherever the panel shows one as secondary text (the card, the desk rows, the call screen). */
+export const CUSTOMER_ID_LABEL = 'Customer ID';
+
 /** '9731462580' → '97314 62580', the way callers say it. */
 export function formatMobile(mobile: string): string {
   return /^\d{10}$/.test(mobile) ? `${mobile.slice(0, 5)} ${mobile.slice(5)}` : mobile;
@@ -41,13 +44,15 @@ export function CustomerCard({ profile }: { profile: CustomerProfile }) {
     profile.tickets.length + profile.complaints.length + profile.transactions.length;
   return (
     <div className="cust-card">
+      {/* People see names, not ids: the full name leads; the customer id is a secondary fact for staff cross-referencing. */}
+      <h3 className="cust-name">
+        {c.first_name} {c.last_name}
+      </h3>
       <dl className="facts">
-        <dt>Name</dt>
-        <dd>
-          {c.first_name} {c.last_name}
-        </dd>
         <dt>Customer</dt>
-        <dd className="mono">{c.customer_ref}</dd>
+        <dd className="mono small muted" title={CUSTOMER_ID_LABEL}>
+          {c.customer_ref}
+        </dd>
         <dt>Mobile</dt>
         <dd className="num">{formatMobile(c.mobile)}</dd>
         <dt>Date of birth</dt>

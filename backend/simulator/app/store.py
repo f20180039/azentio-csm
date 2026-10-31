@@ -444,6 +444,11 @@ class BankStore:
     def get_customer(self, customer_ref: str) -> dict[str, Any] | None:
         return self.customers.get(customer_ref)
 
+    def customer_name(self, customer_ref: str | None) -> str | None:
+        """The customer's full name for people-facing screens ("Rahul Iyer"), or None when there is no customer."""
+        customer = self.customers.get(customer_ref) if customer_ref else None
+        return f"{customer['first_name']} {customer['last_name']}" if customer else None
+
     def find_customer(self, mobile: str, dob: str) -> dict[str, Any] | None:
         # mobile should be normalized 10 digits
         clean_mobile = "".join(c for c in mobile if c.isdigit())[-10:]
@@ -865,7 +870,8 @@ class BankStore:
         def item(ref, k, category, status, summary, customer_ref, call_id, created_at, escalated,
                  department=None, progress=None, original_statement=None, related_ref=None, related_refs=None):
             return {"ref": ref, "kind": str(k), "category": category, "status": status, "summary": summary,
-                    "customer_ref": customer_ref, "call_id": call_id, "created_at": created_at, "escalated": escalated,
+                    "customer_ref": customer_ref, "customer_name": self.customer_name(customer_ref),
+                    "call_id": call_id, "created_at": created_at, "escalated": escalated,
                     "department": department, "progress": progress,
                     "original_statement": original_statement, "related_ref": related_ref, "related_refs": related_refs}
 

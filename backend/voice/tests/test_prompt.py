@@ -61,6 +61,15 @@ def test_prompt_asks_for_written_references_and_amounts():
         assert "no raw codes" not in p  # STYLE must not contradict the written-reference rule
 
 
+def test_prompt_never_says_a_customer_id_and_names_the_caller_only_after_verification():
+    # N1: the caller hears their name, never an internal CUST- id; no name before verify_customer succeeds.
+    for p in (support_prompt(), support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.HINDI))):
+        assert "Never say a customer ID (CUST-" in p
+        assert ("After verification you may address the caller by their first name, or Mr./Ms. and their last name; "
+                "before verification use no name") in p
+        assert "references like SR-40200 are fine" in p  # service references the caller needs are still spoken
+
+
 def test_prompt_forbids_date_formats_and_handover_for_missing_details():
     # E1 (call 475b0ac5): Kannada replies asked for the date of birth "(YYYY-MM-DD)" / "(year-month-day)", and one missing
     # detail became a SENSITIVE hand-over

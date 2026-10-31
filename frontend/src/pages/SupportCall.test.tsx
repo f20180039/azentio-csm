@@ -160,7 +160,7 @@ describe('RetrievedCard outcomes', () => {
         trace={[
           { name: 'create_service_request', args: {}, result_summary: 'SYSTEM_UNAVAILABLE', outcome: OpOutcome.FAILED },
           { name: 'get_loans', args: {}, result_summary: 'NOT_VERIFIED', outcome: OpOutcome.DECLINED },
-          { name: 'verify_customer', args: {}, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+          { name: 'verify_customer', args: {}, result_summary: 'customer, expires_in, verified', outcome: OpOutcome.OK },
           { name: 'get_faq', args: {}, result_summary: 'legacy record' },
         ]}
         retrieved={{}}
@@ -241,6 +241,18 @@ describe('customer turn playback', () => {
     expect(await card.findByText('Rahul Iyer')).toBeInTheDocument();
     expect(card.getByText('97314 62580')).toBeInTheDocument();
     expect(h.getCustomerProfile).toHaveBeenCalledWith('CUST-1002');
+  });
+
+  it('leads with the verified caller\'s name, not the CUST- id, while the profile loads or is unavailable', async () => {
+    // N1: the id is a staff cross-reference, shown small and muted after the name.
+    h.getCustomerProfile.mockRejectedValue(new Error('Cannot reach the bank simulator'));
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+    const card = within(await screen.findByRole('region', { name: 'Customer' }));
+    const note = await card.findByText(/details unavailable/);
+    expect(note.textContent).toMatch(/^Verified as Rahul\b/);
+    expect(note.textContent).not.toMatch(/^Verified as CUST-/);
+    expect(card.getByText('CUST-1002')).toHaveClass('muted');
   });
 
   it('asks for verification first when the caller is not verified yet', async () => {
