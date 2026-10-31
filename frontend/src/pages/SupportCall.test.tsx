@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
+import { SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { SupportCall } from './SupportCall';
@@ -12,11 +12,13 @@ const h = vi.hoisted(() => ({
   connectSupportVoice: vi.fn(),
   endCall: vi.fn(),
   pauseCall: vi.fn(),
+  getCustomerProfile: vi.fn(),
 }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
-  return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall };
+  return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall,
+    getCustomerProfile: h.getCustomerProfile };
 });
 
 function mount(path: string) {
@@ -35,6 +37,7 @@ function mount(path: string) {
 
 beforeEach(() => {
   Object.values(h).forEach((f) => f.mockReset());
+  h.getCustomerProfile.mockResolvedValue(structuredClone(SAMPLE_PROFILE));
 });
 
 describe('SupportCall', () => {
@@ -174,6 +177,24 @@ describe('customer turn playback', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
     await waitFor(() => expect(session.setMicEnabled).toHaveBeenLastCalledWith(true));
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+  });
+
+  it('shows the verified caller\'s bank profile, and a hint before verification', async () => {
+    h.getCustomerProfile.mockResolvedValue(structuredClone(SAMPLE_PROFILE));
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+    const card = within(await screen.findByRole('region', { name: 'Customer' }));
+    expect(await card.findByText('Rahul Iyer')).toBeInTheDocument();
+    expect(card.getByText('98765 00002')).toBeInTheDocument();
+    expect(h.getCustomerProfile).toHaveBeenCalledWith('CUST-1002');
+  });
+
+  it('asks for verification first when the caller is not verified yet', async () => {
+    h.getCall.mockResolvedValue({ ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null });
+    mount(`/support/calls/${SAMPLE_ROUTED_CALL.id}`);
+    const card = within(await screen.findByRole('region', { name: 'Customer' }));
+    expect(card.getByText(/once the agent has verified them/)).toBeInTheDocument();
+    expect(h.getCustomerProfile).not.toHaveBeenCalled();
   });
 
   it('builds the voice service URL for a recorded turn', async () => {
