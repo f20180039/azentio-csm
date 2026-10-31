@@ -324,7 +324,7 @@ Every synthetic customer, what to say to verify as them, the answers to expect a
 
 ### Level 2 walk-through (one line per capability in `docs/brief/problem-05-level2.md`)
 
-Start from a reset simulator (`POST /v1/ops/reset`, or restart it) so the seed tickets SR-40103 (REJECTED), SR-40104 (AWAITING_INFO) and SR-40105 (RESOLVED) are in their seed state. Keep the operator desk open at `/support` on a second screen: the Calls, Tickets, Complaints and Escalations tabs update within 5 s.
+Start from a reset simulator (`curl -X POST -u ops:ops http://localhost:8090/v1/ops/reset`, or restart it) so the seed tickets SR-40103 (REJECTED), SR-40104 (AWAITING_INFO) and SR-40105 (RESOLVED) are in their seed state. Keep the operator desk open at `/support` on a second screen: the Calls, Tickets, Complaints and Escalations tabs update within 5 s.
 
 | # | Capability | Say / do | Expect |
 |---|---|---|---|
