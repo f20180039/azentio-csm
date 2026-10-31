@@ -1,0 +1,11 @@
+id: 15-hindi-repayment
+title: Hindi caller asks for the next EMI
+customer: {mobile: "9876500002", dob: "1985-11-03"}
+turns:
+  - say: "मेरी अगली EMI कब है?"
+    expect: {intents: [REPAYMENT]}
+  - say: "मेरा मोबाइल नंबर 98765 00002, जन्म तिथि 3 नवंबर 1985."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "मेरी अगली EMI कितनी है, और कब भरनी है?"
+    expect: {intents: [REPAYMENT], tools_any: [get_loans, get_schedule], must_say_any: ["12,450", "twelve thousand four hundred fifty", "9,800", "nine thousand eight hundred"]}
+outcome: {tickets: 0, complaints: 0, routed: 0, escalations: 0}

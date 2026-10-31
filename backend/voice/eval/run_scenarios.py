@@ -34,7 +34,7 @@ CREATES = frozenset({SupportTool.CREATE_SERVICE_REQUEST, SupportTool.REGISTER_CO
 def _ok(t: dict) -> bool:
     return "error" not in (t.get("result") or {})
 ENGLISH_ACCENTS, CONDITIONS = ("in", "gb", "ng", "us"), ("clean", "noisy")
-ACCENTS = (*ENGLISH_ACCENTS, "kn")  # kn: the Kannada scenarios, run with --only
+ACCENTS = (*ENGLISH_ACCENTS, "kn", "hi")  # kn/hi: the Kannada (13-14) and Hindi (15-16) scenarios, run with --only
 
 
 @dataclass

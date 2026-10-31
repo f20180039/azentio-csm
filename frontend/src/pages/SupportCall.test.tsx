@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_ESCALATION_CALL, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
-import { SupportCall } from './SupportCall';
+import { RetrievedCard, SupportCall } from './SupportCall';
+import { OpOutcome } from '../vocab';
 
 const h = vi.hoisted(() => ({
   getCall: vi.fn(),
@@ -137,6 +138,27 @@ describe('SupportCall', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.queryByText('CALL_ALREADY_ENDED')).not.toBeInTheDocument();
+  });
+});
+
+describe('RetrievedCard outcomes', () => {
+  it('marks a failed tool call bad and a declined one dim, and leaves old records without an outcome alone', () => {
+    render(
+      <RetrievedCard
+        trace={[
+          { name: 'create_service_request', args: {}, result_summary: 'SYSTEM_UNAVAILABLE', outcome: OpOutcome.FAILED },
+          { name: 'get_loans', args: {}, result_summary: 'NOT_VERIFIED', outcome: OpOutcome.DECLINED },
+          { name: 'verify_customer', args: {}, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+          { name: 'get_faq', args: {}, result_summary: 'legacy record' },
+        ]}
+        retrieved={{}}
+        refs={[]}
+      />,
+    );
+    expect(screen.getByText('Failed')).toHaveClass('pill', 'bad');
+    expect(screen.getByText('Declined')).toHaveClass('pill', 'dim');
+    expect(screen.getByText('OK')).toHaveClass('pill', 'ok');
+    expect(screen.getAllByText(/^(Failed|Declined|OK)$/)).toHaveLength(3);
   });
 });
 

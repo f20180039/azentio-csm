@@ -15,6 +15,8 @@ import {
   intentLabel,
   intentTone,
   languageLabel,
+  OP_OUTCOME_LABEL,
+  OP_OUTCOME_TONE,
   OUTCOME_LABEL,
   simAudio,
   suggestOutcome,
@@ -159,6 +161,7 @@ export function RetrievedCard({ trace, retrieved, refs }: { trace: ToolTrace[]; 
           <div key={`${t.name}-${i}`} className="sc-tool">
             <div className="sc-tool-head">
               <code className="sc-tool-name">{t.name}</code>
+              {t.outcome && <span className={`pill ${OP_OUTCOME_TONE[t.outcome] ?? 'dim'}`}>{OP_OUTCOME_LABEL[t.outcome] ?? humanise(t.outcome)}</span>}
               {argText(t.args) && <span className="mono small muted">{argText(t.args)}</span>}
             </div>
             {t.result_summary && <div className="small">{t.result_summary}</div>}

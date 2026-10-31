@@ -49,6 +49,7 @@ class CallSession:
     caller_ref: str | None = None  # the caller's phone number on phone calls: the simulator's per-caller lock key
     helpline: str = ""
     last_caller_text: str = ""  # the caller's latest words, kept verbatim on a complaint as its original_statement
+    unclear_streak: int = 0  # customer turns in a row whose only intent was UNCLEAR; silence leaves it, understanding resets it
 
     @property
     def verified(self) -> bool:

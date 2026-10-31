@@ -4,7 +4,7 @@ import { VOICE_BASE } from './renewals';
 import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
-import { opsCustomerPath, SimulatorPath } from './paths/simulator';
+import { opsCustomerPath, opsTicketPath, SimulatorPath } from './paths/simulator';
 import { supportPausePath, turnAudioPath, VoicePath } from './paths/voice';
 import {
   FeedbackVerdict,
@@ -12,6 +12,7 @@ import {
   IntentSource,
   LegacyIntent,
   LessonStatus,
+  OpOutcome,
   RatingSource,
   RecordKind,
   RefPrefix,
@@ -19,11 +20,12 @@ import {
   SpeechLanguage,
   SupportChannel,
   SupportOutcome,
+  TicketStatus,
   TurnRole,
   Verification,
 } from '../vocab';
 
-export { FeedbackVerdict, LessonStatus, RatingSource, RecordKind, ReviewReason, SpeechLanguage, SupportChannel, SupportOutcome, Verification };
+export { FeedbackVerdict, LessonStatus, OpOutcome, RatingSource, RecordKind, ReviewReason, SpeechLanguage, SupportChannel, SupportOutcome, TicketStatus, Verification };
 
 export const SIMULATOR_BASE: string =
   (import.meta.env.VITE_SIMULATOR_BASE as string | undefined) ?? 'http://localhost:8090/v1';
@@ -36,6 +38,8 @@ export interface ToolTrace {
   name: string;
   args: Record<string, unknown>;
   result_summary?: string | null;
+  /** How the call went; absent on records written before outcomes were recorded. */
+  outcome?: OpOutcome;
 }
 
 export interface TurnMeta {
@@ -137,8 +141,18 @@ export interface CustomerProfile {
   transactions: { ref: string; date: string; description: string; amount: number; direction: string; status: string }[];
   policies: { policy_no: string; product: string; status: string; premium: number; coverage_status: string }[];
   claims: { claim_no: string; policy_no: string; status: string; amount_claimed: number }[];
-  tickets: { ref: string; category: string; status: string; summary: string }[];
-  complaints: { ref: string; category: string; status: string; description: string; escalated: boolean }[];
+  tickets: { ref: string; category: string; status: string; summary: string; department?: string | null; progress?: string | null }[];
+  complaints: {
+    ref: string;
+    category: string;
+    status: string;
+    description: string;
+    escalated: boolean;
+    /** The caller's own words, when the agent kept them. */
+    original_statement?: string | null;
+    /** The account, loan or transaction the complaint is about. */
+    related_ref?: string | null;
+  }[];
 }
 
 const VERIFY_TOOL = 'verify_customer';
@@ -163,6 +177,8 @@ export interface SupportCallSummary {
   turnCount: number;
   intents: string[];
   rating?: CallRating | null;
+  /** Tool calls on this call whose outcome was FAILED. */
+  failedOps?: number;
 }
 
 export interface SimTurn {
@@ -207,6 +223,43 @@ export interface OpsRecord {
   call_id: string | null;
   created_at: string;
   escalated: boolean | null;
+  /** Tickets: the bank team it sits with, and the latest progress note the caller hears. */
+  department?: string | null;
+  progress?: string | null;
+  /** Complaints: the caller's own words and the record (account, loan, transaction) it is about. */
+  original_statement?: string | null;
+  related_ref?: string | null;
+  /** Escalations: the tickets, complaints or other records the hand-off concerns. */
+  related_refs?: string[] | null;
+}
+
+/** PATCH /v1/ops/tickets/{ref} on the bank simulator answers with the ticket view, not the ops list item. */
+interface TicketView {
+  ref: string;
+  category: string;
+  status: TicketStatus;
+  summary: string;
+  customer_ref?: string | null;
+  call_id?: string | null;
+  department?: string | null;
+  progress?: string | null;
+  created_on?: string;
+}
+
+function recordFromTicket(t: TicketView): OpsRecord {
+  return {
+    ref: t.ref,
+    kind: RecordKind.TICKET,
+    category: t.category,
+    status: t.status,
+    summary: t.summary,
+    customer_ref: t.customer_ref ?? null,
+    call_id: t.call_id ?? null,
+    created_at: t.created_on ?? '',
+    escalated: null,
+    department: t.department ?? null,
+    progress: t.progress ?? null,
+  };
 }
 
 /* ---------- Spring: call records ---------- */
@@ -341,6 +394,18 @@ const liveSupport = {
     return ((await res.json()) as { items?: OpsRecord[] }).items ?? [];
   },
 
+  /** Moves a service request; a progress note replaces the one the caller hears, null keeps it. */
+  async updateTicket(ref: string, status: TicketStatus, progress: string | null): Promise<OpsRecord> {
+    const res = await reach('bank simulator', SIMULATOR_BASE, () =>
+      fetch(`${SIMULATOR_BASE}${opsTicketPath(ref)}`, {
+        method: 'PATCH',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Basic ' + btoa('ops:ops') },
+        body: JSON.stringify({ status, progress }),
+      }),
+    );
+    return recordFromTicket((await res.json()) as TicketView);
+  },
+
   connectSupportVoice: liveConnectSupportVoice,
 };
 
@@ -448,6 +513,7 @@ export const supportOffer = (body: OfferBody) => api.supportOffer(body);
 export const pauseCall = (id: string, paused: boolean) => api.pauseCall(id, paused);
 export const listRecords = (kind: RecordKind) => api.listRecords(kind);
 export const getCustomerProfile = (customerRef: string) => api.getCustomerProfile(customerRef);
+export const updateTicket = (ref: string, status: TicketStatus, progress: string | null) => api.updateTicket(ref, status, progress);
 export const rateCall = (id: string, score: number, comment: string | null) => api.rateCall(id, score, comment, RatingSource.PANEL);
 export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, correction: string | null) =>
   api.sendFeedback(id, seq, verdict, correction);
@@ -575,6 +641,30 @@ export const LESSON_STATUS_TONE: Record<LessonStatus, string> = {
   [LessonStatus.PROPOSED]: 'warn',
   [LessonStatus.ACTIVE]: 'ok',
   [LessonStatus.RETIRED]: 'dim',
+};
+
+export const TICKET_STATUSES: TicketStatus[] = Object.values(TicketStatus);
+
+/** Pill tone for a bank record's status (tickets, complaints and escalations share the open/closed words). */
+export const RECORD_STATUS_TONE: Record<string, string> = {
+  [TicketStatus.OPEN]: 'warn',
+  [TicketStatus.IN_PROGRESS]: 'info',
+  [TicketStatus.AWAITING_INFO]: 'warn',
+  [TicketStatus.RESOLVED]: 'ok',
+  [TicketStatus.CLOSED]: 'ok',
+  [TicketStatus.REJECTED]: 'bad',
+};
+
+export const OP_OUTCOME_LABEL: Record<OpOutcome, string> = {
+  [OpOutcome.OK]: 'OK',
+  [OpOutcome.FAILED]: 'Failed',
+  [OpOutcome.DECLINED]: 'Declined',
+};
+
+export const OP_OUTCOME_TONE: Record<OpOutcome, string> = {
+  [OpOutcome.OK]: 'ok',
+  [OpOutcome.FAILED]: 'bad',
+  [OpOutcome.DECLINED]: 'dim',
 };
 
 export const RATING_SOURCE_LABEL: Record<RatingSource, string> = {
