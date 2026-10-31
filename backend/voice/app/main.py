@@ -21,7 +21,7 @@ from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
 from .simulator_client import SimulatorClient
 from .speech import CallLanguage, voice_for
-from .support_brain import SupportBrain, SupportTurn
+from .support_brain import SupportBrain, SupportTurn, op_outcome
 from .support_prompt import GREETING
 from .support_tools import CallSession
 from .vocab import Channel, Outcome, Route
@@ -230,7 +230,8 @@ def turn_json(turn: SupportTurn) -> dict:
     return {"reply_text": turn.text, "intents": turn.intents, "intent_source": turn.intent_source, "verified": turn.verified,
             "locked": turn.locked, "verify_failures": turn.verify_failures,
             "refs": turn.refs, "ended": turn.ended, "model": turn.model, "retrieved": turn.retrieved(),
-            "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
+            "tool_trace": [{"name": t.name, "args": t.args, "result": t.result, "outcome": op_outcome(t.result)}
+                           for t in turn.tool_calls]}
 
 
 async def support_reply(brain: SupportBrain, text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:

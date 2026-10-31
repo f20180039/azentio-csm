@@ -4,6 +4,7 @@ import httpx
 
 from .api_client import ApiUnavailable
 from .config import Settings
+from .vocab import HTTP_ERROR_PREFIX
 
 SESSION_HEADER = "X-Customer-Session"
 
@@ -48,7 +49,7 @@ class SimulatorClient:
         except ValueError:
             data = {}
         if resp.status_code >= 400:
-            return {**data, "error": data.get("error") or f"HTTP_{resp.status_code}", "status": resp.status_code}
+            return {**data, "error": data.get("error") or f"{HTTP_ERROR_PREFIX}{resp.status_code}", "status": resp.status_code}
         return data
 
     async def verify(self, mobile: str, dob: str, call_id: str, caller_ref: str | None = None) -> dict:

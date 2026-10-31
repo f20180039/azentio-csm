@@ -10,7 +10,7 @@ from app.audit import AuditLog
 from app.clock import Clock
 from app.db import Database, dumps, loads
 from app.errors import ApiError
-from app.vocab import AuditAction, CallKind, CaseStatus, CaseType, Channel, ErrorCode, Outcome, TurnRole
+from app.vocab import AuditAction, CallKind, CaseStatus, CaseType, Channel, ErrorCode, OpOutcome, Outcome, TurnRole
 
 MAX_LIMIT = 200
 E = TypeVar("E", bound=StrEnum)
@@ -40,6 +40,16 @@ def intents(turns: list[dict]) -> list[str]:
                 if isinstance(i, str):
                     out.setdefault(i, None)
     return list(out)
+
+
+def failed_ops(turns: list[dict]) -> int:
+    """Tool calls that FAILED across the call's agent turns; entries without an outcome (older calls) count as none."""
+    count = 0
+    for t in turns:
+        for entry in (t.get("meta") or {}).get("tool_trace") or []:
+            if isinstance(entry, dict) and entry.get("outcome") == OpOutcome.FAILED:
+                count += 1
+    return count
 
 
 def _turn(t: dict) -> dict:
@@ -165,7 +175,8 @@ class SupportService:
             turns = loads(c["transcript"], [])
             items.append({"id": c["id"], "channel": c["channel"], "startedAt": c["started_at"],
                           "endedAt": c["ended_at"], "outcome": c["outcome"], "verified": verified(turns),
-                          "turnCount": len(turns), "intents": intents(turns), "rating": ratings.get(c["id"])})
+                          "turnCount": len(turns), "intents": intents(turns), "rating": ratings.get(c["id"]),
+                          "failedOps": failed_ops(turns)})
         return {"items": items}
 
     def _find(self, con: sqlite3.Connection, call_id: str) -> sqlite3.Row:

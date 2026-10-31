@@ -16,7 +16,8 @@ from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole
+from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
+                    ToolError, TurnRole)
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -75,6 +76,20 @@ def summarise(result: dict) -> str:
                for item in result["items"] if isinstance(item, dict)]
         return f"{len(ids)} item(s): {', '.join(ids[:6])}" if ids else "no items"
     return ", ".join(sorted(result))[:120]
+
+
+FAILED_ERRORS = frozenset({ToolError.SYSTEM_UNAVAILABLE, ToolError.BAD_ARGUMENTS, ToolError.UNKNOWN_TOOL})
+
+
+def op_outcome(result: dict) -> OpOutcome:
+    """OK when the tool did its work; FAILED when the system or the call broke; DECLINED when a rule refused it."""
+    error = result.get("error")
+    if error is None:
+        return OpOutcome.OK
+    code = str(error)
+    if code in FAILED_ERRORS or (code.startswith(HTTP_ERROR_PREFIX) and code[len(HTTP_ERROR_PREFIX):].startswith("5")):
+        return OpOutcome.FAILED
+    return OpOutcome.DECLINED
 
 
 def _trim(result: dict) -> dict:
@@ -162,7 +177,8 @@ class SupportBrain:
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
             turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
             await self._record(TurnRole.AGENT, turn.text,
-                               {MetaKey.TOOL_TRACE: [{"name": t.name, "args": t.args, "result_summary": summarise(t.result)}
+                               {MetaKey.TOOL_TRACE: [{"name": t.name, "args": t.args, "result_summary": summarise(t.result),
+                                                      "outcome": op_outcome(t.result)}
                                                      for t in turn.tool_calls],
                                 MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
                                 MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
