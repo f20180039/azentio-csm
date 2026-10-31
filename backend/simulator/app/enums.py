@@ -121,7 +121,14 @@ class LockScope(StrEnum):
 
 
 class EscalationCategory(StrEnum):
+    """Why a call was handed to a human: the simulator's own SECURITY plus the voice agent's six Level 2 triggers."""
     SECURITY = "SECURITY"
+    CUSTOMER_REQUEST = "CUSTOMER_REQUEST"
+    DISSATISFIED = "DISSATISFIED"
+    UNRESOLVED = "UNRESOLVED"
+    SENSITIVE = "SENSITIVE"
+    AUTH_LOCKED = "AUTH_LOCKED"
+    REPEATED_MISUNDERSTANDING = "REPEATED_MISUNDERSTANDING"
 
 
 class EscalationReason(StrEnum):
