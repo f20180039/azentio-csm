@@ -58,7 +58,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   - `reset()` removes it.
 - [x] Step 5: Commit: `feat(simulator): seed data for the #05 scenarios and SQLite-backed writes`.
 
-- [ ] **C3: Verification, sessions, lockout, ownership** (needs: C2)
+- [~] (Anshuman, at the team lead's request; on develop) **C3: Verification, sessions, lockout, ownership** (needs: C2)
 
 **Files:** create `backend/simulator/app/routers/verify.py` and `backend/simulator/app/guard.py`.
 
@@ -74,7 +74,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 2: Implement `POST /v1/verify` and the dependency `require_session(x_customer_session: str = Header(...)) -> Customer`, plus `owns(customer, record)`. Record every attempt with the `call_id` in the audit module.
 - [ ] Step 3: Run the tests. Commit: `feat(simulator): customer verification with lockout and per-customer record guard`.
 
-- [ ] **C4: LOS, LMS, CBS and insurance endpoints** (needs: C3)
+- [~] (Anshuman, at the team lead's request; on develop) **C4: LOS, LMS, CBS and insurance endpoints** (needs: C3)
 
 **Files:** create `backend/simulator/app/routers/{los,lms,cbs,insurance}.py`.
 
@@ -89,7 +89,7 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [ ] Step 2: Implement exactly the contract's response fields. Amounts are integers in rupees. Dates are ISO `YYYY-MM-DD`.
 - [ ] Step 3: Commit: `feat(simulator): loan, banking and insurance record endpoints`.
 
-- [ ] **C5: CSM tickets, complaints, routed queries, escalations, ops** (needs: C3)
+- [~] (Anshuman, at the team lead's request; on develop) **C5: CSM tickets, complaints, routed queries, escalations, ops** (needs: C3)
 
 **Files:** create `backend/simulator/app/routers/csm.py` and `backend/simulator/app/routers/ops.py`.
 
