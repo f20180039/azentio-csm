@@ -15,10 +15,12 @@ from .speech import (  # the mobile's shape lives in speech.py, where the digit 
     MONTHS,
     PAUSE,
     alt,
-    is_mobile,
+    bridged_mobile_end,
     normalise_spoken_digits,
     without_prefix,
+    is_mobile,
 )
+from .vocab import VerifyField
 
 MIN_BIRTH_YEARS, MAX_BIRTH_YEARS = 10, 120  # a date of birth this many years before today
 MOBILE_ATTEMPT_MIN, MOBILE_ATTEMPT_MAX = 7, 13  # a digit run this long that is not 10 digits was an attempt at a mobile number
@@ -59,10 +61,11 @@ _CENTURY_YEAR = re.compile(rf"\b(?P<century>{alt(_CENTURIES)}){_SEP}"
 _THOUSAND_YEAR = re.compile(rf"\btwo{_SEP}thousand(?P<rest>(?:{_SEP}and)?{_SEP}{_UNDER_HUNDRED})?\b", re.I)
 _CARDINAL_BEFORE_MONTH = re.compile(rf"\b({_UNDER_HUNDRED})\b(?=\s+(?:of\s+)?(?:{_MONTH_ALT})\b)", re.I)  # 'five December', 'twenty five of May'
 _SAID_IN_WORDS = re.compile(r"[^\W\d_]")  # a letter in a digit run: digit words normalisation left as words
+_BROKEN_DATE = re.compile(r"\b(?:19|20)\d{2}[-/ ]?\d{4}\b")  # '1995-1205', '19951205': a date of birth Whisper wrote wrongly
 
 _ISO = re.compile(r"\b(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\b")
 _DAY_FIRST = re.compile(r"\b(?P<d>\d{1,2})[/-](?P<m>\d{1,2})[/-](?P<y>\d{4})\b")
-_DAY_MONTH_YEAR = re.compile(rf"\b(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<y>\d{{4}})\b", re.I)
+_DAY_MONTH_YEAR = re.compile(rf"\b(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?:of\s+)?{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<y>\d{{4}})\b", re.I)  # '5, December 1995' too
 _MONTH_DAY_YEAR = re.compile(rf"\b{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<y>\d{{4}})\b", re.I)
 _SHORT_YEAR_DATE = re.compile(rf"\b(?:\d{{1,2}}{_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH}|{_MONTH}\s+\d{{1,2}}{_ORDINAL_SUFFIX},?)\s+'?\d{{2}}\b", re.I)  # '3 Nov 85'
 
@@ -89,18 +92,16 @@ def _group_digits(group: str) -> str:
 
 def _joined_across_pauses(blanked: str, found: list[re.Match], i: int) -> int:
     """The index of the last group that, with group i and the pause-separated groups between, makes one mobile
-    ('98765, 00002', '98765, 0000, 2'); i itself when no such run starts there, so '500, 2 times' stays two numbers and
-    the digits of a reference ('CMP-98765, …') start none."""
+    ('98765, 00002', '98765, 00, 002'); i itself when no such run starts there, so '500, 2 times' stays two numbers, a lone
+    digit after nine ('98765 0006, 5 November') stays apart and the digits of a reference ('CMP-98765, …') start none."""
     if found[i].start() and blanked[found[i].start() - 1] == REFERENCE_HYPHEN:
         return i
-    digits = _group_digits(found[i].group(0))
+    chain = [_group_digits(found[i].group(0))]
     for j in range(i + 1, len(found)):
         if not _PAUSE_GAP.fullmatch(blanked, found[j - 1].end(), found[j].start()):
             break
-        digits += _group_digits(found[j].group(0))
-        if is_mobile(digits):
-            return j
-    return i
+        chain.append(_group_digits(found[j].group(0)))
+    return i + bridged_mobile_end(chain, 0)
 
 
 def _runs_in(blanked: str) -> list[tuple[str, str]]:
@@ -209,18 +210,17 @@ def extract_dob(text: str, today: date) -> str | None:
     return max(found)[1] if found else None
 
 
-def unexplained_numbers(text: str) -> bool:
-    """Whether the turn carried numbers this code could not read, so the model may have heard a detail it did not: letters
-    outside the Latin scripts (Kannada or Hindi number words), a date with a two-digit year ('3 Nov 85'), or a digit run of
-    three or more still said in words once the mobile number, the dates, a wrong-length attempt at the mobile, bank references
-    (PL-31002) and amounts (Rs 9800, 6 lakh, 12,450) are taken out. Leftover runs written in digits ('9282, 766, 0006') were
-    read; they just were not a mobile, and do not let the model send its own guess. A turn fully accounted for gives the model
-    nothing to add."""
+def unexplained_fields(text: str) -> set[VerifyField]:
+    """The verification fields the model may fill from its own copy because the turn carried numbers this code could not
+    read. Both fields for letters outside the Latin scripts (Kannada or Hindi number words), a date with a two-digit year
+    ('3 Nov 85'), or a digit run of three or more still said in words once the mobile number, the dates, a wrong-length
+    attempt at the mobile, bank references (PL-31002) and amounts (Rs 9800, 6 lakh, 12,450) are taken out. The date of birth
+    alone for a leftover shaped like a broken date ('1995-1205'): the model may have read it, but it is no mobile. Leftover
+    runs written in digits ('9282, 766, 0006') were read; they just were not a mobile, and open nothing. A turn fully
+    accounted for gives the model nothing to add."""
     converted = _converted(text)
-    if any(ch.isalpha() and ord(ch) > 0x024F for ch in converted):
-        return True
-    if _SHORT_YEAR_DATE.search(converted):
-        return True
+    if any(ch.isalpha() and ord(ch) > 0x024F for ch in converted) or _SHORT_YEAR_DATE.search(converted):
+        return set(VerifyField)
     runs = _runs_in(_AMOUNT.sub(" ", _REFERENCE.sub(" ", _blank_dates(converted))))
     if any(_mobile_in(digits) for _, digits in runs):
         runs = [run for run in runs if _mobile_in(run[1]) is None]
@@ -228,4 +228,15 @@ def unexplained_numbers(text: str) -> bool:
         longest = max(reversed(runs), key=lambda run: len(run[1]))
         if is_mobile_attempt(without_prefix(longest[1])):
             runs.remove(longest)
-    return any(len(digits) > SMALL_NUMBER_DIGITS and _SAID_IN_WORDS.search(said) for said, digits in runs)
+    fields: set[VerifyField] = set()
+    for said, digits in runs:
+        if len(digits) > SMALL_NUMBER_DIGITS and _SAID_IN_WORDS.search(said):
+            return set(VerifyField)
+        if _BROKEN_DATE.search(said):
+            fields.add(VerifyField.DOB)
+    return fields
+
+
+def unexplained_numbers(text: str) -> bool:
+    """Whether the turn carried numbers this code could not read (unexplained_fields says which detail they may hold)."""
+    return bool(unexplained_fields(text))

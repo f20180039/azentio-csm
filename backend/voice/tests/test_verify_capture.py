@@ -144,7 +144,7 @@ def test_an_over_long_mobile_is_asked_for_again_not_cut():
     out = verify_result(asyncio.run(brain.reply("98765 double zero triple zero two, born 3rd November 1985")))
     assert out["error"] == ToolError.MISSING_DETAILS
     assert out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
-    assert out["note"].endswith("The number heard had 11 digits.")
+    assert "heard 11 digits (98765 000002)" in out["note"] and "Keep the date of birth" in out["note"]
     assert sim.verify_bodies() == [] and brain.call.heard_mobile is None and brain.call.heard_dob == "1985-11-03"
 
 
@@ -154,7 +154,7 @@ def test_a_collapsed_repeat_is_asked_for_again_with_its_count():
     brain, sim = make(llm)
     out = verify_result(asyncio.run(brain.reply("nine eight seven six five zero zero two, born 3rd November 1985")))
     assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
-    assert out["note"].endswith("The number heard had 8 digits.")
+    assert "only 8 digits (98765 002)" in out["note"] and "Keep the date of birth" in out["note"]
     assert sim.verify_bodies() == [] and brain.call.heard_mobile is None
 
 

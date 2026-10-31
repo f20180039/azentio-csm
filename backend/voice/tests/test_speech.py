@@ -61,7 +61,8 @@ def test_repeated_digits_survive_hyphens_and_oh():
 def test_a_pause_inside_a_mobile_is_bridged_only_when_it_makes_one():
     assert normalise_spoken_digits("98765, 00002") == "9876500002"
     assert normalise_spoken_digits("98765. 00002") == "9876500002"
-    assert normalise_spoken_digits("nine eight seven six five, four zeros, one") == "9876500001"
+    assert normalise_spoken_digits("98765, 00, 002") == "9876500002"
+    assert normalise_spoken_digits("nine eight seven six five, four zeros, one") == "98765, 0000, one"  # a lone digit after nine stays apart
     assert normalise_spoken_digits("+91 98765, 00002") == "+919876500002"
     for text in ("I paid 500, 2 times", "SR-40102, 98765", "CMP-98765, 00002", "98765, 0002", "555, 555, 55",
                  "98765 0006, 5 December 1995", "987650006, 5 Dec 1995", "98765 0006, 5 of December 1995", "98765 0006, 5/12/1995",

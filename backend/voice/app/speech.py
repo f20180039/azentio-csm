@@ -120,7 +120,7 @@ _MULTIPLIED_DIGIT = r"(?:\d+|" + alt(_MULTIPLIED_DIGIT_WORDS) + r")"
 _TIMES = re.compile(rf"\b({_COUNT})\s+times\s+({_MULTIPLIED_DIGIT})\b", re.I)  # '4 times 0'
 _MULTIPLIED = re.compile(rf"\b({alt(_MULTIPLIERS)}){_SEPARATOR}({_MULTIPLIED_DIGIT})\b", re.I)  # 'double zero', 'triple-5', 'double o'
 _PLURAL = re.compile(rf"\b({_COUNT})\s+({alt(_PLURALS)})\b", re.I)  # '4 zeros'
-# Digit groups separated by pauses ('98765, 0000, one'): joined when together they make one mobile, left alone otherwise.
+# Digit groups separated by pauses ('98765, 00002'): joined when together they make one mobile, left alone otherwise.
 # A group that starts a date ('98765 0006, 5 December 1995', '…, 5/12/1995') is never the number's tail: the date keeps its day.
 _DATE_AHEAD = rf"(?!\s+(?:of\s+)?(?:{alt(MONTHS)})\b|[/-]\d)"
 _SEGMENT = r"\+?" + _PLAIN_TOKEN + r"(?:" + _SEPARATOR + _PLAIN_TOKEN + r")*"
@@ -141,6 +141,23 @@ def is_mobile(digits: str) -> bool:
     """Exactly ten digits starting 6-9, optionally after +91/91/0: the only shape a mobile number has."""
     d = without_prefix(digits)
     return len(d) == MOBILE_LEN and d[0] in MOBILE_FIRST_DIGITS
+
+
+LONE_DIGIT = 1
+
+
+def bridged_mobile_end(digits: list[str], i: int) -> int:
+    """The index of the last pause-separated digit group that, joined to group i and those between, makes one mobile
+    ('98765' + '00002', '98765' + '00' + '002'); i when none does. A single digit after a head of MOBILE_LEN - 1 digits is
+    a day ('98765 0006, 5 December'), a count or a list item, never the number's last digit, so it ends the search."""
+    head = digits[i]
+    for j in range(i + 1, len(digits)):
+        if len(head) == MOBILE_LEN - 1 and len(digits[j]) == LONE_DIGIT:
+            return i
+        head += digits[j]
+        if is_mobile(head):
+            return j
+    return i
 
 
 def _to_digit(s: str) -> str:
@@ -184,14 +201,15 @@ def _segment_digits(segment: str) -> str:
 
 
 def _bridge_pauses(m: re.Match) -> str:
-    """'98765, 00002' -> '9876500002' and '98765, 0000, one' -> '9876500001': the fewest pause-separated groups from each
-    start that make one mobile are joined; groups that never do ('500, 2', '555, 555, 55') keep their pauses and words."""
+    """'98765, 00002' -> '9876500002' and '98765, 00, 002' -> '9876500002': the fewest pause-separated groups from each
+    start that make one mobile are joined; groups that never do ('500, 2', '555, 555, 55') and a lone digit after nine
+    ('98765 0006, 5') keep their pauses and words."""
     parts = _PAUSE_SPLIT.split(m.group(0))
     segments, pauses = parts[::2], parts[1::2]
     digits = [_segment_digits(s) for s in segments]
     out, i = "", 0
     while i < len(segments):
-        end = next((j for j in range(i + 1, len(segments)) if is_mobile("".join(digits[i:j + 1]))), i)
+        end = bridged_mobile_end(digits, i)
         piece = segments[i] if end == i else ("+" if segments[i].startswith("+") else "") + "".join(digits[i:end + 1])
         out += piece + (pauses[end] if end < len(pauses) else "")
         i = end + 1
