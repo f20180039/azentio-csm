@@ -1,0 +1,357 @@
+{
+  "id": "475b0ac5-e061-499d-86be-e333435b670a",
+  "channel": "VOICE",
+  "startedAt": "2026-10-31T12:36:29.738620Z",
+  "endedAt": "2026-10-31T12:38:44.805187Z",
+  "outcome": "ESCALATED",
+  "verified": false,
+  "rating": null,
+  "turns": [
+    {
+      "seq": 1,
+      "role": "agent",
+      "text": "Hello, thank you for calling Azentio Demo Bank. How can I help you today?",
+      "at": "2026-10-31T12:36:29.754609+00:00",
+      "meta": {
+        "greeting": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 2,
+      "role": "customer",
+      "text": "ಅಂಂ, ಲೋನ್, ಚೆಕ್ ಮಳ್ಬೆಕಿತು, ಇಸ್ಟೋವಿದರಿನ್ತ.",
+      "at": "2026-10-31T12:36:37.043970+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "text_en": "Um, loan, check something, something.",
+        "language": "kn",
+        "intents": [
+          "LOAN_APPLICATION"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 3,
+      "role": "agent",
+      "text": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ನೋಂದಾಯಿತ 10 ಅಂಕಿಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ಮತ್ತು ಜನ್ಮದಿನಾಂಕವನ್ನು (ವರ್ಷ-ತಿಂಗಳು-ದಿನ) ನೀಡಿ.",
+      "at": "2026-10-31T12:36:37.805580+00:00",
+      "meta": {
+        "tool_trace": [],
+        "retrieved": {},
+        "refs": [],
+        "verified": false,
+        "text_en": "Please provide your registered 10-digit mobile number and date of birth (year-month-day).",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 4,
+      "role": "customer",
+      "text": "987650006. Date of birth 1995-1205.",
+      "at": "2026-10-31T12:37:02.331373+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "intents": [
+          "IDENTITY"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 5,
+      "role": "agent",
+      "text": "ನನ್ನಿಂದ ನೋಂದಾಯಿತ 10 ಅಂಕಿಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ದಯವಿಟ್ಟು ನೀಡಿ.",
+      "at": "2026-10-31T12:37:03.684160+00:00",
+      "meta": {
+        "tool_trace": [
+          {
+            "name": "verify_customer",
+            "args": {
+              "date_of_birth": "1995-12-05",
+              "mobile": "987650006"
+            },
+            "result_summary": "error MISSING_DETAILS",
+            "outcome": "DECLINED"
+          }
+        ],
+        "retrieved": {
+          "verify_customer": {
+            "error": "MISSING_DETAILS",
+            "missing": [
+              "MOBILE"
+            ],
+            "have": [
+              "DOB"
+            ],
+            "note": "Ask only for the registered 10-digit mobile number; the date of birth is already noted. The number heard had 9 digits."
+          }
+        },
+        "refs": [],
+        "verified": false,
+        "text_en": "Please give me the registered 10-digit mobile number.",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 6,
+      "role": "customer",
+      "text": "I already gave you the...",
+      "at": "2026-10-31T12:37:18.868732+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "intents": [
+          "UNCLEAR"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 7,
+      "role": "agent",
+      "text": "I’m sorry, but I need to verify your identity to proceed. A colleague will call you back shortly.",
+      "at": "2026-10-31T12:37:21.555341+00:00",
+      "meta": {
+        "tool_trace": [
+          {
+            "name": "escalate_to_human",
+            "args": {
+              "reason": "Unable to verify caller",
+              "summary": "Caller could not provide 10-digit mobile number",
+              "trigger": "SENSITIVE"
+            },
+            "result_summary": "ref ESC-70202",
+            "outcome": "OK"
+          }
+        ],
+        "retrieved": {
+          "escalate_to_human": {
+            "ref": "ESC-70202",
+            "handoff": {
+              "mode": "CALLBACK",
+              "helpline": "1800 210 4455"
+            },
+            "note": "Tell them a colleague will call back, read the reference, and give the helpline number."
+          }
+        },
+        "refs": [
+          "ESC-70202"
+        ],
+        "verified": false
+      },
+      "feedback": []
+    },
+    {
+      "seq": 8,
+      "role": "customer",
+      "text": "But what I can't write much here, I forget that. Let me see.",
+      "at": "2026-10-31T12:37:28.470583+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "intents": [
+          "UNCLEAR"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 9,
+      "role": "agent",
+      "text": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ನೋಂದಾಯಿತ 10 ಅಂಕಿಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ಹೇಳಿ.",
+      "at": "2026-10-31T12:37:29.263300+00:00",
+      "meta": {
+        "tool_trace": [],
+        "retrieved": {},
+        "refs": [
+          "ESC-70202"
+        ],
+        "verified": false,
+        "text_en": "Please tell me your registered 10-digit mobile number.",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 10,
+      "role": "customer",
+      "text": "9282, 766, 0006.",
+      "at": "2026-10-31T12:37:37.344949+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "transcript_correction": {
+          "text": "9876500006",
+          "author": "reviewer",
+          "at": "2026-10-31T12:38:07.373593Z"
+        }
+      },
+      "feedback": []
+    },
+    {
+      "seq": 11,
+      "role": "customer",
+      "text": "We should not use 0000 integral. We should not use 0000 integral. ವಲಿಷಿವಾಂಗ್ಗೆತ. ಕಾಲೆಯಾಲ್.",
+      "at": "2026-10-31T12:37:49.511429+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 0,
+        "locked": false,
+        "text_en": "We should not use 0000 integral. We should not use 0000 integral. Valishivangate. Kaleyal.",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 12,
+      "role": "customer",
+      "text": "ಕರೆಡ್ ಟಾಂಸ್ರಿಗದ್ ಕರುಡಿವಾದ್.",
+      "at": "2026-10-31T12:37:55.900803+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 1,
+        "locked": false,
+        "text_en": "Kared Tansrigad Karudivad.",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 13,
+      "role": "customer",
+      "text": "ಠಾಲುಡಿತ",
+      "at": "2026-10-31T12:38:04.084838+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 1,
+        "locked": false,
+        "text_en": "I am upset.",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 14,
+      "role": "customer",
+      "text": "He's a big-nosed, he's a big-nosed, he's a big-nosed.",
+      "at": "2026-10-31T12:38:15.049689+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 1,
+        "locked": false,
+        "intents": [
+          "UNCLEAR"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 15,
+      "role": "agent",
+      "text": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ನೋಂದಾಯಿತ 10 ಅಂಕಿಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ಮತ್ತು ನಿಮ್ಮ ಜನ್ಮ ದಿನಾಂಕವನ್ನು (YYYY‑MM‑DD) ಖಚಿತಪಡಿಸಿ.",
+      "at": "2026-10-31T12:38:15.864041+00:00",
+      "meta": {
+        "tool_trace": [],
+        "retrieved": {},
+        "refs": [
+          "ESC-70202"
+        ],
+        "verified": false,
+        "text_en": "Please confirm your registered 10‑digit mobile number and your date of birth (YYYY‑MM‑DD).",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 16,
+      "role": "customer",
+      "text": "No, it's repeating.",
+      "at": "2026-10-31T12:38:30.184355+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 1,
+        "locked": false,
+        "intents": [
+          "UNCLEAR"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 17,
+      "role": "agent",
+      "text": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ನೋಂದಾಯಿತ 10‑ಅಂಕಿ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ಮತ್ತು ಜನ್ಮ ದಿನಾಂಕವನ್ನು (ವರ್ಷ‑ತಿಂಗಳು‑ದಿನ) ನೀಡಿ.",
+      "at": "2026-10-31T12:38:30.908989+00:00",
+      "meta": {
+        "tool_trace": [],
+        "retrieved": {},
+        "refs": [
+          "ESC-70202"
+        ],
+        "verified": false,
+        "text_en": "Please provide your registered 10‑digit mobile number and date of birth (year‑month‑day).",
+        "language": "kn"
+      },
+      "feedback": []
+    },
+    {
+      "seq": 18,
+      "role": "customer",
+      "text": "ನಾಲಿಠ.",
+      "at": "2026-10-31T12:38:35.941754+00:00",
+      "meta": {
+        "verified": false,
+        "verify_failures": 1,
+        "locked": false,
+        "text_en": "No.",
+        "language": "kn",
+        "intents": [
+          "UNCLEAR"
+        ],
+        "intent_source": "llm",
+        "audio": true
+      },
+      "feedback": []
+    },
+    {
+      "seq": 19,
+      "role": "agent",
+      "text": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಪೂರ್ಣ 10‑ಅಂಕಿ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ಮತ್ತು ಜನ್ಮ ದಿನಾಂಕವನ್ನು (YYYY‑MM‑DD) ನೀಡಿ.",
+      "at": "2026-10-31T12:38:36.499246+00:00",
+      "meta": {
+        "tool_trace": [],
+        "retrieved": {},
+        "refs": [
+          "ESC-70202"
+        ],
+        "verified": false,
+        "text_en": "Please provide your full 10‑digit mobile number and date of birth (YYYY‑MM‑DD).",
+        "language": "kn"
+      },
+      "feedback": []
+    }
+  ]
+}
