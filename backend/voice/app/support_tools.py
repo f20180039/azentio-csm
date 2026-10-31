@@ -79,7 +79,8 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
     _tool(SupportTool.GET_TRANSACTIONS, "Recent transactions; filter by status or by a transaction reference the caller gives.",
           {"status": {"type": "string", "enum": ["POSTED", "PENDING", "FAILED"]}, "ref": {"type": "string"}}),
     _tool(SupportTool.GET_TICKETS, "The verified caller's existing service requests."),
-    _tool(SupportTool.GET_TICKET, "Status of one service request by its reference, e.g. SR-40102.", {"ref": {"type": "string"}}, ["ref"]),
+    _tool(SupportTool.GET_TICKET, "Status of one service request or complaint by its reference, e.g. SR-40102 or CMP-50011. "
+          "A request's details name what it is about, e.g. its loan_id.", {"ref": {"type": "string"}}, ["ref"]),
     _tool(SupportTool.CREATE_SERVICE_REQUEST, "Raise a service request (statement, repayment schedule, document, address change) and get its reference.",
           {"category": _enum(TicketCategory, "Request type"), "summary": {"type": "string", "description": "One line: what the caller asked for"},
            "details": {"type": "object", "description": "Key details collected, e.g. loan_id, period, delivery"}}, ["category", "summary"]),
@@ -176,7 +177,8 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
         case SupportTool.GET_TICKETS:
             return await client.tickets(s)
         case SupportTool.GET_TICKET:
-            return await client.ticket(s, args["ref"].strip().upper())
+            ref = args["ref"].strip().upper()
+            return await (client.complaint_status(s, ref) if ref.startswith(RefPrefix.COMPLAINT) else client.ticket(s, ref))
         case SupportTool.CREATE_SERVICE_REQUEST:
             return await client.create_ticket(s, TicketCategory(args["category"]), args["summary"], args.get("details") or {}, call.call_id)
         case SupportTool.REGISTER_COMPLAINT:

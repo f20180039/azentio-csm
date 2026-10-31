@@ -140,6 +140,7 @@ class Route(StrEnum):
     CSM_TICKETS = "/csm/tickets"
     CSM_TICKET = "/csm/tickets/{ref}"
     CSM_COMPLAINTS = "/csm/complaints"
+    CSM_COMPLAINT = "/csm/complaints/{ref}"
     CSM_ROUTED = "/csm/routed"
     CSM_ESCALATIONS = "/csm/escalations"
     FAQ_SEARCH = "/faq/search"
