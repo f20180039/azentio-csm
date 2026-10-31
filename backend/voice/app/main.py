@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import json
 import os
 import time
@@ -131,19 +132,31 @@ state = State()
 EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
 TUNNEL_HEADERS = (b"cf-connecting-ip", b"cf-ray", b"x-forwarded-for", b"forwarded")
+PROXY_TOKEN_HEADER = b"x-voice-proxy-token"  # added by the panel's dev-server proxy on the laptop; never reaches a browser
 PUBLIC_PATHS = (Route.TWILIO_WS, Route.TWILIO_TWIML, Route.HEALTH,
                 Route.TWILIO_SUPPORT_INCOMING, Route.TWILIO_SUPPORT_TWIML, Route.TWILIO_SUPPORT_WS)
 
 
+def proxy_token_matches(headers: list[tuple[bytes, bytes]], configured: str) -> bool:
+    """True only when a proxy secret is configured and the request's single x-voice-proxy-token equals it (constant time)."""
+    if not configured:
+        return False
+    values = [value for name, value in headers if name.lower() == PROXY_TOKEN_HEADER]
+    return len(values) == 1 and hmac.compare_digest(values[0], configured.encode())
+
+
 class LocalOnly:
-    """A request that came through a proxy or tunnel may reach only Twilio's TwiML fetch, its media stream and /health."""
+    """A request that came through a proxy or tunnel may reach only Twilio's TwiML fetch, its media stream and /health,
+    unless the panel's proxy on this laptop vouched for it with VOICE_PROXY_TOKEN (so judges reach the voice agent
+    through the shared panel URL, while anyone hitting the service directly through a tunnel is still refused)."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket") and scope["path"] not in PUBLIC_PATHS:
-            if any(name.lower() in TUNNEL_HEADERS for name, _ in scope.get("headers", [])):
+            headers = scope.get("headers", [])
+            if any(name.lower() in TUNNEL_HEADERS for name, _ in headers) and not proxy_token_matches(headers, state.settings().voice_proxy_token):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 1008})
                     return

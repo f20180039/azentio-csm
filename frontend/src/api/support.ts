@@ -1,7 +1,7 @@
 import { ApiError, toApiError } from './errors';
 import { del, get, MOCK_MODE, patchJson, postJson, putJson } from './client';
 import { VOICE_BASE } from './renewals';
-import { describeVoiceError, type VoiceSession } from './voice';
+import { describeVoiceError, isSameRequestUrl, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
 import { opsCustomerPath, opsTicketPath, SimulatorPath } from './paths/simulator';
@@ -541,7 +541,7 @@ async function liveConnectSupportVoice(
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = input instanceof Request ? input : null;
     const url = req ? req.url : String(input);
-    if (url !== endpoint) return nativeFetch(input, init);
+    if (!isSameRequestUrl(url, endpoint)) return nativeFetch(input, init);
     const raw = req ? await req.text() : String(init?.body ?? '{}');
     const answer = await api.supportOffer(JSON.parse(raw) as OfferBody, nativeFetch);
     if (answer.call_id) h.onCallId(answer.call_id);

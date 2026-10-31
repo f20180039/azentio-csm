@@ -15,10 +15,19 @@ export interface VoiceSession {
 }
 
 /**
- * Connects the browser mic and speaker to the voice service over Pipecat SmallWebRTC.
- * The libraries load on demand so the queue page and the typed-call path never pull in WebRTC code.
- * requestData carries only the call id; the voice service reads everything else from the API.
+ * Whether a fetch call is for the given endpoint. The Pipecat client wraps the endpoint in a Request, whose .url is
+ * always absolute, while VOICE_BASE may be relative ("/voice" behind the shared-panel proxy), so both sides are
+ * resolved against the page before comparing.
  */
+export function isSameRequestUrl(requestUrl: string, endpoint: string): boolean {
+  const base = typeof window === 'undefined' ? undefined : window.location.href;
+  try {
+    return new URL(requestUrl, base).href === new URL(endpoint, base).href;
+  } catch {
+    return requestUrl === endpoint;
+  }
+}
+
 /** Turns whatever the transport rejects with (a Response, a TypeError, an Error) into a message for the operator. */
 export function describeVoiceError(e: unknown): string {
   const seen = new Set<unknown>();
@@ -37,6 +46,11 @@ export function describeVoiceError(e: unknown): string {
   return e instanceof Error && e.message ? e.message : 'Check the voice service and microphone permission.';
 }
 
+/**
+ * Connects the browser mic and speaker to the voice service over Pipecat SmallWebRTC.
+ * The libraries load on demand so the queue page and the typed-call path never pull in WebRTC code.
+ * requestData carries only the call id; the voice service reads everything else from the API.
+ */
 export async function connectVoice(callId: string, audio: HTMLAudioElement | null, h: VoiceHandlers): Promise<VoiceSession> {
   const [{ PipecatClient }, { SmallWebRTCTransport }] = await Promise.all([
     import('@pipecat-ai/client-js'),
