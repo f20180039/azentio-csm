@@ -14,5 +14,5 @@ USER voice
 
 EXPOSE 7861
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7861/health')"
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7861"]
+    CMD python -c "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", 7861)}/health')"
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-7861}\""]

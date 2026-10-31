@@ -154,7 +154,8 @@ class LocalOnly:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] in ("http", "websocket") and scope["path"] not in PUBLIC_PATHS:
+        allow_proxied = os.getenv("ALLOW_PROXIED_REQUESTS", "").strip().lower() in ("true", "1", "yes")
+        if not allow_proxied and scope["type"] in ("http", "websocket") and scope["path"] not in PUBLIC_PATHS:
             headers = scope.get("headers", [])
             if any(name.lower() in TUNNEL_HEADERS for name, _ in headers) and not proxy_token_matches(headers, state.settings().voice_proxy_token):
                 if scope["type"] == "websocket":
@@ -170,9 +171,9 @@ class LocalOnly:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()] or ["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE", "PUT"],
+    allow_headers=["*"],
 )
 app.add_middleware(LocalOnly)
 
