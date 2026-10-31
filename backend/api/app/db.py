@@ -7,7 +7,9 @@ from typing import Iterator
 
 from app.config import RESOURCES
 from app.errors import ApiError
-from app.vocab import CallKind, CaseStatus, Channel, Outcome, sql_in
+from app.vocab import CallKind, CaseStatus, Channel, FeedbackVerdict, LessonStatus, Outcome, RatingSource, sql_in
+
+MIN_SCORE, MAX_SCORE = 1, 5
 
 SEED_SQL = RESOURCES / "seed" / "renewal_seed.sql"
 
@@ -65,6 +67,45 @@ CREATE TABLE IF NOT EXISTS calls (
     CHECK (kind <> '{CallKind.SUPPORT}' OR outcome IS NULL OR outcome IN ({sql_in(Outcome)}))
 );
 CREATE INDEX IF NOT EXISTS calls_kind_started_idx ON calls (kind, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS call_ratings (
+    call_id TEXT PRIMARY KEY REFERENCES calls (id),
+    score   INTEGER NOT NULL CHECK (score BETWEEN {MIN_SCORE} AND {MAX_SCORE}),
+    comment TEXT,
+    source  TEXT NOT NULL CHECK (source IN ({sql_in(RatingSource)})),
+    author  TEXT NOT NULL,
+    at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS turn_feedback (
+    call_id    TEXT    NOT NULL REFERENCES calls (id),
+    seq        INTEGER NOT NULL,
+    author     TEXT    NOT NULL,
+    verdict    TEXT    NOT NULL CHECK (verdict IN ({sql_in(FeedbackVerdict)})),
+    correction TEXT,
+    at         TEXT    NOT NULL,
+    PRIMARY KEY (call_id, seq, author)
+);
+
+CREATE TABLE IF NOT EXISTS review_resolutions (
+    call_id     TEXT PRIMARY KEY REFERENCES calls (id),
+    note        TEXT NOT NULL,
+    resolved_by TEXT NOT NULL,
+    resolved_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lessons (
+    id             TEXT PRIMARY KEY,
+    text           TEXT NOT NULL,
+    status         TEXT NOT NULL CHECK (status IN ({sql_in(LessonStatus)})),
+    source_call_id TEXT REFERENCES calls (id),
+    source_seq     INTEGER,
+    author         TEXT NOT NULL,
+    approved_by    TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lessons_status_idx ON lessons (status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

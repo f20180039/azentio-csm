@@ -48,6 +48,26 @@ def _turn(t: dict) -> dict:
             "meta": meta if isinstance(meta, dict) else {}}
 
 
+def rating_view(r: sqlite3.Row) -> dict:
+    return {"score": r["score"], "comment": r["comment"], "source": r["source"], "at": r["at"]}
+
+
+def feedback_view(r: sqlite3.Row) -> dict:
+    return {"seq": r["seq"], "verdict": r["verdict"], "correction": r["correction"], "author": r["author"],
+            "at": r["at"]}
+
+
+def ratings_by_call(con: sqlite3.Connection) -> dict[str, dict]:
+    return {r["call_id"]: rating_view(r) for r in con.execute("SELECT * FROM call_ratings")}
+
+
+def find_call(con: sqlite3.Connection, call_id: str) -> sqlite3.Row:
+    c = con.execute("SELECT * FROM calls WHERE id = ? AND kind = ?", (call_id, CallKind.SUPPORT)).fetchone()
+    if c is None:
+        raise ApiError.not_found(f"Support call {call_id} not found")
+    return c
+
+
 class SupportService:
     def __init__(self, db: Database, audit: AuditLog, clock: Clock):
         self.db = db
@@ -117,9 +137,15 @@ class SupportService:
     def get(self, call_id: str) -> dict:
         with self.db.read() as con:
             c = self._find(con, call_id)
+            rating = con.execute("SELECT * FROM call_ratings WHERE call_id = ?", (call_id,)).fetchone()
+            feedback: dict[int, list[dict]] = {}
+            for f in con.execute("SELECT * FROM turn_feedback WHERE call_id = ? ORDER BY at, author", (call_id,)):
+                feedback.setdefault(f["seq"], []).append(feedback_view(f))
         turns = loads(c["transcript"], [])
         return {"id": c["id"], "channel": c["channel"], "startedAt": c["started_at"], "endedAt": c["ended_at"],
-                "outcome": c["outcome"], "verified": verified(turns), "turns": [_turn(t) for t in turns]}
+                "outcome": c["outcome"], "verified": verified(turns),
+                "rating": rating_view(rating) if rating else None,
+                "turns": [{**_turn(t), "feedback": feedback.get(t.get("seq"), [])} for t in turns]}
 
     def list(self, outcome: Outcome | None, limit: int) -> dict:
         if limit < 1 or limit > MAX_LIMIT:
@@ -133,16 +159,14 @@ class SupportService:
         params.append(limit)
         with self.db.read() as con:
             rows = con.execute(sql, params).fetchall()
+            ratings = ratings_by_call(con)
         items = []
         for c in rows:
             turns = loads(c["transcript"], [])
             items.append({"id": c["id"], "channel": c["channel"], "startedAt": c["started_at"],
                           "endedAt": c["ended_at"], "outcome": c["outcome"], "verified": verified(turns),
-                          "turnCount": len(turns), "intents": intents(turns)})
+                          "turnCount": len(turns), "intents": intents(turns), "rating": ratings.get(c["id"])})
         return {"items": items}
 
     def _find(self, con: sqlite3.Connection, call_id: str) -> sqlite3.Row:
-        c = con.execute("SELECT * FROM calls WHERE id = ? AND kind = ?", (call_id, CallKind.SUPPORT)).fetchone()
-        if c is None:
-            raise ApiError.not_found(f"Support call {call_id} not found")
-        return c
+        return find_call(con, call_id)

@@ -5,11 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel
 
-from app.auth import User, staff_or_voice, voice
+from app.auth import User, reviewer, staff_or_voice, voice
 from app.paths import ApiPath
 from app.services.container import Services, services
 from app.services.support import parse
-from app.vocab import Channel, Outcome, TurnRole
+from app.vocab import Channel, FeedbackVerdict, Outcome, RatingSource, TurnRole
 
 router = APIRouter(prefix=ApiPath.SUPPORT_CALLS, tags=["Support Calls"])
 
@@ -27,6 +27,17 @@ class TurnRequest(BaseModel):
 
 class EndRequest(BaseModel):
     outcome: str | None = None
+
+
+class RatingRequest(BaseModel):
+    score: Any = None
+    comment: Any = None
+    source: str | None = None
+
+
+class FeedbackRequest(BaseModel):
+    verdict: str | None = None
+    correction: Any = None
 
 
 @router.post("", status_code=201)
@@ -61,3 +72,16 @@ def list_calls(outcome: str | None = None, limit: int = 50, _: User = Depends(st
                s: Services = Depends(services)):
     parsed = parse(Outcome, "outcome", outcome) if outcome and outcome.strip() else None
     return s.support.list(parsed, limit)
+
+
+@router.post(ApiPath.SUPPORT_RATING, status_code=201)
+def rate(call_id: UUID, body: RatingRequest, user: User = Depends(staff_or_voice), s: Services = Depends(services)):
+    source = parse(RatingSource, "source", body.source)
+    return s.review.rate(str(call_id), body.score, body.comment, source, user)
+
+
+@router.post(ApiPath.SUPPORT_TURN_FEEDBACK, status_code=201)
+def feedback(call_id: UUID, seq: int, body: FeedbackRequest, user: User = Depends(reviewer),
+             s: Services = Depends(services)):
+    verdict = parse(FeedbackVerdict, "verdict", body.verdict)
+    return s.review.feedback(str(call_id), seq, verdict, body.correction, user)

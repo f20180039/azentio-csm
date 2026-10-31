@@ -31,6 +31,15 @@ class ApiPath(StrEnum):
     SUPPORT_TURNS = "/{call_id}/turns"
     SUPPORT_TURN_META = "/{call_id}/turns/{seq}/meta"
     SUPPORT_END = "/{call_id}/end"
+    SUPPORT_RATING = "/{call_id}/rating"
+    SUPPORT_TURN_FEEDBACK = "/{call_id}/turns/{seq}/feedback"
+
+    SUPPORT = "/support"
+    SUPPORT_REVIEW = "/review"
+    SUPPORT_REVIEW_RESOLVE = "/review/{call_id}/resolve"
+    SUPPORT_LESSONS = "/lessons"
+    SUPPORT_LESSON = "/lessons/{lesson_id}"
+    SUPPORT_INSIGHTS = "/insights"
 
     CASES = "/cases"
     CASE = "/{case_id}"
