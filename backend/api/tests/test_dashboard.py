@@ -139,3 +139,11 @@ def test_cases_list_is_a_spring_page(client):
     page = client.get("/api/v1/cases", headers=ANALYST).json()
     assert page["totalElements"] == 1 and page["content"][0]["caseType"] == "renewal_call"
     assert client.get("/api/v1/cases", params={"status": "NOPE"}, headers=ANALYST).status_code == 400
+
+    # Date filters
+    today = page["content"][0]["createdAt"][:10]
+    matched = client.get("/api/v1/cases", params={"dateFrom": today, "dateTo": today}, headers=ANALYST).json()
+    assert matched["totalElements"] == 1
+
+    empty = client.get("/api/v1/cases", params={"dateFrom": "2099-01-01"}, headers=ANALYST).json()
+    assert empty["totalElements"] == 0

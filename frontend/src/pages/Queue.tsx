@@ -21,10 +21,60 @@ function FilterIcon() {
   );
 }
 
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="12" height="11" rx="2" />
+      <path d="M2 7h12M5 1.5v3M11 1.5v3" />
+    </svg>
+  );
+}
+
+export function matchesDate(c: CaseSummary, preset: string, from: string, to: string): boolean {
+  if (!preset && !from && !to) return true;
+  if (!c.createdAt) return false;
+  const created = new Date(c.createdAt).getTime();
+  if (isNaN(created)) return true;
+
+  const now = new Date();
+  if (preset === 'today') {
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return created >= startOfToday;
+  }
+  if (preset === 'yesterday') {
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+    return created >= startOfYesterday && created < startOfToday;
+  }
+  if (preset === '7d') {
+    const cutoff = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    return created >= cutoff;
+  }
+  if (preset === '30d') {
+    const cutoff = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    return created >= cutoff;
+  }
+  if (preset === 'custom' || from || to) {
+    if (from) {
+      const fromTime = new Date(`${from}T00:00:00`).getTime();
+      if (!isNaN(fromTime) && created < fromTime) return false;
+    }
+    if (to) {
+      const toTime = new Date(`${to}T23:59:59.999`).getTime();
+      if (!isNaN(toTime) && created > toTime) return false;
+    }
+    return true;
+  }
+  return true;
+}
+
 export function Queue() {
   const [params, setParams] = useSearchParams();
   const status = (params.get('status') ?? '') as CaseStatus | '';
   const caseType = params.get('caseType') ?? '';
+  const datePreset = params.get('datePreset') ?? '';
+  const dateFrom = params.get('dateFrom') ?? '';
+  const dateTo = params.get('dateTo') ?? '';
   const [cases, setCases] = useState<CaseSummary[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [packs, setPacks] = useState<RulePackInfo[]>([]);
@@ -35,13 +85,21 @@ export function Queue() {
   const [query, setQuery] = useUrlQuery();
   const typeLabel = useCallback((t: string) => packs.find((p) => p.caseType === t)?.label ?? humanise(t), [packs]);
   const shown = useMemo(
-    () => cases?.filter((c) => matches(query, c.title, c.id, c.caseType, typeLabel(c.caseType), c.status, humanise(c.status))) ?? null,
-    [cases, query, typeLabel],
+    () =>
+      cases
+        ?.filter((c) => matchesDate(c, datePreset, dateFrom, dateTo))
+        .filter((c) => matches(query, c.title, c.id, c.caseType, typeLabel(c.caseType), c.status, humanise(c.status))) ?? null,
+    [cases, query, typeLabel, datePreset, dateFrom, dateTo],
   );
 
   const load = useCallback(async () => {
     try {
-      const [page, s] = await Promise.all([api.listCases({ status, caseType }), api.getStats().catch(() => null)]);
+      const qFrom = datePreset === 'custom' && dateFrom ? dateFrom : undefined;
+      const qTo = datePreset === 'custom' && dateTo ? dateTo : undefined;
+      const [page, s] = await Promise.all([
+        api.listCases({ status, caseType, dateFrom: qFrom, dateTo: qTo }),
+        api.getStats().catch(() => null),
+      ]);
       setCases(page.items);
       setStats(s);
       errorShown.current = false;
@@ -50,7 +108,7 @@ export function Queue() {
       errorShown.current = true;
       setCases((c) => c ?? []);
     }
-  }, [status, caseType, toast]);
+  }, [status, caseType, datePreset, dateFrom, dateTo, toast]);
 
   useEffect(() => {
     load();
@@ -71,6 +129,17 @@ export function Queue() {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
+    setParams(next, { replace: true });
+  }
+
+  function setDatePreset(v: string) {
+    const next = new URLSearchParams(params);
+    if (v) next.set('datePreset', v);
+    else next.delete('datePreset');
+    if (v !== 'custom') {
+      next.delete('dateFrom');
+      next.delete('dateTo');
+    }
     setParams(next, { replace: true });
   }
 
@@ -136,7 +205,55 @@ export function Queue() {
           onChange={(v) => setFilter('caseType', v)}
           options={[{ value: '', label: 'All case types' }, ...packs.map((p) => ({ value: p.caseType, label: p.label ?? humanise(p.caseType) }))]}
         />
-        {(status || caseType) && (
+        <label className="sr-only" htmlFor="filter-date">
+          Date
+        </label>
+        <Select
+          id="filter-date"
+          value={datePreset}
+          onChange={setDatePreset}
+          icon={<CalendarIcon />}
+          options={[
+            { value: '', label: 'All dates' },
+            { value: 'today', label: 'Today' },
+            { value: 'yesterday', label: 'Yesterday' },
+            { value: '7d', label: 'Past 7 days' },
+            { value: '30d', label: 'Past 30 days' },
+            { value: 'custom', label: 'Custom range…' },
+          ]}
+        />
+        {datePreset === 'custom' && (
+          <div className="date-inputs" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <label className="sr-only" htmlFor="filter-date-from">
+              From date
+            </label>
+            <input
+              id="filter-date-from"
+              type="date"
+              aria-label="From date"
+              value={dateFrom}
+              onChange={(e) => setFilter('dateFrom', e.target.value)}
+              placeholder="From"
+              style={{ padding: '6px 10px', fontSize: 'var(--fs-xs)' }}
+            />
+            <span className="muted small" aria-hidden="true">
+              to
+            </span>
+            <label className="sr-only" htmlFor="filter-date-to">
+              To date
+            </label>
+            <input
+              id="filter-date-to"
+              type="date"
+              aria-label="To date"
+              value={dateTo}
+              onChange={(e) => setFilter('dateTo', e.target.value)}
+              placeholder="To"
+              style={{ padding: '6px 10px', fontSize: 'var(--fs-xs)' }}
+            />
+          </div>
+        )}
+        {(status || caseType || datePreset || dateFrom || dateTo) && (
           <button
             className="btn ghost sm"
             onClick={() => setParams(query ? { [SearchParam.QUERY]: query } : {}, { replace: true })}
@@ -197,7 +314,7 @@ export function Queue() {
         {cases?.length === 0 && (
           <div className="empty">
             <strong>No cases match</strong>
-            <span>{status || caseType ? 'Clear the filters, or upload a document.' : 'Upload a document with New case to start.'}</span>
+            <span>{status || caseType || datePreset || dateFrom || dateTo ? 'Clear the filters, or upload a document.' : 'Upload a document with New case to start.'}</span>
           </div>
         )}
         {!!cases?.length && shown?.length === 0 && <NoResults query={query} onClear={() => setQuery('')} />}

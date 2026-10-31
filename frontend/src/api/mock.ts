@@ -306,8 +306,10 @@ export const mockApi: Api = {
   async listCases(q: CaseQuery = {}) {
     requireSession();
     await delay();
+    const toBound = q.dateTo ? (q.dateTo.length === 10 ? `${q.dateTo}T23:59:59.999Z` : q.dateTo) : null;
     const items = cases
       .filter((c) => (!q.status || c.status === q.status) && (!q.caseType || c.caseType === q.caseType))
+      .filter((c) => (!q.dateFrom || c.createdAt >= q.dateFrom) && (!toBound || c.createdAt <= toBound))
       .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0) || (b.amountAtRisk ?? 0) - (a.amountAtRisk ?? 0))
       .map(summary);
     return { items, total: items.length };

@@ -26,7 +26,8 @@ class CaseService:
         self.audit = audit
         self.clock = clock
 
-    def list(self, status: CaseStatus | None, case_type: str | None, page: int, size: int) -> dict:
+    def list(self, status: CaseStatus | None, case_type: str | None, page: int, size: int,
+             date_from: str | None = None, date_to: str | None = None) -> dict:
         page = max(0, page)
         size = min(max(1, size), MAX_PAGE_SIZE)
         where, params = [], []
@@ -36,6 +37,12 @@ class CaseService:
         if case_type:
             where.append("case_type = ?")
             params.append(case_type)
+        if date_from:
+            where.append("created_at >= ?")
+            params.append(date_from)
+        if date_to:
+            where.append("created_at <= ?")
+            params.append(f"{date_to}T23:59:59.999Z" if len(date_to) == 10 else date_to)
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         with self.db.read() as con:
             total = con.execute(f"SELECT count(*) FROM cases{clause}", params).fetchone()[0]
