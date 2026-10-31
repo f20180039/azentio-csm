@@ -1,0 +1,3 @@
+# Support conversation scenarios
+
+Each YAML file contains one synthetic customer conversation: a stable `id`, `title`, optional `customer` fixture (`mobile`, `dob`), ordered `turns` with `say` and `expect`, and an `outcome` summary. Expectations can name intents, verification state, response fragments (`must_say_any`), tools (`tools_any`), created records, and refusal or routing constraints. Outcome counts track tickets, complaints, routed queries, and escalations. Omit `customer` for callers who should not verify. All data is synthetic; intent values use `docs/team/tasks-pavan.md`. These scripts describe evaluation expectations and do not mutate simulator records.

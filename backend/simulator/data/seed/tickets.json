@@ -1,0 +1,10 @@
+[
+  {
+    "customer_ref": "CUST-1002",
+    "ref": "SR-40102",
+    "category": "STATEMENT",
+    "status": "IN_PROGRESS",
+    "summary": "Account statement request for last 6 months",
+    "days_ago": 2
+  }
+]

@@ -1,0 +1,73 @@
+"""The speech front end shared by live calls and recorded-audio simulation: voice detection settings, the speech-to-text
+service, and the filter that drops transcripts the model invents from noise. Values are tuned from spikes/stt-bench."""
+import re
+
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.frames.frames import TranscriptionFrame
+from pipecat.services.groq.stt import GroqSTTService
+
+# Live voice detection (docs/stt-benchmark.md): stopping at 0.4 s instead of 0.2 s splits ~30% fewer sentences in two,
+# so fewer speech-to-text requests and fewer half-sentence turns, for 0.2 s more end-of-turn wait.
+VAD_CONFIDENCE = 0.7
+VAD_MIN_VOLUME = 0.6
+VAD_START_SECS = 0.2
+VAD_STOP_SECS = 0.4
+# Recorded-audio trimming
+MIN_SPEECH_SECS = 0.25      # shorter bursts (a cough, a door) start no segment
+PRE_ROLL_SECS = 0.2         # keep the start of the first word
+POST_ROLL_SECS = 0.2
+MERGE_GAP_SECS = 0.6        # a pause inside a sentence stays one segment
+LANGUAGE = "en"
+# Groq's turbo always reports no_speech_prob 0, so log-probability carries the filter (removed 5/20 false transcripts, 0 speech lost)
+NO_SPEECH_PROB_MAX = 0.5
+AVG_LOGPROB_MIN = -0.7
+# The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
+DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001."
+
+# Whisper's well-known inventions on silence and noise. Not "okay" or "bye": callers say those.
+PHANTOMS = {"thank you", "thanks for watching", "thank you for watching", "you", "thank you so much", "please subscribe"}
+_PUNCT = re.compile(r"[^\w\s]")
+
+REF_PREFIXES = ("SR", "CMP", "RQ", "ESC", "PL", "VL", "HL", "LA", "HP", "MP", "CLM", "TXN")
+_DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "to": "2", "too": "2", "three": "3", "four": "4", "for": "4",
+                "five": "5", "six": "6", "seven": "7", "eight": "8", "ate": "8", "nine": "9"}
+_TOKEN = r"(?:\d+|" + "|".join(sorted(_DIGIT_WORDS, key=len, reverse=True)) + r")\b"
+_SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
+_REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
+
+
+def normalise_refs(text: str) -> str:
+    """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents."""
+    text = _SPELLED_PREFIX.sub(lambda m: m.group(1).replace(" ", "").upper(), text)
+
+    def fix(m: re.Match) -> str:
+        digits = "".join(_DIGIT_WORDS.get(p.lower(), p) for p in re.split(r"[\s.-]+", m.group(2)) if p)
+        return f"{m.group(1).upper()}-{digits}" if 4 <= len(digits) <= 8 else m.group(0)
+    return _REF.sub(fix, text)
+
+
+def build_vad() -> SileroVADAnalyzer:
+    return SileroVADAnalyzer(params=VADParams(confidence=VAD_CONFIDENCE, min_volume=VAD_MIN_VOLUME,
+                                              start_secs=VAD_START_SECS, stop_secs=VAD_STOP_SECS))
+
+
+def build_stt(settings) -> GroqSTTService:
+    return GroqSTTService(api_key=settings.groq_api_key,
+                          settings=GroqSTTService.Settings(model=settings.stt_model, prompt=DOMAIN_PROMPT))
+
+
+def is_phantom(text: str) -> bool:
+    words = _PUNCT.sub("", text).strip().lower()
+    return not words or words in PHANTOMS
+
+
+def is_invented_segment(segment: dict) -> bool:
+    """A Whisper segment the model itself flags as probably not speech, or one that is only a known phantom phrase."""
+    return (segment.get("no_speech_prob", 0.0) > NO_SPEECH_PROB_MAX or segment.get("avg_logprob", 0.0) < AVG_LOGPROB_MIN
+            or is_phantom(segment.get("text", "")))
+
+
+def keep_transcript(frame: TranscriptionFrame) -> str | None:
+    text = (frame.text or "").strip()
+    return None if is_phantom(text) else normalise_refs(text)

@@ -1,0 +1,13 @@
+id: 05-complaint-incorrect-charge
+title: Incorrect charge complaint and existing complaint status
+customer: {mobile: "9876500006", dob: "1995-12-05"}
+turns:
+  - say: "There is an incorrect charge on my home loan, and I want an update on CMP-50011."
+    expect: {intents: [COMPLAINT, SERVICE_REQUEST]}
+  - say: "My number is 98765 00006 and my date of birth is the fifth of December nineteen ninety-five."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "First tell me the status of complaint CMP-50011."
+    expect: {intents: [SERVICE_REQUEST], tools_any: [get_ticket]}
+  - say: "Please register my concern about that incorrect charge."
+    expect: {intents: [COMPLAINT], creates: {complaint: INCORRECT_CHARGE}, tools_any: [register_complaint]}
+outcome: {tickets: 0, complaints: 1, routed: 0, escalations: 0}

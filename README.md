@@ -1,10 +1,78 @@
-# Case Intelligence Starter
+# Azentio-CSM: customer service voice agent (problem #05)
 
-Reusable scaffolding for document-driven review workflows. Documents come in, structured data comes out, a configurable rules engine scores each case, an LLM explains the findings with quotes it must prove, and a human reviewer decides. Every step lands in a tamper-evident audit log.
+A voice agent for a bank's customer service line, built for the Azentio.ai Build Labs hackathon on synthetic data. It is a prototype: it is not certified for any regulatory compliance and has not run against real customers or production systems.
 
-Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [api/](api/README.md), [agent/](agent/README.md), [voice/](voice/README.md), [web/](web/README.md).
+Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [backend/api/](backend/api/README.md), [backend/agent/](backend/agent/README.md), [backend/voice/](backend/voice/README.md), [frontend/](frontend/README.md).
 
-**Renewal Desk** (problem #05, CSM voice agent) is the topic built on top: an insurance renewal call that an analyst starts from the Renewals queue and the customer takes in the browser. The agent talks, but the API decides what it may offer.
+## What it does
+
+A customer phones the bank's service line and speaks naturally. The front-desk agent:
+- works out what they want: loan application status, repayment, account, service request, product question, complaint, insurance. It handles several requests in one call and asks a clarifying question when the request is unclear;
+- verifies them by registered mobile number and date of birth before anything personal. Three failures lock verification, and another customer's record is refused **by the bank simulator**, not just by the prompt;
+- answers only from the simulated bank systems and the approved FAQ. Every figure it says appears in that turn's retrieved data;
+- raises service requests and complaints with reference numbers, escalates fraud and unauthorised debits to a human, and politely declines and **routes** anything unsupported;
+- shows every step on the operator panel: the recognised speech, intents, verification status, the data each reply used, the reply text and the history.
+
+| Service | Path | Port |
+|---|---|---|
+| Voice agent (Pipecat, Groq Whisper and LLM, Edge voice) | `backend/voice` | 7861 |
+| Bank simulator: loan applications, loan accounts, core banking, tickets, insurance, FAQ | `backend/simulator` | 8090 |
+| System of record: calls, turns, audit log, Renewal Desk (Spring Boot, Postgres) | `backend/api` | 8080 |
+| Operator panel (React) | `frontend` | 5173 |
+
+**Three ways in, one agent:**
+- the browser microphone (**Support desk → Start a call → Microphone**);
+- recorded audio files (**Upload audio**, `POST /sim/audio`, or `scripts/simulate_audio.py`);
+- typed turns (`POST /support/text-turn`).
+
+All three use the same speech front end and the same agent, and record the same turn data.
+
+**Speech front end** (measured in [docs/stt-benchmark.md](docs/stt-benchmark.md) on Indian, British, Nigerian and American voices, clean and in café noise):
+- Silero voice detection tuned so pure noise never reaches speech-to-text;
+- a banking-vocabulary prompt for Whisper (word errors 4.6% → 3.7%; in noise 7.3% → 5.1%);
+- a filter for words Whisper invents from noise;
+- repair of spoken references ("S R four zero one zero two" → `SR-40102`);
+- no noise reduction, because it tripled errors in noise.
+
+**Renewal Desk**, the earlier outbound insurance-renewal agent, is still here (Renewals in the web app). It is planned as a specialist the front desk can hand renewal calls to.
+
+## Quick start without Docker
+
+```bash
+cp .env.example .env            # add GROQ_API_KEY (free at console.groq.com); never an Anthropic key
+scripts/dev-up.sh               # Spring + simulator + voice + web, on a local Postgres
+open http://localhost:5173/support   # sign in as analyst/analyst
+scripts/dev-down.sh
+```
+
+If a port is busy, the script names the process. You can also pick other ports with `API_PORT=8081 SIM_PORT=8091 VOICE_PORT=7862 WEB_PORT=5174 scripts/dev-up.sh`.
+
+## Recorded-audio simulation
+
+`POST /sim/audio` (voice service) takes multipart `files`, one file per customer turn, in order. It also takes an optional `call_id` to continue a call, and `speak=false` to skip reply audio. Any format ffmpeg/PyAV reads works (WAV, MP3, M4A, OGG, FLAC, WebM).
+
+```json
+{"call_id": "…", "ended": false, "outcome": null,
+ "turns": [{"file": "t1.wav", "transcript": "When is my next EMI?", "no_speech": false, "speech_secs": 1.81, "upload_bytes": 39395,
+            "intents": ["REPAYMENT"], "verified": false, "tool_trace": [{"name": "…", "args": {}, "result": {}}],
+            "retrieved": {"<tool>": {}}, "refs": [], "reply_text": "…", "reply_audio_b64": "<mp3>", "latency_ms": 2960}]}
+```
+
+- A file with only silence or noise comes back with `"no_speech": true` and no reply.
+- `python backend/voice/scripts/simulate_audio.py <files|folders>` writes a markdown and JSON report.
+- `python -m eval.run_scenarios [--audio --accent in|gb|ng|us --condition clean|noisy | --full]`, run from `backend/voice`, scores the scripted #05 scenarios: intents, verification, required and forbidden phrases, tickets, routing, and disclosure before verification (target 0).
+
+## Demo script (seed customers in `backend/simulator/data/seed`)
+
+| Scenario | Say | Expect |
+|---|---|---|
+| Loan application status | "I applied for a personal loan last week, what's the status? And when is my first instalment?" then 98765 00001 / 12 April 1990 | Document verification, never "approved". No schedule until disbursal. |
+| Repayment, then correction | "When is my next EMI?" then 98765 00002 / 3 Nov 1985, then "No, I meant my vehicle loan" | ₹12,450 personal loan, then ₹9,800 vehicle loan, with no re-verification. |
+| Service request, then unsupported | "Send me my loan statement", then "Can you book me a flight to Dubai?" | A ticket SR-… read back, and a polite refusal plus a routed query RQ-…. |
+| Failed transaction | 98765 00004 / 14 Feb 1978, "my transfer failed" | Recorded status only, no guessed cause. Offers a complaint. |
+| Someone else's loan | Verified as 98765 00002, "what about loan VL-31007?" | Declined; nothing disclosed. |
+| Unauthorised debit | 98765 00008 / 9 Mar 1982, "I didn't make this ₹48,999 payment" | Complaint CMP-… plus escalation to a human. |
+| Three wrong dates of birth | any mobile, wrong DOB × 3 | Locked; nothing personal shared. |
 
 ## Run it
 
@@ -38,12 +106,12 @@ Sign in as `analyst/analyst`, `reviewer/reviewer` or `admin/admin`.
 **Without Docker**
 
 1. Create a database: `createdb caseintel`, or reuse an existing one by passing `DB_URL`.
-2. Start the agent: `cd agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
-3. Start the API: `cd api && DB_URL=jdbc:postgresql://localhost:5432/caseintel ./mvnw spring-boot:run`
-4. Start the voice service: `cd voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
-5. Start the web app: `cd web && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
+2. Start the agent: `cd backend/agent && LLM_PROVIDER=ollama .venv/bin/uvicorn app.main:app --port 8000`
+3. Start the API: `cd backend/api && DB_URL=jdbc:postgresql://localhost:5432/caseintel ./mvnw spring-boot:run`
+4. Start the voice service: `cd backend/voice && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && GROQ_API_KEY=... .venv/bin/uvicorn app.main:app --port 7861`. Start the API with `ENFORCE_CALLING_HOURS=false` to call outside calling hours.
+5. Start the web app: `cd frontend && npm run dev`. Use `npm run dev:mock` for the UI alone, on example data.
 
-**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `voice/README.md`.
+**Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic. Set the five `TWILIO_*`/`PUBLIC_BASE_URL` values in `.env` (see `.env.example`), run `cloudflared tunnel --url http://localhost:7861`, put its https URL in `PUBLIC_BASE_URL` and restart the voice service; "Call a phone" on the call page then lists the allowed numbers, masked. Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there. End call on the web does not hang up the phone: the agent's `end_call` or the customer does. Details in `backend/voice/README.md`.
 
 ## Try it
 
@@ -75,7 +143,7 @@ cd ../agent && .venv/bin/python eval/run_eval.py --truth ../samples/ground_truth
 
 ## Voice latency
 
-End of customer speech to first agent audio, measured at the client with `voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [voice/README.md](voice/README.md)).
+End of customer speech to first agent audio, measured at the client with `backend/voice/scripts/headless_call.py` on policy HF-2291-0457 (details in [backend/voice/README.md](backend/voice/README.md)).
 
 | Customer says | Latency |
 |---|---|
@@ -99,7 +167,7 @@ Rule 3 of Azentio.ai Build Labs asks for this. The rows marked "Before the event
 | Topic layer: Renewal Desk | The `renewals` package in `api/` (call state, identity check, discount and offer limits, handoff, audit), the `voice/` service, the web Renewals and Call pages, and `agent/datagen/renewals.py` (synthetic policies) | During the event (29 Oct 2026) |
 | `voice/app/edge_tts_service.py` | Pipecat text-to-speech service around edge-tts, ported from a throwaway latency spike written during the event (29 Oct 2026). Event work, not pre-built | During the event (29 Oct 2026) |
 
-**Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `agent/app/pdf.py` and the test fixtures that build PDFs would change.
+**Third-party libraries with copyleft licences:** the agent uses PyMuPDF 1.25.1 (`backend/agent/requirements.txt`) for PDF text, fonts, metadata and revision history. PyMuPDF is AGPL-3.0, so this project is offered under AGPL-compatible terms for the event. For production, pdfminer.six (MIT) with pypdf (BSD) is the permissive swap; only `backend/agent/app/pdf.py` and the test fixtures that build PDFs would change.
 
 **Third-party libraries in the voice stack** (licences read from the installed package metadata):
 

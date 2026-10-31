@@ -1,0 +1,22 @@
+[
+  {
+    "customer_ref": "CUST-1001",
+    "ref": "LA-24001",
+    "product": "Personal Loan",
+    "amount": 250000,
+    "stage": "DOCUMENT_VERIFICATION",
+    "stage_label": "Document Verification",
+    "submitted_days_ago": 6,
+    "next_step": "None required from you"
+  },
+  {
+    "customer_ref": "CUST-1007",
+    "ref": "LA-24009",
+    "product": "Personal Loan",
+    "amount": 150000,
+    "stage": "REJECTED",
+    "stage_label": "Application Rejected",
+    "submitted_days_ago": 14,
+    "next_step": "Application closed. You may reapply after 6 months."
+  }
+]

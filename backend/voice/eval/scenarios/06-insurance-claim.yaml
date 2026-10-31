@@ -1,0 +1,11 @@
+id: 06-insurance-claim
+title: Claim status and lapsed motor policy
+customer: {mobile: "9876500005", dob: "1988-09-30"}
+turns:
+  - say: "Can you check my health insurance claim and tell me if my motor policy is active?"
+    expect: {intents: [INSURANCE]}
+  - say: "My number is 98765 00005 and my birthday is the thirtieth of September nineteen eighty-eight."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "Please check claim CLM-7001 and policy MP-77002."
+    expect: {intents: [INSURANCE], must_say_any: ["UNDER_REVIEW", "under review"], tools_any: [get_claims, get_policies], never_say: ["approved", "will be approved"]}
+outcome: {tickets: 0, complaints: 0, routed: 0, escalations: 0, never_say: ["approved"]}

@@ -1,0 +1,58 @@
+[
+  {
+    "customer_ref": "CUST-1001",
+    "first_name": "Asha",
+    "last_name": "Verma",
+    "mobile": "9876500001",
+    "dob": "1990-04-12"
+  },
+  {
+    "customer_ref": "CUST-1002",
+    "first_name": "Rahul",
+    "last_name": "Iyer",
+    "mobile": "9876500002",
+    "dob": "1985-11-03"
+  },
+  {
+    "customer_ref": "CUST-1003",
+    "first_name": "Fatima",
+    "last_name": "Khan",
+    "mobile": "9876500003",
+    "dob": "1992-07-21"
+  },
+  {
+    "customer_ref": "CUST-1004",
+    "first_name": "Arjun",
+    "last_name": "Nair",
+    "mobile": "9876500004",
+    "dob": "1978-02-14"
+  },
+  {
+    "customer_ref": "CUST-1005",
+    "first_name": "Meera",
+    "last_name": "Pillai",
+    "mobile": "9876500005",
+    "dob": "1988-09-30"
+  },
+  {
+    "customer_ref": "CUST-1006",
+    "first_name": "Vikram",
+    "last_name": "Rao",
+    "mobile": "9876500006",
+    "dob": "1995-12-05"
+  },
+  {
+    "customer_ref": "CUST-1007",
+    "first_name": "Sana",
+    "last_name": "Mirza",
+    "mobile": "9876500007",
+    "dob": "1999-05-18"
+  },
+  {
+    "customer_ref": "CUST-1008",
+    "first_name": "David",
+    "last_name": "Fernandes",
+    "mobile": "9876500008",
+    "dob": "1982-03-09"
+  }
+]

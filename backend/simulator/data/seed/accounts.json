@@ -1,0 +1,34 @@
+[
+  {
+    "customer_ref": "CUST-1002",
+    "account_id": "ACC-20002",
+    "type": "SAVINGS",
+    "masked_number": "••• ••• 4012",
+    "balance": 85400,
+    "currency": "INR"
+  },
+  {
+    "customer_ref": "CUST-1004",
+    "account_id": "ACC-20004",
+    "type": "SAVINGS",
+    "masked_number": "••• ••• 8821",
+    "balance": 42300,
+    "currency": "INR"
+  },
+  {
+    "customer_ref": "CUST-1007",
+    "account_id": "ACC-20007",
+    "type": "CURRENT",
+    "masked_number": "••• ••• 1905",
+    "balance": 1200,
+    "currency": "INR"
+  },
+  {
+    "customer_ref": "CUST-1008",
+    "account_id": "ACC-20008",
+    "type": "SAVINGS",
+    "masked_number": "••• ••• 9001",
+    "balance": 115000,
+    "currency": "INR"
+  }
+]
