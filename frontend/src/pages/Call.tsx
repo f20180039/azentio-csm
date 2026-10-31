@@ -8,13 +8,13 @@ import { connectVoice, type VoiceSession } from '../api/voice';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatCallback, formatInr } from '../format';
+import { useCallPolling } from '../hooks/useCallPolling';
 import { useSession } from '../session';
 import { Route } from '../routes';
 import { CallOutcome as Outcome, CallTurnRole, Role } from '../vocab';
 import { AuditTab, CaseActions } from './CaseWorkspace';
 
-const POLL_MS = 1000;
-/** The voice service forgets an unanswered dial after this long, so the page does too. */
+/** The voice service forgets an unanswered dial after this long (its PENDING_TTL_SECS), so a page stops waiting for it too. */
 export const PHONE_RING_TIMEOUT_MS = 120_000;
 export const PHONE_END_HINT = 'Hang up on the phone (or let the agent end the call)';
 
@@ -114,17 +114,20 @@ export function Call() {
   const loaded = useRef(false);
   const unmounted = useRef(false);
 
-  const refresh = useCallback(async () => {
+  /** Fetches the call; `false` when it could not be (one toast per run of failures, and the poller backs off). */
+  const refresh = useCallback(async (): Promise<boolean> => {
     try {
       const c = await getCall(callId);
       setCall(c);
       loaded.current = true;
       if (c.outcome) setOutcome(c.outcome);
       pollError.current = false;
+      return true;
     } catch (e) {
       if (!pollError.current) toast.error(e);
       pollError.current = true;
       if (!loaded.current) setNotFound(true);
+      return false;
     }
   }, [callId, toast]);
 
@@ -141,12 +144,10 @@ export function Call() {
     void s?.disconnect().catch(() => undefined);
   }, [ended]);
 
-  useEffect(() => {
-    void refresh();
-    if (ended) return;
-    const t = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(t);
-  }, [refresh, ended]);
+  // the transcript can change from outside this page while voice connects or runs, a phone is dialled, rings or is
+  // answered, or a typed turn is being answered; at any other time only another operator could change the call
+  const liveLeg = voice !== 'off' || phone !== 'off' || sending;
+  useCallPolling(refresh, { callId, live: liveLeg, ended });
 
   useEffect(() => {
     unmounted.current = false;

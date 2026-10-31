@@ -38,13 +38,14 @@ import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
+import { useCallPolling } from '../hooks/useCallPolling';
 import { Route } from '../routes';
 import { Highlight, turnMatches } from '../search';
 import { SpeechLanguage, TurnRole, Verification } from '../vocab';
+import { PHONE_RING_TIMEOUT_MS } from './Call';
 import { RatingPanel, TranscriptCorrectionBlock, TurnFeedbackBlock } from './CallFeedback';
 import { CallStatusPill } from './SupportDesk';
 
-const POLL_MS = 1000;
 const MONEY_KEY = /amount|balance|premium|principal|sum_insured/i;
 
 /* ---------- small pieces ---------- */
@@ -388,10 +389,12 @@ interface UploadProps {
   disabled: boolean;
   onCallId: (id: string) => void;
   onResults: (r: SimTurn[]) => void;
+  /** Files are being sent: the agent is writing turns to the call record right now. */
+  onSending: (sending: boolean) => void;
   results: SimTurn[];
 }
 
-function UploadPanel({ callId, disabled, onCallId, onResults, results }: UploadProps) {
+function UploadPanel({ callId, disabled, onCallId, onResults, onSending, results }: UploadProps) {
   const toast = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [drag, setDrag] = useState(false);
@@ -418,6 +421,7 @@ function UploadPanel({ callId, disabled, onCallId, onResults, results }: UploadP
     let id = callId;
     const collected: SimTurn[] = [];
     setSending({ done: 0, total: files.length, name: files[0]?.name ?? '' });
+    onSending(true);
     try {
       for (let i = 0; i < files.length; i++) {
         setSending({ done: i, total: files.length, name: files[i].name });
@@ -434,6 +438,7 @@ function UploadPanel({ callId, disabled, onCallId, onResults, results }: UploadP
       toast.error(e);
     } finally {
       setSending(null);
+      onSending(false);
     }
   }
 
@@ -622,6 +627,9 @@ export function SupportCall() {
   const [paused, setPaused] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [results, setResults] = useState<SimTurn[]>(() => (location.state as { results?: SimTurn[] } | null)?.results ?? []);
+  const [uploading, setUploading] = useState(false);
+  /** A phone rung from this page: ringing until a turn arrives (answered: live) or the voice service gives up on it. */
+  const [phone, setPhone] = useState<'off' | 'ringing' | 'live'>('off');
   const [ending, setEnding] = useState<'closed' | 'open' | 'busy'>('closed');
   const session = useRef<VoiceSession | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
@@ -632,29 +640,41 @@ export function SupportCall() {
 
   const ended = !!call?.endedAt;
 
-  const refresh = useCallback(async () => {
-    if (!callId) return;
+  /** Fetches the call; `false` when it could not be (one toast per run of failures, and the poller backs off). */
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (!callId) return false;
     try {
       const c = await getCall(callId);
-      if (unmounted.current) return;
+      if (unmounted.current) return true;
       setCall(c);
       setLoadError(null);
       pollFailed.current = false;
+      return true;
     } catch (e) {
-      if (unmounted.current) return;
+      if (unmounted.current) return false;
       if (!pollFailed.current) toastRef.current.error(e);
       pollFailed.current = true;
       setLoadError(e instanceof ApiError && e.status === 404 ? 'This call does not exist.' : e instanceof Error ? e.message : String(e));
+      return false;
     }
   }, [callId]);
 
+  // the call record changes from outside this page while the microphone is connecting or on (paused included: the leg
+  // is still up), while a phone rung from here rings or is answered, and while uploaded audio is being answered; at any
+  // other time only another operator could change it
+  const live = voice !== 'off' || phone !== 'off' || uploading;
+  useCallPolling(refresh, { callId, live, ended });
+
+  const recordedTurns = call?.turns.length ?? 0;
   useEffect(() => {
-    if (!callId) return;
-    void refresh();
-    if (ended) return;
-    const t = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(t);
-  }, [callId, ended, refresh]);
+    if (phone === 'ringing' && recordedTurns > 0) setPhone('live');
+  }, [phone, recordedTurns]);
+
+  useEffect(() => {
+    if (phone !== 'ringing') return;
+    const t = setTimeout(() => setPhone('off'), PHONE_RING_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [phone]);
 
   useEffect(() => {
     unmounted.current = false;
@@ -670,6 +690,7 @@ export function SupportCall() {
     session.current = null;
     setVoice('off');
     setPaused(false);
+    setPhone('off');
     void s?.disconnect().catch(() => undefined);
   }, [ended]);
 
@@ -961,7 +982,14 @@ export function SupportCall() {
                         </>
                       )}
                     </div>
-                    {!callId && voice === 'off' && <PhoneDial onCallId={(id) => adopt(id)} />}
+                    {!callId && voice === 'off' && (
+                      <PhoneDial
+                        onCallId={(id) => {
+                          setPhone('ringing');
+                          adopt(id);
+                        }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div id="mode-panel-upload" role="tabpanel" aria-labelledby="mode-upload">
@@ -970,6 +998,7 @@ export function SupportCall() {
                       disabled={ended}
                       results={results}
                       onResults={setResults}
+                      onSending={setUploading}
                       onCallId={(id) => adopt(id)}
                     />
                   </div>

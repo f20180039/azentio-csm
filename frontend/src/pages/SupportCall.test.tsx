@@ -6,6 +6,7 @@ import { SAMPLE_ESCALATION_CALL, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERI
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { displayName } from '../demoUsers';
+import { CALL_POLL_SLOW_MS } from '../hooks/useCallPolling';
 import { SessionProvider } from '../session';
 import { RetrievedCard, SupportCall } from './SupportCall';
 import { OpOutcome, Role, TurnRole } from '../vocab';
@@ -75,7 +76,7 @@ describe('SupportCall', () => {
     expect(screen.queryByRole('button', { name: 'End call' })).not.toBeInTheDocument();
   });
 
-  it('marks no-speech turns and polls a live call every second until it ends', async () => {
+  it('marks no-speech turns and polls an open call (nothing live on this page) slowly until it ends', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const live: SupportCallRecord = { ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null };
@@ -86,15 +87,17 @@ describe('SupportCall', () => {
       expect(within(screen.getByRole('log')).getByText('Unsupported')).toHaveAttribute('title', 'UNSUPPORTED');
 
       const before = h.getCall.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(2100);
-      expect(h.getCall.mock.calls.length).toBeGreaterThanOrEqual(before + 2);
+      await vi.advanceTimersByTimeAsync(CALL_POLL_SLOW_MS - 500);
+      expect(h.getCall.mock.calls.length).toBe(before); // no microphone, phone or upload here: not every second
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(h.getCall.mock.calls.length).toBe(before + 1);
 
       h.getCall.mockResolvedValue({ ...live, endedAt: new Date().toISOString(), outcome: 'ROUTED' });
-      await vi.advanceTimersByTimeAsync(1100);
+      await vi.advanceTimersByTimeAsync(CALL_POLL_SLOW_MS);
       await waitFor(() => expect(screen.getByText('Routed')).toBeInTheDocument());
       await vi.advanceTimersByTimeAsync(1100); // let a poll already in flight when the call ended finish before counting
       const settled = h.getCall.mock.calls.length;
-      await vi.advanceTimersByTimeAsync(3000);
+      await vi.advanceTimersByTimeAsync(CALL_POLL_SLOW_MS * 3);
       expect(h.getCall.mock.calls.length).toBe(settled);
     } finally {
       vi.useRealTimers();
