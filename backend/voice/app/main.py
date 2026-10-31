@@ -14,11 +14,15 @@ from pydantic import BaseModel
 from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCPatchRequest
 
 from . import phone
-from .api_client import ApiUnavailable, RenewalsApi
+from .api_client import ApiUnavailable, RenewalsApi, SupportCallsApi
 from .brain import CallBrain, ChatClient
 from .config import Settings, load_settings
 from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
+from .simulator_client import SimulatorClient
+from .support_brain import SupportBrain, SupportTurn
+from .support_prompt import GREETING
+from .support_tools import CallSession
 
 
 class State:
@@ -27,6 +31,9 @@ class State:
         self.llm: ChatClient | None = None
         self.chain: ChainState | None = None
         self.brains: dict[str, CallBrain] = {}
+        self.support: dict[str, SupportBrain] = {}
+        self.sim: SimulatorClient | None = None
+        self.support_calls: SupportCallsApi | None = None
         self.webrtc = None
         self.live_calls: dict[str, str | None] = {}
         self.phone_pending: dict[str, tuple[str, float]] = {}
@@ -46,6 +53,40 @@ class State:
         if self.api is None:
             self.api = RenewalsApi(self.settings())
         return self.api
+
+    def get_sim(self) -> SimulatorClient:
+        if self.sim is None:
+            self.sim = SimulatorClient(self.settings())
+        return self.sim
+
+    def get_support_calls(self) -> SupportCallsApi:
+        if self.support_calls is None:
+            self.support_calls = SupportCallsApi(self.settings())
+        return self.support_calls
+
+    def classifier(self):
+        try:
+            from .intents import classify
+        except ImportError:
+            return None
+        s = self.settings()
+
+        async def run(text: str, history: list[dict]):
+            return await classify(text, history, api_key=s.groq_api_key, model=getattr(s, "intent_model", "openai/gpt-oss-20b"))
+        return run
+
+    async def new_support_brain(self, channel: str, call_id: str | None = None) -> SupportBrain:
+        """Starts a support call in Spring (or continues a known one) and opens its brain."""
+        if call_id and call_id in self.support:
+            return self.support[call_id]
+        try:
+            call_id = call_id or await self.get_support_calls().start(channel)
+        except ApiUnavailable as e:
+            raise HTTPException(502, "call records API unavailable") from e
+        brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(), CallSession(call_id), self.classifier())
+        await brain.open()
+        self.support[call_id] = brain
+        return brain
 
     def get_chain(self) -> ChainState:
         if self.chain is None:
@@ -168,6 +209,55 @@ async def text_turn(body: TextTurnIn) -> dict:
     }
 
 
+def turn_json(turn: SupportTurn) -> dict:
+    return {"reply_text": turn.text, "intents": turn.intents, "intent_source": turn.intent_source, "verified": turn.verified,
+            "refs": turn.refs, "ended": turn.ended, "model": turn.model, "retrieved": turn.retrieved(),
+            "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
+
+
+async def support_reply(brain: SupportBrain, text: str) -> SupportTurn:
+    try:
+        return await brain.reply(text)
+    except LLMUnavailable as e:
+        raise HTTPException(429 if e.daily else 502, "LLM_DAILY_LIMIT" if e.daily else "language model unavailable") from e
+    except httpx.HTTPError as e:
+        raise HTTPException(502, "language model unavailable") from e
+
+
+class SupportTextTurnIn(BaseModel):
+    call_id: UUID
+    text: str
+
+
+class SupportEndIn(BaseModel):
+    call_id: UUID
+    outcome: str | None = None
+
+
+@app.post("/support/text-call")
+async def support_text_call() -> dict:
+    brain = await state.new_support_brain("TEXT")
+    return {"call_id": brain.call.call_id, "greeting": GREETING}
+
+
+@app.post("/support/text-turn")
+async def support_text_turn(body: SupportTextTurnIn) -> dict:
+    if not body.text.strip():
+        raise HTTPException(400, "text must not be blank")
+    brain = state.support.get(str(body.call_id))
+    if brain is None:
+        raise HTTPException(404, "unknown call")
+    return turn_json(await support_reply(brain, body.text.strip()))
+
+
+@app.post("/support/end")
+async def support_end(body: SupportEndIn) -> dict:
+    brain = state.support.pop(str(body.call_id), None)
+    if brain is None:
+        raise HTTPException(404, "unknown call")
+    return {"outcome": await brain.finish(body.outcome)}
+
+
 class OfferIn(BaseModel):
     sdp: str
     type: str
@@ -239,6 +329,52 @@ async def offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
     if not renegotiation:
         state.live_calls[call_id] = answer["pc_id"]
     return answer
+
+
+@app.post("/support/offer")
+async def support_offer(body: OfferIn, background_tasks: BackgroundTasks) -> dict:
+    """WebRTC mic call to the front desk. A first offer starts a support call; a renegotiation (pc_id) reuses it."""
+    from pipecat.pipeline.runner import PipelineRunner
+    from pipecat.transports.base_transport import TransportParams
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
+    from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+
+    from .support_pipeline import build_support_pipeline
+
+    renegotiation = body.pc_id is not None and body.pc_id in state.live_calls.values()
+    brain = None if renegotiation else await state.new_support_brain("VOICE")
+    call_id = brain.call.call_id if brain else next(c for c, pc in state.live_calls.items() if pc == body.pc_id)
+    if not renegotiation:
+        state.live_calls[call_id] = None
+    if state.webrtc is None:
+        state.webrtc = SmallWebRTCRequestHandler()
+
+    async def run(task) -> None:
+        try:
+            await PipelineRunner(handle_sigint=False).run(task)
+        finally:
+            state.live_calls.pop(call_id, None)
+            state.support.pop(call_id, None)
+
+    async def on_connection(connection) -> None:
+        transport = SmallWebRTCTransport(params=TransportParams(audio_in_enabled=True, audio_out_enabled=True), webrtc_connection=connection)
+        background_tasks.add_task(run, build_support_pipeline(state.settings(), brain, transport))
+
+    request = SmallWebRTCRequest(sdp=body.sdp, type=body.type, pc_id=body.pc_id, restart_pc=body.restart_pc, request_data=body.requestData)
+    try:
+        answer = await state.webrtc.handle_web_request(request, on_connection)
+    except Exception:
+        if not renegotiation:
+            state.live_calls.pop(call_id, None)
+        raise
+    if not renegotiation:
+        state.live_calls[call_id] = answer["pc_id"]
+    return {**answer, "call_id": call_id}
+
+
+@app.patch("/support/offer")
+async def support_ice_candidate(body: SmallWebRTCPatchRequest) -> dict:
+    return await ice_candidate(body)
 
 
 @app.patch("/api/offer")
