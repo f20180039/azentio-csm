@@ -1,37 +1,40 @@
-name: case-intel
+name: azentio-csm
 
+# Host ports move with API_PORT, SIMULATOR_PORT, VOICE_PORT and WEB_PORT,
+# e.g. to run beside services started natively on the default ports.
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: caseintel
-      POSTGRES_USER: caseintel
-      POSTGRES_PASSWORD: caseintel
-    ports:
-      - "5433:5432"   # host 5432 is taken by a local Postgres
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U caseintel -d caseintel"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   api:
     build: ./backend/api
-    ports:
-      - "8080:8080"
     environment:
-      CORS_ORIGINS: http://localhost:5173
+      API_DB_PATH: /app/data/runtime/api.db
+      ENFORCE_CALLING_HOURS: ${ENFORCE_CALLING_HOURS:-false}
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-5173}
+    ports:
+      - "${API_PORT:-8080}:8080"
     volumes:
-      - ./data/api:/app/data
+      - api-data:/app/data/runtime
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 6
 
   simulator:
     build: ./backend/simulator
+    environment:
+      SIMULATOR_DB_PATH: /app/data/runtime/simulator.db
+      CORS_ORIGINS: '["http://localhost:${WEB_PORT:-5173}"]'
     ports:
-      - "8090:8090"
+      - "${SIMULATOR_PORT:-8090}:8090"
     volumes:
-      - ./data/simulator:/app/data/runtime
+      - simulator-data:/app/data/runtime
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 6
 
   voice:
     build: ./backend/voice
@@ -41,25 +44,46 @@ services:
     environment:
       RENEWALS_API_BASE: http://api:8080/api/v1
       SIMULATOR_BASE: http://simulator:8090/v1
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-5173}
+      OLLAMA_OPENAI_BASE: http://host.docker.internal:11434/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - api
-      - simulator
+      api:
+        condition: service_healthy
+      simulator:
+        condition: service_healthy
     ports:
-      - "127.0.0.1:7861:7861"
+      - "127.0.0.1:${VOICE_PORT:-7861}:7861"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7861/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 6
 
   web:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE: http://localhost:8080/api/v1
-        VITE_VOICE_BASE: http://localhost:7861
+        VITE_API_BASE: http://localhost:${API_PORT:-8080}/api/v1
+        VITE_VOICE_BASE: http://localhost:${VOICE_PORT:-7861}
+        VITE_SIMULATOR_BASE: http://localhost:${SIMULATOR_PORT:-8090}/v1
     depends_on:
-      - api
-      - voice
+      api:
+        condition: service_healthy
+      simulator:
+        condition: service_healthy
+      voice:
+        condition: service_healthy
     ports:
-      - "5173:80"
+      - "${WEB_PORT:-5173}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
 
 volumes:
-  pgdata:
-  uploads:
+  api-data:
+  simulator-data:

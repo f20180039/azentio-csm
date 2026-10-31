@@ -1,4 +1,7 @@
 .venv
 .pytest_cache
-tests
 __pycache__
+tests
+eval
+scripts
+.env

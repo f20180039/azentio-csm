@@ -87,7 +87,12 @@ Every synthetic customer, what to say to verify as them, the answers to expect a
 | Voice, 7861 | `backend/voice`: `.venv/bin/python -m uvicorn app.main:app --port 7861` (reads `.env` from the repo root) |
 | Web, 5173 | `frontend`: `npm run dev`, or `npm run dev:mock` for the UI on example data with no backend |
 
-**With Docker:** `docker compose up --build` (being verified end to end by task C7). Browser microphone calls from a Docker Desktop container on macOS do not connect without host networking or a TURN server, so for spoken calls run the voice service natively.
+**With Docker:** `docker compose up --build` builds and starts `api` (8080), `simulator` (8090), `voice` (7861, bound to 127.0.0.1) and `web` (5173, nginx). Each has a health check; `voice` waits for `api` and `simulator` to be healthy, and `web` for all three.
+- The voice container reads `.env` from the repo root for the Groq key and other settings. Compose sets the service URLs inside the network, and `ENFORCE_CALLING_HOURS` defaults to `false` (set it in `.env` to override).
+- The SQLite files live in the named volumes `api-data` and `simulator-data`. `docker compose down -v` resets them.
+- A local Ollama on the host is reached as `http://host.docker.internal:11434/v1`.
+- To run beside natively started services, move the host ports: `API_PORT=18080 SIMULATOR_PORT=18090 VOICE_PORT=17861 WEB_PORT=15173 docker compose up --build`. The web build and the CORS origins follow these variables.
+- Typed calls and recorded-audio calls work in Docker. Browser microphone calls (WebRTC) from Docker Desktop on macOS do not connect without host networking or a TURN server, so for spoken calls run the voice service natively.
 
 **Keys and models.** Copy `.env.example` to `.env`.
 - `GROQ_API_KEY` is the one key you need: speech to text (Whisper) and the first model in the chain. It is free at https://console.groq.com/keys.
