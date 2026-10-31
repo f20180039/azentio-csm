@@ -4,6 +4,7 @@ from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TTSService
 
 from .speech import CallLanguage, voice_for
+from .spoken import speakable
 
 SAMPLE_RATE = 24000
 
@@ -26,6 +27,7 @@ class EdgeTTSService(TTSService):
 
     async def run_tts(self, text: str, context_id: str):
         voice = self.voice_for(text)
+        text = speakable(text)  # references and mobiles spelled out for the voice; the transcript keeps the written text
 
         async def pcm():
             codec = av.CodecContext.create("mp3", "r")

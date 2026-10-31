@@ -6,7 +6,7 @@ and Kannada numerals are ASCII; both are applied again here, harmlessly, for tex
 import re
 from datetime import date
 
-from .speech import _DIGIT_WORDS, KANNADA_DIGITS, normalise_spoken_digits
+from .speech import _DIGIT_WORDS, HOMOPHONES, KANNADA_DIGITS, normalise_spoken_digits
 
 MOBILE_LEN = 10
 COUNTRY_CODE = "91"
@@ -15,7 +15,6 @@ MOBILE_FIRST_DIGITS = "6789"  # Indian mobiles
 MIN_BIRTH_YEARS, MAX_BIRTH_YEARS = 10, 120  # a date of birth this many years before today
 MOBILE_ATTEMPT_MIN, MOBILE_ATTEMPT_MAX = 7, 13  # a digit run this long that is not 10 digits was an attempt at a mobile number
 
-HOMOPHONES = frozenset({"to", "too", "for", "ate"})  # digits inside a reference, plain words in a sentence: not counted here
 _WORD_DIGITS = {w: d for w, d in _DIGIT_WORDS.items() if w not in HOMOPHONES}
 _DIGIT_TOKEN = r"(?:\d+|" + "|".join(sorted(_WORD_DIGITS, key=len, reverse=True)) + r")"
 _DIGIT_GROUP = re.compile(r"(?<!\w)\+?" + _DIGIT_TOKEN + r"(?:[\s-]+" + _DIGIT_TOKEN + r")*(?!\w)", re.I)
