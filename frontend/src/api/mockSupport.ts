@@ -88,7 +88,7 @@ export const REPAYMENT_SCRIPT: Step[] = [
     text: `Thank you, Rahul, you are verified. Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,
     meta: {
       tool_trace: [
-        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'customer, expires_in, verified', outcome: OpOutcome.OK },
         { name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002', outcome: OpOutcome.OK },
       ],
       retrieved: {
@@ -274,6 +274,17 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
     },
   ],
 };
+
+/** The seed customers the sample records belong to, named as the simulator's customers.json names them. */
+const SAMPLE_CUSTOMER_NAMES: Record<string, string> = {
+  [SAMPLE_PROFILE.customer.customer_ref]: `${SAMPLE_PROFILE.customer.first_name} ${SAMPLE_PROFILE.customer.last_name}`,
+  'CUST-1006': 'Vikram Rao',
+  'CUST-1008': 'David Fernandes',
+};
+// Mirrors the simulator: every ops item carries customer_name beside customer_ref (null when there is no customer).
+for (const items of Object.values(SAMPLE_RECORDS)) {
+  for (const r of items) r.customer_name = r.customer_ref ? (SAMPLE_CUSTOMER_NAMES[r.customer_ref] ?? null) : null;
+}
 
 const calls = new Map<string, SupportCall>();
 /** Mock-mode copy of the bank records, so a status change sticks until the page reloads. */

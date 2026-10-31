@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_PROFILE } from '../api/mockSupport';
-import { verifiedCustomerRef, type CustomerProfile, type SupportTurn } from '../api/support';
+import { verifiedCustomerName, verifiedCustomerRef, type CustomerProfile, type SupportTurn } from '../api/support';
 import { CustomerCard, formatDay, formatMobile } from './CustomerCard';
 
 const turn = (retrieved: Record<string, unknown>): SupportTurn => ({ seq: 1, role: 'agent', text: '', at: '', meta: { retrieved } });
@@ -9,8 +9,11 @@ const turn = (retrieved: Record<string, unknown>): SupportTurn => ({ seq: 1, rol
 describe('CustomerCard', () => {
   it('shows the seeded details, holdings and requests', () => {
     render(<CustomerCard profile={SAMPLE_PROFILE} />);
-    expect(screen.getByText('Rahul Iyer')).toBeInTheDocument();
-    expect(screen.getByText('CUST-1002')).toBeInTheDocument();
+    // N1: the full name leads as the card's heading; the CUST- id is secondary, small and muted.
+    const name = screen.getByRole('heading', { name: 'Rahul Iyer' });
+    const id = screen.getByText('CUST-1002');
+    expect(id).toHaveClass('muted');
+    expect(name.compareDocumentPosition(id) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('97314 62580')).toBeInTheDocument();
     expect(screen.getByText('3 Nov 1985')).toBeInTheDocument();
     expect(screen.getByText('ACC-20002')).toBeInTheDocument();
@@ -65,5 +68,16 @@ describe('verifiedCustomerRef', () => {
     expect(verifiedCustomerRef([turn({ verify_customer: { verified: false, error: 'NO_MATCH' } })])).toBeNull();
     const ok = turn({ verify_customer: { verified: true, customer: { customer_ref: 'CUST-1002', first_name: 'Rahul' } } });
     expect(verifiedCustomerRef([ok, turn({ get_loans: { items: [] } })])).toBe('CUST-1002');
+  });
+});
+
+describe('verifiedCustomerName', () => {
+  it('is the verified caller\'s name from the verify_customer result, and null before verification', () => {
+    expect(verifiedCustomerName([])).toBeNull();
+    expect(verifiedCustomerName([turn({ verify_customer: { verified: false, error: 'NO_MATCH' } })])).toBeNull();
+    const first = turn({ verify_customer: { verified: true, customer: { customer_ref: 'CUST-1002', first_name: 'Rahul' } } });
+    expect(verifiedCustomerName([first])).toBe('Rahul');
+    const full = turn({ verify_customer: { verified: true, customer: { customer_ref: 'CUST-1002', first_name: 'Rahul', last_name: 'Iyer' } } });
+    expect(verifiedCustomerName([full, turn({ get_loans: { items: [] } })])).toBe('Rahul Iyer');
   });
 });

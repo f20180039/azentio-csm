@@ -332,8 +332,9 @@ class SupportBrain:
         if not self.call.verified:
             return ""
         who = self.call.customer or {}
+        # N1: name only, never the CUST- id: the prompt forbids saying it, and the tools read customer_ref from call.customer.
         return (f"CALL STATE: the caller is already verified as {who.get('first_name', 'the customer')} "
-                f"({who.get('customer_ref', 'customer on record')}) for the rest of this call. Do not ask for their mobile "
+                "for the rest of this call. Do not ask for their mobile "
                 "number or date of birth again and do not call verify_customer again; use the personal tools directly.")
 
     async def _loop(self) -> SupportTurn:

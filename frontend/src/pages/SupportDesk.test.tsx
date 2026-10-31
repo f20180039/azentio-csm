@@ -222,6 +222,26 @@ describe('SupportDesk', () => {
     expect(within(cmp).getByText('“There is a card payment of 48,999 rupees I never made.”')).toBeInTheDocument();
     expect(within(cmp).getByText('TXN-90011')).toHaveClass('ref-pill');
   });
+
+  it('shows the customer\'s name as the visible label with the CUST- id as secondary text, and finds rows by name', async () => {
+    // N1: "Rahul Iyer" leads; "CUST-1002" is small, muted, after the name. Records without a customer show neither.
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    const row = (await within(panel()).findByText('SR-40200')).closest('tr')!;
+    const name = within(row).getByText('Rahul Iyer');
+    const id = within(row).getByText('CUST-1002');
+    expect(id).toHaveClass('muted');
+    expect(name.compareDocumentPosition(id) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search bank records' }), { target: { value: 'Rahul' } });
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Tickets 2' })).toBeInTheDocument());
+    expect(within(panel()).getAllByText('Rahul')[0].tagName).toBe('MARK');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search bank records' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('tab', { name: /^Routed queries/ })); // tabs keep their counts once every kind has loaded
+    const anon = (await within(panel()).findByText('RQ-60200')).closest('tr')!;
+    expect(within(anon).queryByText(/^CUST-/)).not.toBeInTheDocument();
+  });
 });
 
 describe('vocabulary', () => {
