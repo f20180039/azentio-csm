@@ -1,7 +1,11 @@
 package ai.caseintel.api.renewals;
 
+import ai.caseintel.api.support.CallKind;
+import ai.caseintel.api.support.Channel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -16,8 +20,15 @@ public class CallEntity {
     @Id
     private UUID id;
 
-    @Column(name = "policy_id", nullable = false)
+    @Column(name = "policy_id")
     private String policyId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CallKind kind = CallKind.RENEWAL;
+
+    @Enumerated(EnumType.STRING)
+    private Channel channel;
 
     @Column(name = "started_at", nullable = false)
     private Instant startedAt;
@@ -64,8 +75,17 @@ public class CallEntity {
         this.startedAt = startedAt;
     }
 
+    public static CallEntity support(UUID id, Channel channel, Instant startedAt) {
+        CallEntity c = new CallEntity(id, null, startedAt);
+        c.kind = CallKind.SUPPORT;
+        c.channel = channel;
+        return c;
+    }
+
     public UUID getId() { return id; }
     public String getPolicyId() { return policyId; }
+    public CallKind getKind() { return kind; }
+    public Channel getChannel() { return channel; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getEndedAt() { return endedAt; }
     public boolean isIdentityVerified() { return identityVerified; }

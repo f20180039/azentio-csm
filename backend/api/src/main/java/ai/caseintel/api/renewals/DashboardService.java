@@ -45,7 +45,7 @@ public class DashboardService {
                    COALESCE(sum((last_quote ->> 'annualPremium')::numeric)
                             FILTER (WHERE outcome = 'RENEWAL_PENDING_PAYMENT'), 0) AS retained
             FROM calls k JOIN cases c ON c.id = k.id
-            WHERE """ + REAL_OR_ALL;
+            WHERE k.kind = 'RENEWAL' AND """ + REAL_OR_ALL;
 
     private static final String AUDIT_COUNTS = """
             SELECT a.action, count(*) AS n
@@ -58,14 +58,14 @@ public class DashboardService {
     private static final String BY_DAY = """
             SELECT (ended_at AT TIME ZONE ?)::date AS day, outcome, count(*) AS n
             FROM calls k JOIN cases c ON c.id = k.id
-            WHERE outcome IS NOT NULL AND ended_at >= ? AND """ + REAL_OR_ALL + """
+            WHERE k.kind = 'RENEWAL' AND outcome IS NOT NULL AND ended_at >= ? AND """ + REAL_OR_ALL + """
             GROUP BY 1, 2""";
 
     private static final String RECENT = """
             SELECT k.id, p.holder_name, k.policy_id, p.product, k.started_at, k.ended_at, k.outcome,
                    k.must_handoff, k.out_of_playbook_requests
             FROM calls k JOIN policies p ON p.id = k.policy_id JOIN cases c ON c.id = k.id
-            WHERE """ + REAL_OR_ALL + """
+            WHERE k.kind = 'RENEWAL' AND """ + REAL_OR_ALL + """
             ORDER BY k.started_at DESC LIMIT 20""";
 
     private static final String GUARDRAILS = """
@@ -79,7 +79,7 @@ public class DashboardService {
                    END AS detail
             FROM audit_events a
             JOIN cases c ON c.id = a.case_id AND c.case_type = 'renewal_call'
-            JOIN calls k ON k.id = a.case_id
+            JOIN calls k ON k.id = a.case_id AND k.kind = 'RENEWAL'
             JOIN policies p ON p.id = k.policy_id
             WHERE a.action IN ('rule.outside_playbook', 'tool.refused', 'identity.failed', 'tool.handoff_to_human')
               AND """ + REAL_OR_ALL + """

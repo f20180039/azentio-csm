@@ -23,6 +23,7 @@ import ai.caseintel.api.renewals.RenewalDtos.Risk;
 import ai.caseintel.api.renewals.RenewalDtos.StartedCall;
 import ai.caseintel.api.repo.CaseRepository;
 import ai.caseintel.api.service.ApiException;
+import ai.caseintel.api.support.CallKind;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -139,7 +140,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional(readOnly = true)
     public CallView getCall(UUID callId) {
-        CallEntity c = calls.findById(callId).orElseThrow(() -> callNotFound(callId));
+        CallEntity c = calls.findById(callId).filter(RenewalService::isRenewal).orElseThrow(() -> callNotFound(callId));
         PolicyEntity p = policy(c);
         JsonNode transcript = readJson(c.getTranscript());
         List<SummaryItem> summary = new ArrayList<>();
@@ -329,7 +330,7 @@ public class RenewalService {
     @PreAuthorize(TOOLS_ROLE)
     @Transactional
     public CallEnded end(UUID callId, String actor) {
-        CallEntity c = calls.findForUpdate(callId).orElseThrow(() -> callNotFound(callId));
+        CallEntity c = calls.findForUpdate(callId).filter(RenewalService::isRenewal).orElseThrow(() -> callNotFound(callId));
         if (c.getEndedAt() != null) {
             return new CallEnded(c.getOutcome(), c.isMustHandoff());
         }
@@ -348,7 +349,7 @@ public class RenewalService {
     }
 
     private CallEntity openCall(UUID callId, String tool, String actor) {
-        CallEntity c = calls.findForUpdate(callId).orElseThrow(() -> callNotFound(callId));
+        CallEntity c = calls.findForUpdate(callId).filter(RenewalService::isRenewal).orElseThrow(() -> callNotFound(callId));
         if (c.getEndedAt() != null) {
             throw refused(callId, actor, tool, ApiException.conflict("CALL_ENDED"));
         }
@@ -380,6 +381,10 @@ public class RenewalService {
     private PolicyEntity policy(CallEntity c) {
         return policies.findById(c.getPolicyId())
                 .orElseThrow(() -> ApiException.notFound("Policy " + c.getPolicyId() + " not found"));
+    }
+
+    private static boolean isRenewal(CallEntity c) {
+        return c.getKind() == CallKind.RENEWAL;
     }
 
     private static ApiException callNotFound(UUID id) {

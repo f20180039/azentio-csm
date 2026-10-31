@@ -290,6 +290,29 @@ class DashboardServiceTest {
     }
 
     @Test
+    void supportCallsAreLeftOutOfRenewalStats() {
+        policy("P1", "Meera Iyer");
+        UUID renewal = call("P1", "renewal_call", ist("2026-10-29T09:00:00"), ist("2026-10-29T09:05:00"),
+                "HANDED_OFF", null, true);
+        UUID support = UUID.randomUUID();
+        jdbc.update("""
+                insert into cases(id, case_type, title, status, pipeline_version, created_by)
+                values (?, 'support_call', 't', 'PROCESSING', 'v1', 'it')""", support);
+        jdbc.update("""
+                insert into calls(id, kind, channel, started_at, ended_at, outcome)
+                values (?, 'SUPPORT', 'VOICE', ?, ?, 'ESCALATED')""", support,
+                Timestamp.from(ist("2026-10-29T09:30:00")), Timestamp.from(ist("2026-10-29T09:35:00")));
+
+        Dashboard d = dashboard();
+
+        assertThat(d.kpis().callsTotal()).isEqualTo(1);
+        assertThat(d.kpis().handedOff()).isEqualTo(1);
+        assertThat(d.recentCalls()).extracting(RenewalDtos.RecentCall::callId).containsExactly(renewal);
+        assertThat(d.outcomesByDay().stream().mapToLong(o -> o.renewed() + o.handedOff() + o.noDecision()).sum())
+                .isEqualTo(1);
+    }
+
+    @Test
     void riskBandsCoverQueue() {
         PolicyEntity hot = PolicyFixtures.with(PolicyFixtures.meera(), "doNotCall", false);
         PolicyEntity human = PolicyFixtures.with(PolicyFixtures.policy("P-H", "Human Only", "2026-11-03", 10000, 12000),
