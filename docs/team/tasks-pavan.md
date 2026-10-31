@@ -161,12 +161,12 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
 - [ ] Step 4: Record a 2–3 minute backup video of the best run (screen and audio). Store it in the team drive and link it in the checklist.
 - [ ] Step 5: Commit: `docs(demo): rehearsal checklist and backup video link`.
 
-- [ ] **P7 (only if Chirag takes C8): Hindi and Hinglish scenarios** (needs: C8 started)
+- [ ] **P7 (only if Chirag takes C8): Kannada scenarios** (needs: C8 started)
 
-**Files:** `backend/voice/eval/scenarios/13-hindi-repayment.yaml`, `14-hinglish-statement.yaml`, and the voice map in `backend/voice/eval/audio/render.py` (add `"hi": "hi-IN-SwaraNeural"`; coordinate with Chirag, who may add it too).
+**Files:** `backend/voice/eval/scenarios/13-kannada-repayment.yaml`, `14-kannada-statement.yaml`, and the voice map in `backend/voice/eval/audio/render.py` (add `"kn": "kn-IN-SapnaNeural"`; coordinate with Chirag, who may add it too).
 
 - [ ] Step 1: Two scenarios in the existing schema:
-  - Rahul (9876500002 / 1985-11-03) asks "मेरी अगली EMI कब है?", expecting `REPAYMENT`, verification, and the ₹12,450 or vehicle ₹9,800 amounts as digits or spoken;
-  - a Hinglish statement request ("mujhe mera loan statement chahiye"), expecting a `STATEMENT` ticket.
-- [ ] Step 2: Render with `--accents hi`. Check that the files play and are 16 kHz mono.
-- [ ] Step 3: Commit: `test(eval): Hindi and Hinglish scenarios`.
+  - Rahul (9876500002 / 1985-11-03) asks "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", expecting `REPAYMENT`, verification, and the ₹12,450 or vehicle ₹9,800 amounts as digits or spoken;
+  - a Kannada statement request ("ನನಗೆ ನನ್ನ ಲೋನ್ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ಬೇಕು"), expecting a `STATEMENT` ticket.
+- [ ] Step 2: Render with `--accents kn`. Check that the files play and are 16 kHz mono.
+- [ ] Step 3: Commit: `test(eval): Kannada scenarios`.
