@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { SupportTurn, TurnMeta } from './api/support';
+import { languageLabel, type SupportTurn, type TurnMeta } from './api/support';
 import { Highlight, hitRanges, matches, normalise, turnMatches } from './search';
 import { SpeechLanguage, TurnRole } from './vocab';
 
@@ -35,6 +35,15 @@ describe('matches', () => {
     expect(matches('42', 42)).toBe(true);
     expect(matches('loan', null, undefined, ['REPAYMENT', ['LOAN_APPLICATION']])).toBe(true);
     expect(matches('loan', null, [], undefined)).toBe(false);
+  });
+});
+
+describe('languageLabel', () => {
+  it('names the caller languages and shows an unknown or missing code as it is', () => {
+    expect(languageLabel(SpeechLanguage.HINDI)).toBe('Hindi');
+    expect(languageLabel(SpeechLanguage.KANNADA)).toBe('Kannada');
+    expect(languageLabel('ta')).toBe('ta');
+    expect(languageLabel(undefined)).toBe('');
   });
 });
 

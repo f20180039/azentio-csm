@@ -200,12 +200,9 @@ function RefPills({ refs, query = '' }: { refs: string[]; query?: string }) {
 
 /** The language chip of a translated (Kannada or Hindi) turn; nothing for an English one. */
 function LanguageChip({ meta }: { meta: SupportTurn['meta'] }) {
-  if (!meta.text_en) return null;
-  return (
-    <span className="pill dim sc-lang">
-      {languageLabel(meta.language)}
-    </span>
-  );
+  const label = meta.text_en ? languageLabel(meta.language) : '';
+  if (!label) return null;
+  return <span className="pill dim sc-lang">{label}</span>;
 }
 
 /**
@@ -221,7 +218,7 @@ function TurnText({ t, query, englishFirst }: { t: SupportTurn; query: string; e
       </p>
     );
   }
-  const original = { text: t.text, lang: m.language, label: languageLabel(m.language), testId: 'turn-original' };
+  const original = { text: t.text, lang: m.language, label: languageLabel(m.language) || 'Original', testId: 'turn-original' };
   const english = { text: m.text_en, lang: SpeechLanguage.ENGLISH, label: languageLabel(SpeechLanguage.ENGLISH), testId: 'turn-english' };
   const [first, second] = englishFirst ? [english, original] : [original, english];
   return (

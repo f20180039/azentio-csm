@@ -247,6 +247,7 @@ describe('customer turn playback', () => {
 
 describe('English beside Kannada and Hindi turns', () => {
   const KANNADA_ASK = 'ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ?';
+  const ESCALATION_ASK = 'There is a card payment of 48,999 rupees I never made.';
 
   it('shows the language chip and the English, labelled, under a Kannada turn', async () => {
     h.getCall.mockResolvedValue(structuredClone(SAMPLE_ESCALATION_CALL));
@@ -265,8 +266,8 @@ describe('English beside Kannada and Hindi turns', () => {
     expect(english).toHaveAttribute('lang', 'en');
     expect(original.compareDocumentPosition(english) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // An English turn gets neither a chip nor a second line.
-    const englishTurn = within(log).getByText('There is a card payment of 48,999 rupees I never made.').closest('li')!;
+    // An English turn gets neither a chip nor a second line. (The Retrieved card quotes the complaint statement too, so match the turn's own line.)
+    const englishTurn = within(log).getByText(ESCALATION_ASK, { selector: '.sc-turn.customer > p' }).closest('li')!;
     expect(within(englishTurn).queryByText('Kannada')).toBeNull();
     expect(within(englishTurn).queryByTestId('turn-english')).toBeNull();
   });
@@ -296,6 +297,23 @@ describe('English beside Kannada and Hindi turns', () => {
     expect(turn.querySelectorAll('p')[0]).toHaveTextContent(KANNADA_ASK);
   });
 
+  it('shows no chip and a neutral label when a translation arrives without its language code', async () => {
+    const call = structuredClone(SAMPLE_ESCALATION_CALL);
+    const kn = call.turns.find((t) => t.text === KANNADA_ASK)!;
+    delete kn.meta.language;
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}`);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(KANNADA_ASK)).closest('li')!;
+    expect(turn.querySelector('.sc-lang')).toBeNull();
+    expect(within(turn).getByTestId('turn-english')).toHaveTextContent('English: When is my next EMI?');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'English first' }));
+    expect(turn.querySelectorAll('p')[1]).toHaveTextContent(`Original: ${KANNADA_ASK}`);
+    expect(turn.querySelector('.sc-lang')).toBeNull();
+  });
+
   it('offers no "English first" toggle when no turn has an English translation', async () => {
     h.getCall.mockResolvedValue(structuredClone(SAMPLE_ROUTED_CALL));
     mount(`/support/calls/${SAMPLE_ROUTED_CALL.id}`);
@@ -310,6 +328,6 @@ describe('English beside Kannada and Hindi turns', () => {
     const turn = (await within(log).findByText(KANNADA_ASK)).closest('li')!;
     expect(turn).toHaveAttribute('data-search', 'hit');
     expect(within(turn).getByText('EMI', { selector: 'mark' })).toBeInTheDocument();
-    expect(within(log).getByText('There is a card payment of 48,999 rupees I never made.').closest('li')).toHaveAttribute('data-search', 'dim');
+    expect(within(log).getByText(ESCALATION_ASK, { selector: '.sc-turn.customer > p' }).closest('li')).toHaveAttribute('data-search', 'dim');
   });
 });
