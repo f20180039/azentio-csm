@@ -8,12 +8,6 @@ from app.security.audit import audit_ledger
 
 router = APIRouter(prefix="/v1/cbs", tags=["Core Banking & LMS Integrations"])
 
-# Mock In-Memory Banking Records
-CARDS_DB = [
-    {"card_id": "CRD_4102", "last4": "4102", "name": "Platinum Rewards Credit Card", "status": "ACTIVE", "credit_limit": 250000, "available_limit": 182400},
-    {"card_id": "CRD_9018", "last4": "9018", "name": "Regalia Forex Card", "status": "ACTIVE", "credit_limit": 100000, "available_limit": 94300},
-]
-
 LOANS_DB = {
     "HL-901823": {
         "loan_id": "HL-901823",
@@ -29,13 +23,6 @@ LOANS_DB = {
 }
 
 
-class CardBlockRequest(BaseModel):
-    card_id: str
-    reason: str = "LOST_OR_STOLEN"
-    step_up_otp: str | None = None
-    dispatch_replacement: bool = True
-
-
 class PrepaymentCalcRequest(BaseModel):
     loan_id: str
     prepayment_amount: float
@@ -47,37 +34,6 @@ class ClaimIntakeRequest(BaseModel):
     location: str
     damage_description: str
     contact_number: str
-
-
-@router.get("/cards")
-async def list_cards(user: Annotated[TokenData, Depends(get_current_user)]):
-    return {"cards": CARDS_DB}
-
-
-@router.post("/cards/block")
-async def block_card(req: CardBlockRequest, user: Annotated[TokenData, Depends(get_current_user)]):
-    """Emergency card block: requires step-up authentication and logs cryptographic audit."""
-    target_card = next((c for c in CARDS_DB if c["card_id"] == req.card_id or c["last4"] in req.card_id), None)
-    if not target_card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
-
-    target_card["status"] = "PERMANENTLY_BLOCKED"
-    ref_id = f"BLK-{date.today().strftime('%Y%m%d')}-{target_card['last4']}"
-
-    audit_ledger.record(
-        actor=user.username,
-        action="CARD_EMERGENCY_BLOCKED",
-        entity_ref=target_card["card_id"],
-        payload={"reason": req.reason, "replacement_ordered": req.dispatch_replacement, "ref_id": ref_id}
-    )
-
-    return {
-        "status": "BLOCKED",
-        "reference_id": ref_id,
-        "card_last4": target_card["last4"],
-        "message": f"Card ending in {target_card['last4']} has been permanently blocked.",
-        "replacement_dispatch": "CONFIRMED_TO_REGISTERED_ADDRESS" if req.dispatch_replacement else "NONE"
-    }
 
 
 @router.get("/loans/{loan_id}")

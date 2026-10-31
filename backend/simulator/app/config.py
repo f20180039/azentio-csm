@@ -4,13 +4,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Azentio-CSM Core API"
+    app_name: str = "Bank Simulator"
     environment: str = "development"
     debug: bool = False
     
     # Network & Ports
     host: str = "0.0.0.0"
-    port: int = 8080
+    port: int = 8090
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000", "*"]
     
     # Internal microservices
