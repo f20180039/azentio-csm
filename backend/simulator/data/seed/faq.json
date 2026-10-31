@@ -1,0 +1,403 @@
+[
+  {
+    "id": "FAQ-001",
+    "question": "What documents do I need for a personal loan?",
+    "answer": "For a personal loan at Azentio Demo Bank you need an identity proof, an address proof, your last three months of salary slips and your last six months of bank statements. These document counts are illustrative policy figures of this demo bank.",
+    "tags": [
+      "personal loan",
+      "documents",
+      "papers",
+      "salary slip",
+      "apply"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-002",
+    "question": "Who is eligible for a personal loan?",
+    "answer": "At Azentio Demo Bank, salaried applicants aged 21 to 60 with a steady monthly income can apply for a personal loan. These age limits are illustrative policy figures, and the final decision depends on the bank's credit assessment.",
+    "tags": [
+      "personal loan",
+      "eligibility",
+      "eligible",
+      "age",
+      "income"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-003",
+    "question": "What documents do I need for a vehicle loan or car loan?",
+    "answer": "For a vehicle loan at Azentio Demo Bank you need an identity proof, an address proof, income proof such as salary slips or tax returns, and the dealer's quotation for the vehicle. This list is an illustrative policy of this demo bank.",
+    "tags": [
+      "vehicle loan",
+      "car loan",
+      "documents",
+      "papers",
+      "vehicle",
+      "bike loan"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-004",
+    "question": "Who is eligible for a vehicle loan?",
+    "answer": "At Azentio Demo Bank, salaried or self-employed applicants aged 21 to 65 with a regular income can apply for a car or two-wheeler loan. The age limits are illustrative policy figures, and approval depends on the bank's credit assessment.",
+    "tags": [
+      "vehicle loan",
+      "car loan",
+      "eligibility",
+      "eligible",
+      "two wheeler"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-005",
+    "question": "What documents do I need for a home loan?",
+    "answer": "For a home loan at Azentio Demo Bank you need an identity proof, an address proof, income proof, and the property papers such as the sale agreement and title deeds. This list is an illustrative policy of this demo bank.",
+    "tags": [
+      "home loan",
+      "housing loan",
+      "documents",
+      "property",
+      "papers"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-006",
+    "question": "Who is eligible for a home loan?",
+    "answer": "At Azentio Demo Bank, applicants aged 21 to 65 with a stable income can apply for a home loan, and a co-applicant's income can be added. The age limits are illustrative policy figures, and approval depends on the bank's credit and property checks.",
+    "tags": [
+      "home loan",
+      "housing loan",
+      "eligibility",
+      "eligible",
+      "co-applicant"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-007",
+    "question": "What are the stages of a loan application?",
+    "answer": "At Azentio Demo Bank a loan application moves through submitted, document verification, credit assessment, sanction and disbursal. An application under document verification is not yet approved, and we tell you if anything more is needed from you.",
+    "tags": [
+      "application",
+      "stages",
+      "status",
+      "process",
+      "sanction",
+      "disbursal"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-008",
+    "question": "How long does a loan application take to process?",
+    "answer": "At Azentio Demo Bank most loan applications reach a decision within 7 working days once all documents are verified, which is an illustrative policy figure of this demo bank. Your repayment schedule is created only after the loan is disbursed.",
+    "tags": [
+      "application",
+      "processing time",
+      "how long",
+      "decision",
+      "turnaround"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-009",
+    "question": "How is my EMI paid each month?",
+    "answer": "At Azentio Demo Bank your EMI is collected on its due date through an auto debit from your linked bank account. You can also pay at a branch if the auto debit is not set up.",
+    "tags": [
+      "emi",
+      "instalment",
+      "repayment",
+      "monthly payment",
+      "due date"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-010",
+    "question": "How do I set up NACH auto debit for my EMI?",
+    "answer": "To set up a NACH mandate at Azentio Demo Bank, sign the auto debit mandate form for your repayment account at a branch or during loan disbursal. At this demo bank a new mandate usually becomes active within 10 working days, which is an illustrative policy figure.",
+    "tags": [
+      "nach",
+      "auto debit",
+      "mandate",
+      "emi",
+      "set up",
+      "register"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-011",
+    "question": "How do I stop or cancel NACH auto debit?",
+    "answer": "To stop a NACH auto debit mandate at Azentio Demo Bank, raise a mandate cancellation request with us and choose another way to pay your EMI. At this demo bank cancellation usually takes effect within 10 working days, which is an illustrative policy figure.",
+    "tags": [
+      "nach",
+      "auto debit",
+      "mandate",
+      "stop",
+      "cancel",
+      "emi"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-012",
+    "question": "What happens if I miss an EMI or my auto debit bounces?",
+    "answer": "If an EMI is missed at Azentio Demo Bank, the overdue amount stays on your loan and late charges as listed in your loan agreement may apply. Please pay the overdue amount as soon as possible, and we can tell you the exact recorded figure after verification.",
+    "tags": [
+      "missed emi",
+      "bounce",
+      "overdue",
+      "late payment",
+      "penalty"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-013",
+    "question": "Can I prepay or part pay my loan early?",
+    "answer": "Yes, at Azentio Demo Bank you can prepay part of your loan by raising a prepayment request, and the extra amount reduces your outstanding principal. Any prepayment charges are listed in your loan agreement.",
+    "tags": [
+      "prepay",
+      "prepayment",
+      "part payment",
+      "early repayment",
+      "loan"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-014",
+    "question": "How do I close or foreclose my loan?",
+    "answer": "To foreclose your loan at Azentio Demo Bank, request a foreclosure statement, pay the amount it shows, and the bank then issues a closure letter. Any foreclosure charges are listed in your loan agreement.",
+    "tags": [
+      "foreclose",
+      "foreclosure",
+      "close loan",
+      "loan closure",
+      "pay off"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-015",
+    "question": "How do I get my loan statement?",
+    "answer": "You can ask for your loan statement on this call and we raise a service request with a reference number. At Azentio Demo Bank the loan statement is usually sent to your registered email within 2 working days, which is an illustrative policy figure.",
+    "tags": [
+      "loan statement",
+      "statement",
+      "loan",
+      "request",
+      "copy"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-016",
+    "question": "How do I get my loan repayment schedule?",
+    "answer": "You can ask for your repayment schedule on this call and we raise a service request with a reference number. At Azentio Demo Bank it is usually sent within 2 working days, an illustrative policy figure, and a schedule exists only after disbursal.",
+    "tags": [
+      "repayment schedule",
+      "amortisation",
+      "emi schedule",
+      "schedule",
+      "request"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-017",
+    "question": "How do I get my bank account statement?",
+    "answer": "You can request a record of your account transactions for any period on this call and we raise a service request with a reference number. At Azentio Demo Bank it usually reaches your registered email within 2 working days, which is an illustrative policy figure.",
+    "tags": [
+      "account statement",
+      "savings account",
+      "passbook",
+      "transactions",
+      "request"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-018",
+    "question": "My transfer failed, when will I get the money back?",
+    "answer": "If a transfer failed but money left your account, Azentio Demo Bank usually reverses it within 5 working days, which is an illustrative policy figure of this demo bank. If it has not come back by then, we can raise a complaint for you.",
+    "tags": [
+      "failed transfer",
+      "failed transaction",
+      "refund",
+      "reversal",
+      "money back",
+      "debited"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-019",
+    "question": "How do I block my debit or credit card?",
+    "answer": "To block a lost or stolen card at Azentio Demo Bank, tell us on this call after verification and we place a block request straight away. Once blocked, the card cannot be used again, and you can ask for a replacement.",
+    "tags": [
+      "block card",
+      "lost card",
+      "stolen",
+      "debit card",
+      "credit card",
+      "hotlist"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-020",
+    "question": "How do I get a replacement card?",
+    "answer": "After your old card is blocked, you can request a replacement card from Azentio Demo Bank on this call. It is usually delivered to your registered address within 7 working days, which is an illustrative policy figure.",
+    "tags": [
+      "replacement card",
+      "new card",
+      "reissue",
+      "card delivery",
+      "damaged card"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-021",
+    "question": "How do I update my address or KYC details?",
+    "answer": "To update your address or KYC at Azentio Demo Bank, submit a valid address proof and identity proof at a branch or through a KYC update request. At this demo bank updates usually reflect within 3 working days, which is an illustrative policy figure.",
+    "tags": [
+      "kyc",
+      "address",
+      "update",
+      "change address",
+      "address proof",
+      "re-kyc"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-022",
+    "question": "How do I change my registered mobile number or email?",
+    "answer": "To change your registered mobile number or email at Azentio Demo Bank, visit a branch with an identity proof, because this change cannot be made on a call for security reasons. Updates usually reflect within 3 working days, an illustrative policy figure.",
+    "tags": [
+      "mobile number",
+      "phone number",
+      "email",
+      "change",
+      "update contact"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-023",
+    "question": "How long does a complaint take to resolve?",
+    "answer": "At Azentio Demo Bank we acknowledge a complaint right away with a reference number and aim to resolve most complaints within 7 working days, which is an illustrative policy figure. You can ask for its status any time using the reference.",
+    "tags": [
+      "complaint",
+      "resolution time",
+      "how long",
+      "grievance",
+      "turnaround"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-024",
+    "question": "How do I escalate a complaint that is not resolved?",
+    "answer": "If your Azentio Demo Bank complaint is not resolved within 7 working days, or you are unhappy with the reply, we escalate it to a senior grievance officer. These timelines are illustrative policy figures, and urgent matters such as an unauthorised debit go to a human agent at once.",
+    "tags": [
+      "escalate",
+      "escalation",
+      "complaint",
+      "grievance officer",
+      "unresolved",
+      "human"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-025",
+    "question": "What documents do I need for a health insurance claim?",
+    "answer": "For a health insurance claim with Azentio Demo Bank you need the claim form, the hospital discharge summary, original bills and receipts, and doctor's prescriptions and test reports. This list is an illustrative policy of this demo bank, and every claim is decided after review.",
+    "tags": [
+      "health insurance",
+      "claim",
+      "documents",
+      "hospital",
+      "medical",
+      "mediclaim"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-026",
+    "question": "How do I file an insurance claim and track it?",
+    "answer": "To file an insurance claim with Azentio Demo Bank, inform us soon after the event and submit the claim form with the supporting papers. You can ask for the recorded claim status on this call, but approval is decided only after the claim is assessed.",
+    "tags": [
+      "insurance claim",
+      "file claim",
+      "claim status",
+      "track",
+      "intimation"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-027",
+    "question": "How can I pay my insurance premium?",
+    "answer": "At Azentio Demo Bank you can pay your insurance premium by auto debit from your account, at a branch, or by a standing instruction on your card. You can choose to pay monthly, quarterly or yearly where the policy allows.",
+    "tags": [
+      "premium",
+      "payment mode",
+      "pay premium",
+      "insurance",
+      "renewal"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-028",
+    "question": "Is there a grace period if I pay my premium late?",
+    "answer": "At Azentio Demo Bank most policies allow a grace period of 30 days after the premium due date, which is an illustrative policy figure. If the premium is still unpaid after the grace period, the policy can lapse.",
+    "tags": [
+      "grace period",
+      "late premium",
+      "lapse",
+      "premium",
+      "due date"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-029",
+    "question": "What are your branch and helpline hours?",
+    "answer": "Azentio Demo Bank branches are open 9:30 AM to 4:30 PM on working days, and the phone helpline runs 8 AM to 8 PM all week. These hours are illustrative policy figures, and card blocking is available round the clock.",
+    "tags": [
+      "helpline",
+      "hours",
+      "timings",
+      "branch",
+      "customer care",
+      "open"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  },
+  {
+    "id": "FAQ-030",
+    "question": "How does verification on this call work?",
+    "answer": "To verify you on this call, Azentio Demo Bank asks for your registered mobile number and your date of birth. General product questions need no verification, but account, loan and service details are shared only after you are verified.",
+    "tags": [
+      "verification",
+      "verify",
+      "identity",
+      "date of birth",
+      "registered mobile",
+      "authentication"
+    ],
+    "source": "Azentio Demo Bank service guide (synthetic)"
+  }
+]

@@ -31,7 +31,7 @@ A line may carry several labels, separated by `|`.
 
 ---
 
-- [~] (agent for Pavan, feat/P1-faq) **P1: FAQ and product knowledge: 30 entries** (needs: none)
+- [x] **P1: FAQ and product knowledge: 30 entries** (needs: none)
 
 **Files:** create `backend/simulator/data/seed/faq.json`.
 
