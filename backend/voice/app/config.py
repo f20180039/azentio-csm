@@ -59,16 +59,21 @@ def load_settings(env_file: Path | None = None) -> Settings:
     keys = {"groq": get("GROQ_API_KEY", ""), "gemini": get("GEMINI_API_KEY", ""), "mistral": get("MISTRAL_API_KEY", ""),
             "ollama": "local"}  # a local Ollama needs no key; the link fails over fast if it is not running
     spec = get("VOICE_LLM_CHAIN", default_chain_spec(get("GEMINI_MODEL", ""), get("MISTRAL_MODEL", "")))
+    api_raw = get("RENEWALS_API_BASE", Settings.api_base).rstrip("/")
+    api_base = api_raw if (api_raw.endswith("/api/v1") or api_raw.endswith("/v1")) else f"{api_raw}/api/v1"
+    sim_raw = get("SIMULATOR_BASE", Settings.simulator_base).rstrip("/")
+    sim_base = sim_raw if sim_raw.endswith("/v1") else f"{sim_raw}/v1"
+
     return Settings(
         groq_api_key=keys["groq"],
         stt_model=get("VOICE_STT_MODEL", Settings.stt_model),
         llm_chain=parse_chain(spec, keys),
         intent_model=get("VOICE_INTENT_MODEL", Settings.intent_model),
         translate_model=get("VOICE_TRANSLATE_MODEL", Settings.translate_model),
-        api_base=get("RENEWALS_API_BASE", Settings.api_base),
+        api_base=api_base,
         api_user=get("RENEWALS_API_USER", Settings.api_user),
         api_password=get("RENEWALS_API_PASSWORD", Settings.api_password),
-        simulator_base=get("SIMULATOR_BASE", Settings.simulator_base),
+        simulator_base=sim_base,
         human_agent_number=get("HUMAN_AGENT_NUMBER", "").replace(" ", ""),
         helpline_number=get("HELPLINE_NUMBER", Settings.helpline_number),
         tts_voice=get("VOICE_TTS_VOICE", Settings.tts_voice),
