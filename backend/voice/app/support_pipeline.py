@@ -1,6 +1,7 @@
 """Live browser call for the front desk: mic → voice detection → speech-to-text → SupportBrain → voice. The same brain
 serves typed and recorded-audio calls, so all three behave alike and record the same turn metadata."""
 import asyncio
+import os
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -27,7 +28,7 @@ FALLBACK = "Sorry, I didn't catch that. Could you say it again?"
 SYSTEM_DOWN = "Sorry, I'm having trouble reaching our systems. Please hold on or try again in a moment."
 
 
-SETTLE_SECS = 0.25  # after a transcript, how long the caller must stay quiet before the agent answers
+SETTLE_SECS = float(os.environ.get("VOICE_TURN_SETTLE_SECS", "1.0"))  # quiet time after the caller's last words before the agent answers
 
 
 class TurnGate:
