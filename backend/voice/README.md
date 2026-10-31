@@ -50,6 +50,19 @@ Only Twilio's endpoints are public. A request that arrives through the tunnel (i
 
 **End call on the web does not hang up the phone**, so the call page disables it while a phone call rings or is live. The phone call ends when the agent calls `end_call` or the customer hangs up. **Cancel** only stops the page waiting (it also gives up by itself after 2 minutes of ringing); **Connect voice** stays available as the browser backup.
 
+## Support desk by phone
+
+Customers can ring the front-desk agent on the Twilio number, and the support call page can ring a phone for you. Both start a support call with channel `PHONE` and stream its audio to `WS /ws/twilio/support`, which runs the same support pipeline as the browser microphone at 8 kHz.
+
+1. Do steps 1 and 2 of **Phone calls (Twilio)** above: Account SID and Auth Token, a Twilio number, `cloudflared tunnel --url http://localhost:7861`. On a trial account, verify your mobile under **Phone Numbers → Verified Caller IDs**. Trial accounts take calls only from verified numbers, and play a trial notice before your webhook runs.
+2. In the Twilio console, open **Phone Numbers → Manage → Active numbers →** your number. Under **Voice Configuration**, set **A call comes in** to *Webhook*, URL `{PUBLIC_BASE_URL}/twilio/support/incoming`, method `HTTP POST`, and save. The tunnel URL changes on every `cloudflared` run, so update this URL each time.
+3. In `../.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `PUBLIC_BASE_URL` are enough to answer calls. "Call a phone" also needs `TWILIO_FROM` and `TWILIO_ALLOWED_TO`. Set `HUMAN_AGENT_NUMBER` (E.164) to transfer escalations to a person. Leave it empty and phone callers get the call-back with `HELPLINE_NUMBER`. Restart this service.
+4. Ring the number: the agent greets you, and the call appears on the customer service desk as **Phone**. Or open a new support call and, under **Customer audio**, pick a masked number and click **Call a phone** (`POST /support/phone-call`, local only, allow-listed numbers, one phone call at a time).
+
+**Signature check.** Every request to `/twilio/support/incoming` must carry a valid `X-Twilio-Signature`: base64 of an HMAC-SHA1, keyed with `TWILIO_AUTH_TOKEN`, over `PUBLIC_BASE_URL` + the path (+ query) followed by each POST parameter name and value, sorted by name. A wrong or missing signature, or Twilio not configured, gets 403 and starts nothing. So `PUBLIC_BASE_URL` must be exactly the URL set in the console. The media stream is accepted only for a call this process answered or dialled, with the matching `CallSid`. The caller's number (`From`) is sent to the simulator as `caller_ref`, so failed verifications lock per caller.
+
+On escalation with a `HUMAN_AGENT_NUMBER`, the agent says it is connecting them. After `HANDOFF_TRANSFER_DELAY_SECS` (6 s), Twilio redirects the live call to that number, which ends the stream.
+
 ## Headless check
 
 With the API (`ENFORCE_CALLING_HOURS=false`) and this service running:

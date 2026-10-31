@@ -331,6 +331,7 @@ export const CHANNEL_LABEL: Record<SupportChannel, string> = {
   [SupportChannel.VOICE]: 'Microphone',
   [SupportChannel.SIM_AUDIO]: 'Audio files',
   [SupportChannel.TEXT]: 'Text',
+  [SupportChannel.PHONE]: 'Phone',
 };
 
 /** From the latest customer turn's meta; the call-level flag covers calls whose turns carry no meta yet. */

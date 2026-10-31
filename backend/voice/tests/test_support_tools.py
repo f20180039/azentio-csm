@@ -150,8 +150,24 @@ def test_handover_mode_follows_the_channel():
     browser = CallSession(CALL, helpline="1800 210 4455")
     out = run(client, browser, "escalate_to_human", {"trigger": "SENSITIVE", "reason": "fraud", "summary": "unauthorised debit"})
     assert out["handoff"] == {"mode": "CALLBACK", "helpline": "1800 210 4455"} and browser.refs == ["ESC-70200"]
-    phone = CallSession(CALL, phone_call_sid="CA123")
+    phone = CallSession(CALL, phone_call_sid="CA123", transfer_to="+919800000000")
     assert run(client, phone, "escalate_to_human", {"trigger": "DISSATISFIED", "reason": "unhappy", "summary": "s"})["handoff"] == {"mode": "TRANSFER"}
+
+
+def test_a_phone_call_with_no_human_agent_number_gets_a_call_back():
+    client = SimulatorClient(Settings(), transport=httpx.MockTransport(lambda r: httpx.Response(201, json={"ref": "ESC-70201"})))
+    phone = CallSession(CALL, phone_call_sid="CA123", transfer_to=None, helpline="1800 210 4455")
+    out = run(client, phone, "escalate_to_human", {"trigger": "SENSITIVE", "reason": "fraud", "summary": "s"})
+    assert out["handoff"] == {"mode": "CALLBACK", "helpline": "1800 210 4455"}
+
+
+def test_verify_sends_the_caller_ref_on_phone_calls_only():
+    sim, client, call = setup()
+    verify(client, call)
+    assert "caller_ref" not in json.loads(sim.requests[-1].content)
+    sim, client, _ = setup()
+    verify(client, CallSession(CALL, caller_ref="+15005550199"))
+    assert json.loads(sim.requests[-1].content)["caller_ref"] == "+15005550199"
 
 
 def test_verify_without_real_details_spends_no_attempt():

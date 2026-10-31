@@ -14,7 +14,7 @@ export const SupportOutcome = {
 } as const;
 export type SupportOutcome = ValueOf<typeof SupportOutcome>;
 
-export const SupportChannel = { VOICE: 'VOICE', SIM_AUDIO: 'SIM_AUDIO', TEXT: 'TEXT' } as const;
+export const SupportChannel = { VOICE: 'VOICE', SIM_AUDIO: 'SIM_AUDIO', TEXT: 'TEXT', PHONE: 'PHONE' } as const;
 export type SupportChannel = ValueOf<typeof SupportChannel>;
 
 export const TurnRole = { CUSTOMER: 'customer', AGENT: 'agent' } as const;

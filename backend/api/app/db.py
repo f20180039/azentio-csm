@@ -13,6 +13,30 @@ MIN_SCORE, MAX_SCORE = 1, 5
 
 SEED_SQL = RESOURCES / "seed" / "renewal_seed.sql"
 
+CALLS_TABLE = f"""
+CREATE TABLE IF NOT EXISTS calls (
+    id                       TEXT PRIMARY KEY REFERENCES cases (id),
+    kind                     TEXT    NOT NULL CHECK (kind IN ({sql_in(CallKind)})),
+    policy_id                TEXT REFERENCES policies (id),
+    channel                  TEXT CHECK (channel IS NULL OR channel IN ({sql_in(Channel)})),
+    started_at               TEXT    NOT NULL,
+    ended_at                 TEXT,
+    identity_verified        INTEGER NOT NULL DEFAULT 0,
+    verify_failures          INTEGER NOT NULL DEFAULT 0,
+    out_of_playbook_requests INTEGER NOT NULL DEFAULT 0,
+    must_handoff             INTEGER NOT NULL DEFAULT 0,
+    outcome                  TEXT,
+    last_quote               TEXT,
+    payment_link_sent        INTEGER NOT NULL DEFAULT 0,
+    handoff_reason           TEXT,
+    callback_at              TEXT,
+    transcript               TEXT    NOT NULL DEFAULT '[]',
+    CHECK (kind <> '{CallKind.RENEWAL}' OR policy_id IS NOT NULL),
+    CHECK (kind <> '{CallKind.SUPPORT}' OR outcome IS NULL OR outcome IN ({sql_in(Outcome)}))
+);
+"""
+CALLS_INDEX = "CREATE INDEX IF NOT EXISTS calls_kind_started_idx ON calls (kind, started_at DESC);"
+
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS policies (
     id                 TEXT PRIMARY KEY,
@@ -46,27 +70,8 @@ CREATE TABLE IF NOT EXISTS cases (
     updated_at     TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS calls (
-    id                       TEXT PRIMARY KEY REFERENCES cases (id),
-    kind                     TEXT    NOT NULL CHECK (kind IN ({sql_in(CallKind)})),
-    policy_id                TEXT REFERENCES policies (id),
-    channel                  TEXT CHECK (channel IS NULL OR channel IN ({sql_in(Channel)})),
-    started_at               TEXT    NOT NULL,
-    ended_at                 TEXT,
-    identity_verified        INTEGER NOT NULL DEFAULT 0,
-    verify_failures          INTEGER NOT NULL DEFAULT 0,
-    out_of_playbook_requests INTEGER NOT NULL DEFAULT 0,
-    must_handoff             INTEGER NOT NULL DEFAULT 0,
-    outcome                  TEXT,
-    last_quote               TEXT,
-    payment_link_sent        INTEGER NOT NULL DEFAULT 0,
-    handoff_reason           TEXT,
-    callback_at              TEXT,
-    transcript               TEXT    NOT NULL DEFAULT '[]',
-    CHECK (kind <> '{CallKind.RENEWAL}' OR policy_id IS NOT NULL),
-    CHECK (kind <> '{CallKind.SUPPORT}' OR outcome IS NULL OR outcome IN ({sql_in(Outcome)}))
-);
-CREATE INDEX IF NOT EXISTS calls_kind_started_idx ON calls (kind, started_at DESC);
+{CALLS_TABLE}
+{CALLS_INDEX}
 
 CREATE TABLE IF NOT EXISTS call_ratings (
     call_id TEXT PRIMARY KEY REFERENCES calls (id),
@@ -140,7 +145,26 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.read() as con:
             con.executescript(f"BEGIN; {SCHEMA}\nCOMMIT;")
+        self.widen_channel_check()
         self.seed()
+
+    def widen_channel_check(self) -> None:
+        """A database made before a channel was added still has the old CHECK on calls.channel, which SQLite cannot
+        alter in place, so the table is rebuilt under the current schema with every row kept."""
+        with self.read() as con:
+            sql = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'calls'").fetchone()[0]
+            if all(f"'{c.value}'" in sql for c in Channel):
+                return
+            columns = ", ".join(r["name"] for r in con.execute("PRAGMA table_info(calls)"))
+            con.execute("PRAGMA foreign_keys = OFF")
+            con.executescript(
+                "BEGIN IMMEDIATE;"
+                + CALLS_TABLE.replace("CREATE TABLE IF NOT EXISTS calls (", "CREATE TABLE calls_widened (")
+                + f"INSERT INTO calls_widened ({columns}) SELECT {columns} FROM calls;"
+                "DROP TABLE calls; ALTER TABLE calls_widened RENAME TO calls;"
+                f"{CALLS_INDEX}\nCOMMIT;"
+            )
+            con.execute("PRAGMA foreign_keys = ON")
 
     def connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(str(self.path), isolation_level=None, timeout=30)

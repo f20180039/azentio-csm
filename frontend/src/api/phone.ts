@@ -28,3 +28,8 @@ export async function getPhoneAllowed(): Promise<PhoneAllowed> {
 export function placePhoneCall(callId: string, numberId: string): Promise<{ status: string }> {
   return voicePost(VoicePath.PHONE_CALL, { callId, numberId });
 }
+
+/** Rings an allowed number; the answered call is a new PHONE support call with the front-desk agent. */
+export function placeSupportPhoneCall(numberId: string): Promise<{ call_id: string; status: string }> {
+  return voicePost(VoicePath.SUPPORT_PHONE_CALL, { numberId });
+}

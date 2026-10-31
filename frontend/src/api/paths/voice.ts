@@ -7,6 +7,7 @@ export const VoicePath = {
   TEXT_TURN: '/v1/text-turn',
   PHONE_ALLOWED: '/v1/phone/allowed',
   PHONE_CALL: '/v1/phone-call',
+  SUPPORT_PHONE_CALL: '/support/phone-call',
   EVAL_LATEST: '/v1/eval/latest',
   LLM_STATUS: '/v1/llm/status',
 } as const;

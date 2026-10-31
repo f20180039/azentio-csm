@@ -125,7 +125,7 @@ Each rule is enforced in code, not only in the prompt, and has tests.
 
 - **A first plain request for a person is not a hand-over.** The tool refuses it (`ASK_FIRST`); the agent asks what the caller needs and tries to help. A second request hands over.
 - **The agent hands over unasked** when the caller is unhappy with the help (`DISSATISFIED`), when it could not answer or act after trying (`UNRESOLVED`), and at once for fraud, unauthorised transactions or distress (`SENSITIVE`).
-- **Phone call:** after the agent says it is connecting them, Twilio transfers the live call to `HUMAN_AGENT_NUMBER`. Today this is wired for Renewal Desk phone calls; the support desk runs in the browser.
+- **Phone call:** after the agent says it is connecting them, Twilio transfers the live call to `HUMAN_AGENT_NUMBER`. This is wired for both Renewal Desk phone calls and support desk phone calls (callers ringing the Twilio number, or "Call a phone" on a support call). With `HUMAN_AGENT_NUMBER` empty, a phone caller gets the call-back below instead.
 - **Browser:** an escalation record with an `ESC-` reference. The caller hears that a colleague will call back, plus the helpline number.
 
 ## Demo-day checklist

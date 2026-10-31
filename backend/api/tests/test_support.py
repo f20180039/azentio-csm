@@ -163,3 +163,35 @@ def test_vocabularies_reject_unknown_values():
     with pytest.raises(ApiError):
         parse(TurnRole, "role", "Customer")
     assert parse(Outcome, "outcome", "ROUTED") is Outcome.ROUTED
+
+
+def test_a_phone_call_starts_and_is_listed_with_its_channel(client):
+    cid = start(client, "PHONE")
+    assert client.get(f"{BASE}/{cid}", headers=ANALYST).json()["channel"] == "PHONE"
+    assert [c["channel"] for c in client.get(BASE, headers=ANALYST).json()["items"]] == ["PHONE"]
+
+
+def test_unknown_channels_are_still_400_and_list_phone(client):
+    r = client.post(BASE, json={"channel": "SMS"}, headers=VOICE)
+    assert r.status_code == 400 and r.json()["detail"].startswith("channel must be one of VOICE, SIM_AUDIO, TEXT, PHONE")
+
+
+def test_a_database_made_before_phone_keeps_its_calls_and_accepts_phone(make_client, tmp_path):
+    import sqlite3
+
+    old_cid = start(make_client(db_name="old.db"), "TEXT")
+    con = sqlite3.connect(tmp_path / "old.db")  # put back the CHECK a database created before PHONE has
+    con.execute("PRAGMA writable_schema = ON")
+    con.execute("UPDATE sqlite_master SET sql = replace(sql, ', ''PHONE''', '') WHERE name = 'calls'")
+    con.commit()
+    con.close()
+    con = sqlite3.connect(tmp_path / "old.db")
+    assert "'PHONE'" not in con.execute("SELECT sql FROM sqlite_master WHERE name = 'calls'").fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError):
+        con.execute("UPDATE calls SET channel = 'PHONE' WHERE id = ?", (old_cid,))
+    con.close()
+
+    client = make_client(db_name="old.db")
+    cid = start(client, "PHONE")
+    channels = {c["id"]: c["channel"] for c in client.get(BASE, headers=ANALYST).json()["items"]}
+    assert channels == {old_cid: "TEXT", cid: "PHONE"}

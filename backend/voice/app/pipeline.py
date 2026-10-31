@@ -38,7 +38,7 @@ GOODBYE = "Thank you for your time. Goodbye."
 LLM_FALLBACK = "Sorry, give me a moment."
 LLM_FALLBACK_INTERVAL_SECS = 10.0
 LLM_GIVE_UP_AFTER = 3
-HANDOFF_TRANSFER_DELAY_SECS = 6.0  # time for the agent to say it is connecting them
+HANDOFF_TRANSFER_DELAY_SECS = phone.HANDOFF_TRANSFER_DELAY_SECS
 LLM_GIVE_UP = "I'll ask a colleague to call you back shortly."
 
 
