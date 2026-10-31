@@ -10,8 +10,6 @@ from app.auth import User
 from app.clock import Clock
 from app.db import MAX_SCORE, MIN_SCORE, Database, loads
 from app.errors import ApiError
-from app.pii import Redactor
-from app.pii_vault import PiiVault
 from app.services.support import MAX_LIMIT, feedback_view, find_call, rating_view, ratings_by_call
 from app.vocab import (AuditAction, CallKind, EscalationTrigger, FeedbackVerdict, LessonStatus, RatingSource,
                        ReviewReason, Role, SupportTool, TurnRole)
@@ -53,11 +51,10 @@ def _lesson(r: sqlite3.Row) -> dict:
 
 
 class ReviewService:
-    def __init__(self, db: Database, audit: AuditLog, clock: Clock, vault: PiiVault):
+    def __init__(self, db: Database, audit: AuditLog, clock: Clock):
         self.db = db
         self.audit = audit
         self.clock = clock
-        self.vault = vault
 
     def rate(self, call_id: str, score: Any, comment: Any, source: RatingSource, user: User) -> dict:
         if not user.has_any(RATING_SOURCE_ROLE[source]):
@@ -71,8 +68,6 @@ class ReviewService:
                 find_call(con, call_id)
             except ApiError:
                 raise ApiError.bad_request(f"Support call {call_id} not found") from None
-            if comment is not None:  # a VOICE comment is the caller's spoken feedback: stored as tokens
-                comment = Redactor(self.vault, call_id, self.clock.today()).redact(comment)
             con.execute(
                 "INSERT INTO call_ratings (call_id, score, comment, source, author, at) VALUES (?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (call_id) DO UPDATE SET score = excluded.score, comment = excluded.comment,"
@@ -92,8 +87,6 @@ class ReviewService:
                 raise ApiError.not_found(f"Turn {seq} not found on call {call_id}")
             if turns[seq - 1].get("role") != TurnRole.AGENT:
                 raise ApiError.bad_request("Feedback can only be given on agent turns")
-            if correction is not None:  # stored and audited as tokens, like the transcript
-                correction = Redactor(self.vault, call_id, self.clock.today()).redact(correction)
             con.execute(
                 "INSERT INTO turn_feedback (call_id, seq, author, verdict, correction, at) VALUES (?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (call_id, seq, author) DO UPDATE SET verdict = excluded.verdict,"

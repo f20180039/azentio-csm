@@ -6,8 +6,6 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 RESOURCES = Path(__file__).resolve().parent / "resources"
 DEFAULT_DB_PATH = BASE_DIR / "data" / "runtime" / "api.db"
-# The PII vault is its own SQLite file, never the calls database (backend/api/data/ is git-ignored).
-DEFAULT_PII_VAULT_PATH = BASE_DIR / "data" / "pii_vault.db"
 DEFAULT_PLAYBOOK = RESOURCES / "playbooks" / "health-renewal.yml"
 TIMEZONE = "Asia/Kolkata"
 
@@ -30,8 +28,6 @@ class Settings:
     enforce_calling_hours: bool = True
     playbook_path: str = str(DEFAULT_PLAYBOOK)
     cors_origins: list[str] = field(default_factory=lambda: ["http://localhost:5173"])
-    pii_vault_path: str = str(DEFAULT_PII_VAULT_PATH)
-    pii_vault_key: str | None = None  # Fernet key; None = tokens only, no values kept
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -40,6 +36,4 @@ class Settings:
             enforce_calling_hours=_env_bool("ENFORCE_CALLING_HOURS", True),
             playbook_path=os.getenv("RENEWAL_PLAYBOOK") or str(DEFAULT_PLAYBOOK),
             cors_origins=_env_list("CORS_ORIGINS", ["http://localhost:5173"]),
-            pii_vault_path=os.getenv("PII_VAULT_PATH") or str(DEFAULT_PII_VAULT_PATH),
-            pii_vault_key=(os.getenv("PII_VAULT_KEY") or "").strip() or None,
         )

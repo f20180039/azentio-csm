@@ -7,11 +7,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 # Module-level `app` (used by test_api.py) must not touch the real data/runtime database.
-_TEST_DIR = tempfile.mkdtemp(prefix="api-test-")
-os.environ["API_DB_PATH"] = os.path.join(_TEST_DIR, "api.db")
-os.environ["PII_VAULT_PATH"] = os.path.join(_TEST_DIR, "pii_vault.db")
+os.environ["API_DB_PATH"] = os.path.join(tempfile.mkdtemp(prefix="api-test-"), "api.db")
 
-from cryptography.fernet import Fernet  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.clock import Clock  # noqa: E402
@@ -43,13 +40,9 @@ class MovableClock(Clock):
 def make_client(tmp_path):
     made = []
 
-    def make(ist: str = "2026-10-29T11:00:00", enforce: bool = True, db_name: str = "api.db", keyed: bool = True):
+    def make(ist: str = "2026-10-29T11:00:00", enforce: bool = True, db_name: str = "api.db"):
         clock = MovableClock(ist)
-        # The PII vault key is generated in memory per test; keyed=False exercises the no-key path.
-        settings = Settings(db_path=str(tmp_path / db_name), enforce_calling_hours=enforce,
-                            pii_vault_path=str(tmp_path / "pii_vault.db"),
-                            pii_vault_key=Fernet.generate_key().decode() if keyed else None)
-        app = create_app(settings, clock)
+        app = create_app(Settings(db_path=str(tmp_path / db_name), enforce_calling_hours=enforce), clock)
         client = TestClient(app)
         client.clock = clock
         client.services = app.state.services

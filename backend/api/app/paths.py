@@ -33,7 +33,6 @@ class ApiPath(StrEnum):
     SUPPORT_END = "/{call_id}/end"
     SUPPORT_RATING = "/{call_id}/rating"
     SUPPORT_TURN_FEEDBACK = "/{call_id}/turns/{seq}/feedback"
-    SUPPORT_CALL_PII = "/{call_id}/pii"
 
     SUPPORT = "/support"
     SUPPORT_REVIEW = "/review"
