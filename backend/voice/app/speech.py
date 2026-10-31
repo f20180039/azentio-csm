@@ -24,7 +24,7 @@ LANGUAGE = "en"
 NO_SPEECH_PROB_MAX = 0.5
 AVG_LOGPROB_MIN = -0.7
 # The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
-DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001."
+DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003."
 
 # Whisper's well-known inventions on silence and noise. Not "okay" or "bye": callers say those.
 PHANTOMS = {"thank you", "thanks for watching", "thank you for watching", "you", "thank you so much", "please subscribe"}
@@ -33,13 +33,60 @@ _PUNCT = re.compile(r"[^\w\s]")
 REF_PREFIXES = ("SR", "CMP", "RQ", "ESC", "PL", "VL", "HL", "LA", "HP", "MP", "CLM", "TXN")
 _DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "to": "2", "too": "2", "three": "3", "four": "4", "for": "4",
                 "five": "5", "six": "6", "seven": "7", "eight": "8", "ate": "8", "nine": "9"}
+_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+           "double": 2, "triple": 3, "quadruple": 4}
+_PLURALS = {"zeros": "0", "zeroes": "0", "ones": "1", "twos": "2", "threes": "3", "fours": "4",
+            "fives": "5", "sixes": "6", "sevens": "7", "eights": "8", "nines": "9"}
+
 _TOKEN = r"(?:\d+|" + "|".join(sorted(_DIGIT_WORDS, key=len, reverse=True)) + r")\b"
 _SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
 _REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
 
 
+def _to_digit(s: str) -> str:
+    s = s.lower()
+    return _DIGIT_WORDS.get(s, s if s.isdigit() else "")
+
+
+def _to_count(s: str) -> int:
+    s = s.lower()
+    return int(s) if s.isdigit() else _COUNTS.get(s, 1)
+
+
+def normalise_spoken_digits(text: str) -> str:
+    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' -> '000', 'double 5' -> '55'."""
+    if not text:
+        return text
+
+    def repl_times(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _to_digit(m.group(2))
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    def repl_mult(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _to_digit(m.group(2))
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    def repl_plural(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _PLURALS.get(m.group(2).lower(), "")
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    p_count = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine)"
+    p_digit = r"(?:\d+|zero|oh|one|two|three|four|five|six|seven|eight|nine)"
+    p_mult = r"(?:double|triple|quadruple)"
+    p_plural = r"(?:zeroes|zeros|ones|twos|threes|fours|fives|sixes|sevens|eights|nines)"
+
+    text = re.sub(rf"\b({p_count})\s+times\s+({p_digit})\b", repl_times, text, flags=re.I)
+    text = re.sub(rf"\b({p_mult})\s+({p_digit})\b", repl_mult, text, flags=re.I)
+    text = re.sub(rf"\b({p_count})\s+({p_plural})\b", repl_plural, text, flags=re.I)
+    return text
+
+
 def normalise_refs(text: str) -> str:
     """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents."""
+    text = normalise_spoken_digits(text)
     text = _SPELLED_PREFIX.sub(lambda m: m.group(1).replace(" ", "").upper(), text)
 
     def fix(m: re.Match) -> str:

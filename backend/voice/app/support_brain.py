@@ -13,6 +13,7 @@ from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
 from .intents import Intent
 from .simulator_client import SimulatorClient
+from .speech import normalise_spoken_digits
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
 from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
@@ -27,6 +28,24 @@ Classifier = Callable[[str, list[dict]], Awaitable[object]]
 
 OUTCOME_BY_PREFIX = ((RefPrefix.ESCALATION, Outcome.ESCALATED), (RefPrefix.COMPLAINT, Outcome.COMPLAINT_REGISTERED),
                      (RefPrefix.SERVICE_REQUEST, Outcome.TICKET_CREATED), (RefPrefix.ROUTED, Outcome.ROUTED))
+
+
+def _clean_reply(text: str) -> str:
+    """Strips runaway multi-turn simulations, internal reasoning leaks, and repetitive question loops."""
+    if not text:
+        return ""
+    cut = re.split(r"(?:\bUser (?:gave|hasn't|has not|says|asked|replied)|\b(?:User|Customer|Assistant|Agent)\s*:)", text, flags=re.I)[0]
+    sentences = re.split(r"(?<=[.?!])\s*(?=[A-Z0-9]|$)", cut.strip())
+    seen = set()
+    kept = []
+    for s in sentences:
+        norm = re.sub(r"\W+", "", s).lower()
+        if norm and norm not in seen:
+            seen.add(norm)
+            kept.append(s.strip())
+        if len(kept) >= 2:
+            break
+    return " ".join(kept) if kept else cut.strip()
 
 
 @dataclass
@@ -125,6 +144,7 @@ class SupportBrain:
 
     async def reply(self, user_text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
         async with self._lock:
+            user_text = normalise_spoken_digits(user_text)
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
@@ -224,7 +244,7 @@ class SupportBrain:
             if not calls and (recovered := recover_text_tool_call(msg.get("content"))):
                 calls, msg = [recovered], {**msg, "content": None}
             if not calls:
-                return SupportTurn(msg.get("content") or "", traces, model=model, ended=self.ended)
+                return SupportTurn(_clean_reply(msg.get("content") or ""), traces, model=model, ended=self.ended)
             self._messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": calls})
             for c in calls:
                 trace = await self._run(c)

@@ -225,3 +225,18 @@ def test_no_backstop_before_verification_or_for_ordinary_questions():
     brain, sim, _ = make(llm)
     asyncio.run(brain.reply("I didn't make this payment."))
     assert not any(r.url.path.startswith("/v1/csm") for r in sim.requests)
+
+
+def test_clean_reply_removes_runaway_simulations_and_reasoning():
+    from app.support_brain import _clean_reply
+    hallucinated = (
+        'I’m sorry, but that mobile number doesn’t look like a 10‑digit number. '
+        'Could you please repeat the full 10‑digit mobile number registered with us, and confirm your date of birth?'
+        'Sure, could you tell me the mobile number you have registered with the bank and your date of birth, please?'
+        'User gave "Yes, 98765-7700. 4 times 0, 1. 1990, April 12th". That is unclear. Need correct 10-digit. Ask again.'
+        'User hasn\'t responded yet.....................................'
+    )
+    cleaned = _clean_reply(hallucinated)
+    assert "User gave" not in cleaned
+    assert "User hasn't" not in cleaned
+    assert cleaned.startswith("I’m sorry, but that mobile number")

@@ -1,7 +1,27 @@
 from pipecat.frames.frames import TranscriptionFrame
 
 from app.config import Settings
-from app.speech import DOMAIN_PROMPT, build_stt, build_vad, is_invented_segment, is_phantom, keep_transcript, normalise_refs
+from app.speech import (
+    DOMAIN_PROMPT,
+    build_stt,
+    build_vad,
+    is_invented_segment,
+    is_phantom,
+    keep_transcript,
+    normalise_refs,
+    normalise_spoken_digits,
+)
+
+
+def test_spoken_digit_multipliers_are_expanded():
+    assert normalise_spoken_digits("98765 4 times 0 1") == "98765 0000 1"
+    assert normalise_spoken_digits("four times zero") == "0000"
+    assert normalise_spoken_digits("triple zero") == "000"
+    assert normalise_spoken_digits("double 5") == "55"
+    assert normalise_spoken_digits("4 zeroes") == "0000"
+    assert normalise_spoken_digits("Yes, 98765-7700. 4 times 0, 1. 1990, April 12th is my date of birth.") == (
+        "Yes, 98765-7700. 0000, 1. 1990, April 12th is my date of birth."
+    )
 
 
 def test_references_survive_accented_transcription():
