@@ -89,7 +89,7 @@ Tests (`SupportControllerTest`):
 - It uses the same `speech.py` path as live. It returns per turn `{transcript, intents, verified, tool_trace, retrieved, reply_text, reply_audio_b64}` and records a `SUPPORT` call in Spring.
 - Tests: two WAV turns produce two transcripts and a call record; a silent file produces a turn marked `no_speech`, with no reply.
 
-- [ ] **A8: Operator panel** (needs: A4, A5)
+- [x] **A8: Operator panel** (needs: A4, A5)
 
 **Files:** create `frontend/src/pages/SupportDesk.tsx` (route `/support`, the landing page) and `SupportCall.tsx`, with `api/support.ts`.
 - **Live view:**
@@ -104,7 +104,7 @@ Tests (`SupportControllerTest`):
 - **Lists:** calls (with outcome); tickets, complaints, routed queries and escalations (simulator `/ops/records`).
 - Tests (vitest): the panel renders the meta from a mocked call; the upload tab posts files.
 
-- [ ] **A9: Evaluation harness** (needs: A7, P2, P4)
+- [x] **A9: Evaluation harness** (needs: A7, P2, P4)
 
 **Files:** create `backend/voice/eval/run_scenarios.py [--full] [--accent in] [--condition clean]`.
 - It resets the simulator, plays each scenario's rendered audio through `/sim/audio`, and checks `expect` and `outcome`.
