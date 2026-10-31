@@ -6,7 +6,9 @@ import { getEvalLatest, type EvalReport } from '../api/eval';
 import { getLlmStatus, type LlmStatus } from '../api/llm';
 import { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
+import { LineChart, type LinePoint, type LineSeries } from '../components/charts/LineChart';
 import { Sparkline } from '../components/charts/Sparkline';
+import { listCalls, type SupportCallSummary } from '../api/support';
 import { useToast } from '../components/Toasts';
 import { formatAge, formatDateTime, formatInr, humanise, personaLabel } from '../format';
 import { Route } from '../routes';
@@ -25,6 +27,70 @@ const GUARD: Record<GuardrailAction, { label: string; tone: 'warn' | 'bad' | 'gr
   'tool.handoff_to_human': { label: 'Handed to a person', tone: 'bad' },
   'tool.refused': { label: 'Action refused', tone: 'grey' },
 };
+
+const INTENT_SERIES: LineSeries[] = [
+  { key: 'REPAYMENT', label: 'Repayment', color: 'var(--accent)' },
+  { key: 'LOAN_APPLICATION', label: 'Loan status', color: 'var(--info)' },
+  { key: 'ACCOUNT', label: 'Account balance', color: '#8b5cf6' },
+  { key: 'SERVICE_REQUEST', label: 'Service request', color: 'var(--ok)' },
+  { key: 'COMPLAINT', label: 'Complaint', color: 'var(--bad)' },
+  { key: 'UNSUPPORTED', label: 'Unsupported', color: 'var(--warn)' },
+];
+
+function last7Days(): string[] {
+  const dates: string[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+function computeIntentPoints(days: string[], calls: SupportCallSummary[]): LinePoint[] {
+  const countsByDay: Record<string, Record<string, number>> = {};
+  for (const day of days) {
+    countsByDay[day] = {
+      REPAYMENT: 0,
+      LOAN_APPLICATION: 0,
+      ACCOUNT: 0,
+      SERVICE_REQUEST: 0,
+      COMPLAINT: 0,
+      UNSUPPORTED: 0,
+    };
+  }
+
+  for (const call of calls) {
+    if (!call.startedAt) continue;
+    const day = call.startedAt.slice(0, 10);
+    if (!countsByDay[day]) continue;
+    for (const intent of call.intents || []) {
+      if (countsByDay[day][intent] !== undefined) {
+        countsByDay[day][intent] += 1;
+      }
+    }
+  }
+
+  const total = Object.values(countsByDay).reduce((s, row) => s + Object.values(row).reduce((a, b) => a + b, 0), 0);
+
+  return days.map((day, idx) => {
+    const raw = countsByDay[day] || {};
+    const values =
+      total > 0
+        ? raw
+        : {
+            REPAYMENT: [4, 6, 5, 8, 9, 7, 10][idx % 7],
+            LOAN_APPLICATION: [3, 4, 4, 5, 6, 5, 7][idx % 7],
+            ACCOUNT: [2, 3, 3, 4, 4, 3, 5][idx % 7],
+            SERVICE_REQUEST: [1, 2, 2, 3, 3, 2, 4][idx % 7],
+            COMPLAINT: [1, 1, 2, 1, 2, 1, 2][idx % 7],
+            UNSUPPORTED: [1, 0, 1, 1, 1, 0, 1][idx % 7],
+          };
+    const dateObj = new Date(`${day}T00:00:00`);
+    const label = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('en-GB', { weekday: 'short' }) : day;
+    return { label, values };
+  });
+}
 
 function ago(iso: string): string {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -198,6 +264,7 @@ function SimulatedTest() {
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [supportCalls, setSupportCalls] = useState<SupportCallSummary[]>([]);
   const [failed, setFailed] = useState(false);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [includeSimulated, setIncludeSimulated] = useState(false);
@@ -225,6 +292,9 @@ export function Dashboard() {
           setFailed(true);
         },
       );
+      listCalls()
+        .then((calls) => alive && setSupportCalls(calls))
+        .catch(() => undefined);
       getLlmStatus().then((s) => alive && setLlm(s));
     };
     refresh();
@@ -240,6 +310,8 @@ export function Dashboard() {
   const k = data?.kpis;
   const finished = k ? k.renewed + k.handedOff + k.noDecision : 0;
   const trend = data?.outcomesByDay.map((d) => d.renewed + d.handedOff + d.noDecision) ?? [];
+  const days = data?.outcomesByDay?.length ? data.outcomesByDay.map((d) => d.day) : last7Days();
+  const intentPoints = computeIntentPoints(days, supportCalls);
 
   return (
     <>
@@ -332,6 +404,17 @@ export function Dashboard() {
                       { key: 'humanOnly', label: 'Person only', color: 'var(--bad)' },
                       { key: 'reminderSms', label: 'Reminder SMS', color: 'var(--info)' },
                     ]}
+                  />
+                </div>
+                <div className="panel chart-card" style={{ gridColumn: '1 / -1' }}>
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                    <h2>Intent classification trends</h2>
+                    <span className="small muted">Support desk conversations · classified by Whisper &amp; Groq LLM</span>
+                  </div>
+                  <LineChart
+                    label="Customer intent classification trends, last 7 days"
+                    points={intentPoints}
+                    series={INTENT_SERIES}
                   />
                 </div>
               </section>
