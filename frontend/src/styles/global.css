@@ -477,3 +477,55 @@ td.rationale { white-space: normal; min-width: 260px; }
 @media (max-width: 900px) {
   .charts, .lower { grid-template-columns: 1fr; }
 }
+
+/* ---------- customer-service desk (support) ---------- */
+.sd-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px 8px; }
+.sd-panel-head h2 { font-size: var(--fs-md); }
+.sd-tabs { padding: 0 8px; overflow-x: auto; }
+.sd-wrap { white-space: normal; }
+td.sd-summary { min-width: 240px; max-width: 520px; }
+.chip { font: 500 var(--fs-xs) / 1 var(--font-body); padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
+.chip:hover { color: var(--ink); border-color: var(--muted); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.ref-pill { display: inline-block; font: 500 var(--fs-xs) / 1 var(--font-mono); padding: 4px 7px; border-radius: 4px; background: var(--warn-bg); color: var(--ink); border: 1px solid var(--line); }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+.sc-badge { font-size: var(--fs-sm); padding: 5px 10px; }
+.sc-badge-note { font-weight: 400; }
+.sc-chips { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.sc-timeline { list-style: none; margin: 0; padding: 8px 16px 16px; display: grid; gap: 10px; max-height: 68vh; min-height: 120px; overflow-y: auto; align-content: start; }
+.sc-turn { display: grid; gap: 6px; max-width: min(640px, 92%); padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--line); }
+.sc-turn.customer { background: var(--surface-2); justify-self: end; }
+.sc-turn.agent { background: var(--accent-soft); justify-self: start; }
+.sc-turn-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.sc-turn .who { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.sc-nospeech { font-style: italic; }
+.sc-audio { width: 100%; max-width: 360px; height: 34px; }
+.sc-retrieved { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.sc-retrieved > summary { cursor: pointer; padding: 6px 10px; font: 500 var(--fs-sm) var(--font-body); }
+.sc-retrieved-body { display: grid; gap: 10px; padding: 4px 10px 10px; border-top: 1px solid var(--line); min-width: 0; }
+.sc-tool { display: grid; gap: 4px; padding-top: 6px; min-width: 0; }
+.sc-tool + .sc-tool { border-top: 1px dashed var(--line); }
+.sc-tool-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.sc-tool-name { font: 600 var(--fs-xs) var(--font-mono); color: var(--accent); }
+.sc-fields { grid-template-columns: 1fr; gap: 2px; }
+.sc-field { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 10px; }
+.sc-mini table { font-size: var(--fs-xs); }
+.sc-mini th, .sc-mini td { padding: 4px 8px; }
+.sc-raw summary { cursor: pointer; color: var(--muted); }
+.sc-raw pre { margin: 6px 0 0; font: var(--fs-xs) / 1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; background: var(--surface-2); padding: 8px; border-radius: 4px; }
+.sc-mode-body { display: grid; gap: 10px; padding-top: 10px; }
+.sc-files, .sc-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-sm); }
+.sc-files li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+.sc-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-results li { display: grid; gap: 4px; padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius); border: 1px solid var(--line); }
+.sc-progress { display: grid; gap: 4px; }
+.sc-progress progress { width: 100%; accent-color: var(--accent); }
+.sc-outcomes { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sc-outcome { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm); }
+.sc-outcome.on { border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 520px) {
+  .sc-turn { max-width: 100%; }
+  .sc-field { grid-template-columns: 1fr; gap: 0; }
+  .sc-timeline { padding: 8px 10px 12px; }
+}

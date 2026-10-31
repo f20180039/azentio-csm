@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('App in mock mode', () => {
-  it('signs in, lists the queue and opens a case with evidence and a security banner', async () => {
+  it('signs in to the support desk, lists the queue and opens a case with evidence and a security banner', async () => {
     vi.stubEnv('VITE_MOCK', '1');
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
     const { App } = await import('./App');
@@ -12,7 +12,7 @@ describe('App in mock mode', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'reviewer' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    expect(await screen.findByText('Calls today')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Customer service desk' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Queue' }));
     expect(await screen.findByText('Review queue')).toBeInTheDocument();
     const row = await screen.findByText('Example: Rohan M. · personal loan ₹6,00,000');

@@ -9,6 +9,8 @@ import { Packs } from './pages/Packs';
 import { Queue } from './pages/Queue';
 import { Renewals } from './pages/Renewals';
 import { SignIn } from './pages/SignIn';
+import { SupportCall } from './pages/SupportCall';
+import { SupportDesk } from './pages/SupportDesk';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
 
@@ -53,6 +55,7 @@ function Shell() {
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
+          <NavLink to="/support">Support desk</NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/queue">Queue</NavLink>
           <NavLink to="/renewals">Renewals</NavLink>
@@ -82,14 +85,17 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Shell />}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<Navigate to="/support" replace />} />
+              <Route path="support" element={<SupportDesk />} />
+              <Route path="support/new" element={<SupportCall />} />
+              <Route path="support/calls/:callId" element={<SupportCall />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="queue" element={<Queue />} />
               <Route path="cases/:id" element={<CaseWorkspace />} />
               <Route path="renewals" element={<Renewals />} />
               <Route path="renewals/calls/:callId" element={<Call />} />
               <Route path="packs" element={<Packs />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/support" replace />} />
             </Route>
           </Routes>
         </BrowserRouter>
