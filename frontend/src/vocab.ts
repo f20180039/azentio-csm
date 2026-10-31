@@ -136,20 +136,6 @@ export type FindingStatus = ValueOf<typeof FindingStatus>;
 export const Role = { ANALYST: 'ANALYST', REVIEWER: 'REVIEWER', ADMIN: 'ADMIN' } as const;
 export type Role = ValueOf<typeof Role>;
 
-/** What a redaction token stands for: `[KIND#n]` in a stored transcript, the value in the API's PII vault. */
-export const PiiKind = {
-  MOBILE: 'MOBILE',
-  DOB: 'DOB',
-  AADHAAR: 'AADHAAR',
-  PAN: 'PAN',
-  EMAIL: 'EMAIL',
-  CARD: 'CARD',
-  ACCOUNT_NUMBER: 'ACCOUNT_NUMBER',
-  DIGITS: 'DIGITS',
-  NAME: 'NAME',
-} as const;
-export type PiiKind = ValueOf<typeof PiiKind>;
-
 /* ---------- UI ---------- */
 
 export const Theme = { LIGHT: 'light', DARK: 'dark' } as const;

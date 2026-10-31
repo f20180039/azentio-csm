@@ -116,15 +116,6 @@ export interface SupportCall {
   rating?: CallRating | null;
 }
 
-/** What one `[KIND#n]` token in a stored call stands for; `value` is null when the API has no vault key. */
-export interface PiiToken {
-  kind: string;
-  value: string | null;
-}
-
-/** GET /support/calls/{id}/pii (admin only, audited): token → the personal data behind it. */
-export type PiiTokens = Record<string, PiiToken>;
-
 /** GET /v1/ops/customers/{ref} on the bank simulator: what the bank holds for one customer. */
 export interface CustomerProfile {
   customer: { customer_ref: string; first_name: string; last_name: string; mobile: string; dob: string };
@@ -237,11 +228,6 @@ const liveSupport = {
 
   async getCall(id: string): Promise<SupportCall> {
     return normaliseCall(await get<SupportCall>(CoreApiPath.supportCall(id)));
-  },
-
-  async getCallPii(id: string): Promise<PiiTokens> {
-    const r = await get<{ tokens?: PiiTokens }>(CoreApiPath.supportCallPii(id));
-    return r?.tokens ?? {};
   },
 
   async listCalls(outcome?: SupportOutcome): Promise<SupportCallSummary[]> {
@@ -450,7 +436,6 @@ const api: SupportApi = MOCK_MODE ? (mockSupport as SupportApi) : liveSupport;
 
 export const startCall = (channel?: SupportChannel) => api.startCall(channel);
 export const getCall = (id: string) => api.getCall(id);
-export const getCallPii = (id: string) => api.getCallPii(id);
 export const listCalls = (outcome?: SupportOutcome) => api.listCalls(outcome);
 export const endCall = (id: string, outcome: SupportOutcome) => api.endCall(id, outcome);
 export const simAudio = (files: File[], callId?: string) => api.simAudio(files, callId);
