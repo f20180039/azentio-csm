@@ -187,7 +187,9 @@ def test_a_verified_caller_is_not_asked_again_once_the_verify_turn_leaves_the_wi
     seen = llm.seen
     system = seen[-1][0]["content"]
     assert "verify_customer" not in json.dumps(seen[-1][1:])  # the verification itself is out of the window
-    assert "already verified" in system and "CUST-1002" in system
+    call_state = system[system.index("CALL STATE:"):]
+    assert "already verified as Rahul" in call_state
+    assert "CUST-" not in call_state  # N1: the id is never handed to the model (the NAMES rule only names the prefix)
     assert "already verified" not in seen[0][0]["content"]
 
 

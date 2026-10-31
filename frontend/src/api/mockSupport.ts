@@ -88,7 +88,7 @@ export const REPAYMENT_SCRIPT: Step[] = [
     text: `Thank you, Rahul, you are verified. Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,
     meta: {
       tool_trace: [
-        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'customer, expires_in, verified', outcome: OpOutcome.OK },
         { name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002', outcome: OpOutcome.OK },
       ],
       retrieved: {

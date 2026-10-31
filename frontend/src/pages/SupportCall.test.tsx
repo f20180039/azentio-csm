@@ -160,7 +160,7 @@ describe('RetrievedCard outcomes', () => {
         trace={[
           { name: 'create_service_request', args: {}, result_summary: 'SYSTEM_UNAVAILABLE', outcome: OpOutcome.FAILED },
           { name: 'get_loans', args: {}, result_summary: 'NOT_VERIFIED', outcome: OpOutcome.DECLINED },
-          { name: 'verify_customer', args: {}, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+          { name: 'verify_customer', args: {}, result_summary: 'customer, expires_in, verified', outcome: OpOutcome.OK },
           { name: 'get_faq', args: {}, result_summary: 'legacy record' },
         ]}
         retrieved={{}}

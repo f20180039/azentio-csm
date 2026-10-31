@@ -18,6 +18,7 @@ import {
   type SupportCallSummary,
   type SupportOutcome,
 } from '../api/support';
+import { CUSTOMER_ID_LABEL } from '../components/CustomerCard';
 import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { Select, type SelectOption } from '../components/Select';
 import { Stars } from '../components/Stars';
@@ -162,7 +163,7 @@ function CustomerLabel({ r, query }: { r: OpsRecord; query: string }) {
   if (!r.customer_ref) return null;
   if (!r.customer_name) {
     return (
-      <span className="mono muted">
+      <span className="mono muted" title={CUSTOMER_ID_LABEL}>
         <Highlight text={r.customer_ref} query={query} />
       </span>
     );
@@ -170,7 +171,7 @@ function CustomerLabel({ r, query }: { r: OpsRecord; query: string }) {
   return (
     <span className="sd-customer">
       <Highlight text={r.customer_name} query={query} />
-      <span className="mono muted sd-customer-id" title="Customer ID">
+      <span className="mono muted sd-customer-id" title={CUSTOMER_ID_LABEL}>
         <Highlight text={r.customer_ref} query={query} />
       </span>
     </span>

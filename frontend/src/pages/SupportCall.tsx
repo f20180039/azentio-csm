@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { CustomerCard } from '../components/CustomerCard';
+import { CUSTOMER_ID_LABEL, CustomerCard } from '../components/CustomerCard';
 import { SpeakingBubble, speechStatus, useLiveSpeech } from '../components/LiveSpeech';
 import { ApiError } from '../api/errors';
 import {
@@ -992,7 +992,7 @@ export function SupportCall() {
                 {customerName && (
                   <>
                     {' '}
-                    <span className="mono muted" title="Customer ID">
+                    <span className="mono muted" title={CUSTOMER_ID_LABEL}>
                       {customerRef}
                     </span>
                   </>
