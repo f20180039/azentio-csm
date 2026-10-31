@@ -14,10 +14,11 @@ from .brain import ChatClient, ToolTrace
 from .identity import digit_run, extract_dob, extract_mobile, is_mobile_attempt, unexplained_numbers
 from .intents import Intent
 from .simulator_client import SimulatorClient
-from .speech import normalise_spoken_digits
+from .speech import normalise_spoken_digits, script_language
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole, VerifyField
+from .vocab import (HTTP_ERROR_PREFIX, EscalationTrigger, MetaKey, OpOutcome, Outcome, RefPrefix, SpeechLanguage, SupportTool,
+                    ToolError, TurnRole, VerifyField)
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -26,6 +27,9 @@ HISTORY_TURNS = 6  # caller turns of history sent to the model (free tiers cap t
 OLD_TOOL_RESULT_CHARS = 600  # tool results from earlier turns are shortened; the current turn's stay whole
 
 Classifier = Callable[[str, list[dict]], Awaitable[object]]
+Translator = Callable[[str], Awaitable[str | None]]
+TRANSLATE_GRACE_SECS = 3  # finish() waits this long for pending translations; later ones still land (patch_meta works after the end)
+TRANSLATED_SCRIPTS = frozenset({SpeechLanguage.KANNADA, SpeechLanguage.HINDI})
 
 OUTCOME_BY_PREFIX = ((RefPrefix.ESCALATION, Outcome.ESCALATED), (RefPrefix.COMPLAINT, Outcome.COMPLAINT_REGISTERED),
                      (RefPrefix.SERVICE_REQUEST, Outcome.TICKET_CREATED), (RefPrefix.ROUTED, Outcome.ROUTED))
@@ -76,6 +80,20 @@ def summarise(result: dict) -> str:
                for item in result["items"] if isinstance(item, dict)]
         return f"{len(ids)} item(s): {', '.join(ids[:6])}" if ids else "no items"
     return ", ".join(sorted(result))[:120]
+
+
+FAILED_ERRORS = frozenset({ToolError.SYSTEM_UNAVAILABLE, ToolError.BAD_ARGUMENTS, ToolError.UNKNOWN_TOOL})
+
+
+def op_outcome(result: dict) -> OpOutcome:
+    """OK when the tool did its work; FAILED when the system or the call broke; DECLINED when a rule refused it."""
+    error = result.get("error")
+    if error is None:
+        return OpOutcome.OK
+    code = str(error)
+    if code in FAILED_ERRORS or (code.startswith(HTTP_ERROR_PREFIX) and code[len(HTTP_ERROR_PREFIX):].startswith("5")):
+        return OpOutcome.FAILED
+    return OpOutcome.DECLINED
 
 
 def _trim(result: dict) -> dict:
@@ -132,8 +150,9 @@ def outcome_for(refs: list[str]) -> Outcome:
 class SupportBrain:
     def __init__(self, llm: ChatClient, sim: SimulatorClient, calls: SupportCallsApi | None, call: CallSession,
                  classify: Classifier | None = None, lessons: list[str] | None = None,
-                 languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)):
+                 languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,), translator: Translator | None = None):
         self._llm, self._sim, self._calls, self.call, self._classify = llm, sim, calls, call, classify
+        self._translator = translator
         self._messages: list[dict] = [{"role": "system", "content": support_prompt(lessons, languages)}, {"role": "assistant", "content": GREETING}]
         self.rating: int | None = None
         self._lock = asyncio.Lock()
@@ -151,8 +170,10 @@ class SupportBrain:
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
+            self._translate_later(customer_seq, user_text)
             has_audio = self._keep_audio(customer_seq, audio, audio_suffix)
             self._messages.append({"role": "user", "content": user_text})
+            self.call.last_caller_text = user_text  # a complaint raised this turn keeps the caller's own words
             turn = await self._loop()
             if await self._act_on_fraud_if_missed(user_text, turn):
                 again = await self._loop()  # the reply the caller hears now carries the complaint and escalation references
@@ -163,11 +184,13 @@ class SupportBrain:
             await self._route_if_missed(user_text, turn)
             turn.verified, turn.refs = self.call.verified, list(self.call.refs)
             turn.locked, turn.verify_failures = self.call.locked, self.call.verify_failures
-            await self._record(TurnRole.AGENT, turn.text,
-                               {MetaKey.TOOL_TRACE: [{"name": t.name, "args": t.args, "result_summary": summarise(t.result)}
-                                                     for t in turn.tool_calls],
-                                MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
-                                MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
+            agent_seq = await self._record(TurnRole.AGENT, turn.text,
+                                           {MetaKey.TOOL_TRACE: [{"name": t.name, "args": t.args, "result_summary": summarise(t.result),
+                                                                  "outcome": op_outcome(t.result)}
+                                                                 for t in turn.tool_calls],
+                                            MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
+                                            MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
+            self._translate_later(agent_seq, turn.text)
             await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source,
                                              **({MetaKey.AUDIO: True} if has_audio else {})})
             return turn
@@ -236,6 +259,8 @@ class SupportBrain:
 
     async def finish(self, outcome: str | None = None) -> str:
         outcome = outcome or outcome_for(self.call.refs)
+        if self._pending:  # give in-flight translations a moment; whatever is still running patches the turn after the end
+            await asyncio.wait(set(self._pending), timeout=TRANSLATE_GRACE_SECS)
         if self._calls:
             try:
                 await self._calls.end(self.call.call_id, outcome)
@@ -342,3 +367,25 @@ class SupportBrain:
             await self._calls.patch_meta(self.call.call_id, seq, meta)
         except ApiUnavailable as e:
             logger.warning(f"turn meta not recorded: {e}")
+
+    def _translate_later(self, seq: int, text: str) -> None:
+        """A Kannada or Hindi turn gets its English put on the record in the background; the reply never waits for it.
+        English turns, no translator, or no call records: nothing to do."""
+        if self._translator is None or not self._calls:
+            return
+        language = script_language(text)
+        if language not in TRANSLATED_SCRIPTS:
+            return
+        task = asyncio.create_task(self._translate(seq, text, language))
+        self._pending.add(task)
+        task.add_done_callback(self._pending.discard)
+
+    async def _translate(self, seq: int, text: str, language: SpeechLanguage) -> None:
+        try:
+            english = await self._translator(text)
+        except Exception as e:  # advisory: a failed translation leaves the turn as it was
+            logger.warning(f"translation failed: {type(e).__name__}")
+            return
+        if not english:
+            return
+        await self._patch(seq, {MetaKey.TEXT_EN: english, MetaKey.LANGUAGE: language})

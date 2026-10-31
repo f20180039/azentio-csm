@@ -21,9 +21,10 @@ from .llm_chain import ChainChatClient, ChainState, LLMUnavailable
 from .prompt import system_prompt
 from .simulator_client import SimulatorClient
 from .speech import CallLanguage, voice_for
-from .support_brain import SupportBrain, SupportTurn
+from .support_brain import SupportBrain, SupportTurn, op_outcome
 from .support_prompt import GREETING
 from .support_tools import CallSession
+from .translate import to_english
 from .vocab import Channel, Outcome, Route
 
 
@@ -79,6 +80,16 @@ class State:
             return await classify(text, history, api_key=s.groq_api_key, model=getattr(s, "intent_model", "openai/gpt-oss-20b"))
         return run
 
+    def translator(self):
+        """English for Kannada and Hindi turns on the record; None without a Groq key, so no turn is ever sent anywhere."""
+        s = self.settings()
+        if not s.groq_api_key:
+            return None
+
+        async def run(text: str) -> str | None:
+            return await to_english(text, api_key=s.groq_api_key, model=s.translate_model)
+        return run
+
     async def lessons(self) -> list[str]:
         """Supervisor-approved lessons for the support prompt, cached for a minute; none if the API is unreachable."""
         now = time.monotonic()
@@ -99,7 +110,7 @@ class State:
             raise HTTPException(502, "call records API unavailable") from e
         brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(),
                              CallSession(call_id, helpline=self.settings().helpline_number), self.classifier(), await self.lessons(),
-                             self.settings().voice_languages)
+                             self.settings().voice_languages, translator=self.translator())
         await brain.open()
         self.support[call_id] = brain
         return brain
@@ -230,7 +241,8 @@ def turn_json(turn: SupportTurn) -> dict:
     return {"reply_text": turn.text, "intents": turn.intents, "intent_source": turn.intent_source, "verified": turn.verified,
             "locked": turn.locked, "verify_failures": turn.verify_failures,
             "refs": turn.refs, "ended": turn.ended, "model": turn.model, "retrieved": turn.retrieved(),
-            "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
+            "tool_trace": [{"name": t.name, "args": t.args, "result": t.result, "outcome": op_outcome(t.result)}
+                           for t in turn.tool_calls]}
 
 
 async def support_reply(brain: SupportBrain, text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:

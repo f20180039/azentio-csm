@@ -66,6 +66,14 @@ class EscalationTrigger(StrEnum):
     DISSATISFIED = "DISSATISFIED"          # the caller is unhappy with the help so far
     UNRESOLVED = "UNRESOLVED"              # the agent could not answer or do what was needed
     SENSITIVE = "SENSITIVE"                # fraud, unauthorised transactions, distress: at once
+    # Raised by the brain's backstops only, never offered to the model (see OFFERED_TRIGGERS).
+    AUTH_LOCKED = "AUTH_LOCKED"                            # verification locked after repeated failures
+    REPEATED_MISUNDERSTANDING = "REPEATED_MISUNDERSTANDING"  # the agent kept failing to understand the caller
+
+
+OFFERED_TRIGGERS: tuple[EscalationTrigger, ...] = (EscalationTrigger.CUSTOMER_REQUEST, EscalationTrigger.DISSATISFIED,
+                                                   EscalationTrigger.UNRESOLVED, EscalationTrigger.SENSITIVE)
+"""The triggers the escalate_to_human tool schema offers the model; the other members belong to the backstops."""
 
 
 class HandoffMode(StrEnum):
@@ -102,9 +110,10 @@ class RefPrefix(StrEnum):
 
 
 class SpeechLanguage(StrEnum):
-    """Caller languages (Whisper codes); VOICE_LANGUAGES lists the enabled ones."""
+    """Caller languages (Whisper codes); VOICE_LANGUAGES lists the enabled ones (en,kn,hi enables all three)."""
     ENGLISH = "en"
     KANNADA = "kn"
+    HINDI = "hi"
 
 
 class IntentSource(StrEnum):
@@ -125,6 +134,8 @@ class MetaKey(StrEnum):
     RETRIEVED = "retrieved"
     REFS = "refs"
     AUDIO = "audio"
+    TEXT_EN = "text_en"      # English translation of a Kannada or Hindi turn, for display; the turn's text stays the record
+    LANGUAGE = "language"    # SpeechLanguage code of a translated turn (kn, hi)
 
 
 class Route(StrEnum):
@@ -145,3 +156,15 @@ class Route(StrEnum):
     TWILIO_SUPPORT_WS = "/ws/twilio/support"
     TURN_AUDIO = "/support/calls/{call_id}/turns/{seq}/audio"
     SUPPORT_PAUSE = "/support/calls/{call_id}/pause"
+
+
+HTTP_ERROR_PREFIX = "HTTP_"  # tool error code for a simulator status with no named error: HTTP_<status>, e.g. HTTP_503
+
+
+class OpOutcome(StrEnum):
+    """How one tool call went, recorded on every tool_trace entry: OK did the work; FAILED means the bank system or the
+    call itself broke (SYSTEM_UNAVAILABLE, BAD_ARGUMENTS, UNKNOWN_TOOL, HTTP 5xx); DECLINED means a rule refused it
+    (not verified, locked, not the caller's record, HTTP 4xx)."""
+    OK = "OK"
+    FAILED = "FAILED"
+    DECLINED = "DECLINED"

@@ -8,7 +8,7 @@ from .api_client import ApiUnavailable
 from .identity import MOBILE_LEN, clean_dob, clean_mobile
 from .simulator_client import SimulatorClient
 from .spoken import spoken_inr
-from .vocab import EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError, VerifyField, VerifyMismatch
+from .vocab import OFFERED_TRIGGERS, EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError, VerifyField, VerifyMismatch
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
@@ -55,6 +55,7 @@ class CallSession:
     model_may_fill: set[VerifyField] = field(default_factory=set)  # fields the model's own value may stand in for: a caller turn
     # carried numbers this code could not read (Kannada or Hindi number words, a two-digit year); a bank mismatch takes the field out again
     today: date = field(default_factory=date.today)  # for judging a date of birth; fixed in tests
+    last_caller_text: str = ""  # the caller's latest words, kept verbatim on a complaint as its original_statement
 
     @property
     def verified(self) -> bool:
@@ -80,7 +81,7 @@ def _tool(name: SupportTool, description: str, properties: dict | None = None, r
                                              "parameters": {"type": "object", "properties": properties or {}, "required": required or []}}}
 
 
-def _enum(values: type[StrEnum], description: str) -> dict:
+def _enum(values: type[StrEnum] | tuple[StrEnum, ...], description: str) -> dict:
     return {"type": "string", "enum": [v.value for v in values], "description": description}
 
 
@@ -104,7 +105,9 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
            "details": {"type": "object", "description": "Key details collected, e.g. loan_id, period, delivery"}}, ["category", "summary"]),
     _tool(SupportTool.REGISTER_COMPLAINT, "Record a complaint (failed transaction, incorrect charge, unauthorised transaction, poor service) and get its reference.",
           {"category": _enum(ComplaintCategory, "Complaint type"), "description": {"type": "string"},
-           "severity": _enum(Severity, "HIGH for fraud, unauthorised debits or large losses")}, ["category", "description", "severity"]),
+           "severity": _enum(Severity, "HIGH for fraud, unauthorised debits or large losses"),
+           "related_ref": {"type": "string", "description": "Account, loan or transaction reference the complaint is about, e.g. TXN-88213"}},
+          ["category", "description", "severity"]),
     _tool(SupportTool.GET_POLICIES, "The verified caller's insurance policies, premium due dates and coverage status."),
     _tool(SupportTool.GET_CLAIMS, "The verified caller's insurance claims and their status."),
     _tool(SupportTool.SEARCH_FAQ, "Search the bank's approved product and service answers. Use for general questions; no verification needed.",
@@ -116,7 +119,7 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
           "Hand the caller to a human representative. Use trigger SENSITIVE at once for fraud, unauthorised transactions or distress; "
           "DISSATISFIED when the caller is unhappy with the help; UNRESOLVED when you could not answer or do what they need; "
           "CUSTOMER_REQUEST when they ask for a person (first ask what they need and try to help: the first such request is refused).",
-          {"trigger": _enum(EscalationTrigger, "Why a person is needed"), "reason": {"type": "string"},
+          {"trigger": _enum(OFFERED_TRIGGERS, "Why a person is needed"), "reason": {"type": "string"},
            "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["trigger", "reason", "summary"]),
     _tool(SupportTool.RECORD_RATING, "Record the caller's 1-5 rating of this call, and any comment, after you asked for it.",
           {"score": {"type": "integer", "minimum": 1, "maximum": 5}, "comment": {"type": "string", "description": "What they said about the call, if anything"}},
@@ -234,8 +237,10 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
         case SupportTool.CREATE_SERVICE_REQUEST:
             return await client.create_ticket(s, TicketCategory(args["category"]), args["summary"], args.get("details") or {}, call.call_id)
         case SupportTool.REGISTER_COMPLAINT:
+            related_ref = str(args.get("related_ref") or "").strip().upper() or None
             return await client.complaint(s, ComplaintCategory(args["category"]), args["description"],
-                                          Severity(args.get("severity") or "MEDIUM"), call.call_id)
+                                          Severity(args.get("severity") or "MEDIUM"), call.call_id,
+                                          original_statement=call.last_caller_text or None, related_ref=related_ref)
         case SupportTool.GET_POLICIES:
             return await client.policies(s)
         case SupportTool.GET_CLAIMS:
@@ -258,7 +263,8 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
                     return {"error": ToolError.ASK_FIRST,
                             "note": "Not yet. Tell them you can help with most things, ask what they need, and try. "
                                     "If they ask for a person again, or you cannot help, call escalate_to_human again."}
-            out = await client.escalation(s, f"{trigger}: {args['reason']}", args.get("summary") or args["reason"], call.call_id)
+            out = await client.escalation(s, f"{trigger}: {args['reason']}", args.get("summary") or args["reason"], call.call_id,
+                                          category=trigger, related_refs=list(call.refs))
             if "error" in out:
                 return out
             if call.phone_call_sid and call.transfer_to:

@@ -46,8 +46,27 @@ class TicketCategory(StrEnum):
 class TicketStatus(StrEnum):
     OPEN = "OPEN"
     IN_PROGRESS = "IN_PROGRESS"
+    AWAITING_INFO = "AWAITING_INFO"
+    REJECTED = "REJECTED"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+
+
+class Department(StrEnum):
+    """The bank team a service request sits with."""
+    ACCOUNT_SERVICES = "Account Services"
+    LOAN_SERVICING = "Loan Servicing"
+    KYC_RECORDS = "KYC & Records"
+    CUSTOMER_SERVICE = "Customer Service"
+
+
+TICKET_DEPARTMENT: dict[TicketCategory, Department] = {
+    TicketCategory.STATEMENT: Department.ACCOUNT_SERVICES,
+    TicketCategory.REPAYMENT_SCHEDULE: Department.LOAN_SERVICING,
+    TicketCategory.ACCOUNT_DOCUMENT: Department.ACCOUNT_SERVICES,
+    TicketCategory.ADDRESS_CHANGE: Department.KYC_RECORDS,
+    TicketCategory.OTHER: Department.CUSTOMER_SERVICE,
+}
 
 
 class ComplaintCategory(StrEnum):
@@ -108,7 +127,14 @@ class LockScope(StrEnum):
 
 
 class EscalationCategory(StrEnum):
+    """Why a call was handed to a human: the simulator's own SECURITY plus the voice agent's six Level 2 triggers."""
     SECURITY = "SECURITY"
+    CUSTOMER_REQUEST = "CUSTOMER_REQUEST"
+    DISSATISFIED = "DISSATISFIED"
+    UNRESOLVED = "UNRESOLVED"
+    SENSITIVE = "SENSITIVE"
+    AUTH_LOCKED = "AUTH_LOCKED"
+    REPEATED_MISUNDERSTANDING = "REPEATED_MISUNDERSTANDING"
 
 
 class EscalationReason(StrEnum):
@@ -153,6 +179,7 @@ class Route(StrEnum):
     OPS_RECORDS = "/ops/records"
     OPS_RESET = "/ops/reset"
     OPS_CUSTOMER = "/ops/customers/{customer_ref}"
+    OPS_TICKET = "/ops/tickets/{ref}"
 
 
 API_PREFIX = "/v1"

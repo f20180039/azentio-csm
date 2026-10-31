@@ -20,9 +20,9 @@ OUT_HTML = ROOT / "docs" / "verification-lab.html"
 NOTES = {  # what each customer is set up to demonstrate (matches the C2 seed table in docs/team/tasks-chirag.md)
     "CUST-1001": ("Loan application in document verification", "Personal loan application in document verification; no loan account yet, so no EMI schedule."),
     "CUST-1002": ("Two loans, an open statement request", "Personal and vehicle loans (for the correction test), a savings account and request SR-40102."),
-    "CUST-1003": ("Vehicle loan with an overdue EMI", "An overdue instalment kept separate from the next one; her loan VL-31007 is the 'someone else's record' target."),
-    "CUST-1004": ("A failed and a pending transfer", "Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending."),
-    "CUST-1005": ("Health claim under review, lapsed motor policy", "Health policy in force with claim CLM-7001 under review; the motor policy has lapsed."),
+    "CUST-1003": ("Vehicle loan with an overdue EMI, rejected address change", "An overdue instalment kept separate from the next one; her loan VL-31007 is the 'someone else's record' target. Address-change request SR-40103 was rejected (unreadable proof)."),
+    "CUST-1004": ("A failed and a pending transfer, request awaiting info", "Transfer TXN-88213 failed with no recorded reason; TXN-88214 is pending. Request SR-40104 is waiting for the delivery address."),
+    "CUST-1005": ("Health claim under review, lapsed motor policy, resolved request", "Health policy in force with claim CLM-7001 under review; the motor policy has lapsed. Statement request SR-40105 was resolved."),
     "CUST-1006": ("Home loan, open complaint", "Home loan and complaint CMP-50011 about an incorrect charge."),
     "CUST-1007": ("Rejected application, low balance", "Loan application LA-24009 rejected; a current account with a low balance."),
     "CUST-1008": ("Disputed ₹48,999 card payment", "Card payment TXN-90011 he will say he didn't make: complaint plus escalation."),
@@ -117,7 +117,8 @@ def markdown(data: dict, generated: str) -> str:
         for t in txns:
             tries.append((f"What happened to transaction {t['ref']}?", f"Recorded status {t['status'].lower()}" + ("; no guessed cause" if t["status"] == "FAILED" else "")))
         for t in tix:
-            tries.append((f"What's the status of my request {t['ref']}?", f"{t['status'].replace('_', ' ').lower()}: {t['summary']}"))
+            tries.append((f"What's the status of my request {t['ref']}?",
+                          f"{t['status'].replace('_', ' ').lower()}: {t['summary']}. Progress: {t['progress']}"))
         for k in cmps:
             tries.append((f"Any update on my complaint {k['ref']}?", f"{k['status'].lower()}: {k['description']}"))
         for p in pols:
