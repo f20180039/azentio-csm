@@ -12,6 +12,7 @@ class Settings:
     groq_api_key: str = ""
     stt_model: str = "whisper-large-v3-turbo"
     llm_chain: tuple[Link, ...] = ()
+    intent_model: str = "openai/gpt-oss-20b"
     api_base: str = "http://localhost:8080/api/v1"
     api_user: str = "voice"
     api_password: str = "voice"
@@ -36,6 +37,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         groq_api_key=keys["groq"],
         stt_model=get("VOICE_STT_MODEL", Settings.stt_model),
         llm_chain=parse_chain(spec, keys),
+        intent_model=get("VOICE_INTENT_MODEL", Settings.intent_model),
         api_base=get("RENEWALS_API_BASE", Settings.api_base),
         api_user=get("RENEWALS_API_USER", Settings.api_user),
         api_password=get("RENEWALS_API_PASSWORD", Settings.api_password),
