@@ -53,9 +53,19 @@ def build_vad() -> SileroVADAnalyzer:
                                               start_secs=VAD_START_SECS, stop_secs=VAD_STOP_SECS))
 
 
+class RecordingGroqSTT(GroqSTTService):
+    """Groq Whisper that attaches each segment's WAV to its transcript, so the turn's audio can be played back."""
+
+    async def run_stt(self, audio: bytes):
+        async for frame in super().run_stt(audio):
+            if isinstance(frame, TranscriptionFrame):
+                frame.audio_wav = audio
+            yield frame
+
+
 def build_stt(settings) -> GroqSTTService:
     # verbose_json gives per-segment confidence, so keep_transcript can drop what the model made up from noise
-    return GroqSTTService(api_key=settings.groq_api_key, include_prob_metrics=True,
+    return RecordingGroqSTT(api_key=settings.groq_api_key, include_prob_metrics=True,
                           settings=GroqSTTService.Settings(model=settings.stt_model, prompt=DOMAIN_PROMPT))
 
 

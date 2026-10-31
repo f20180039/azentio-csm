@@ -231,9 +231,9 @@ def turn_json(turn: SupportTurn) -> dict:
             "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
 
 
-async def support_reply(brain: SupportBrain, text: str) -> SupportTurn:
+async def support_reply(brain: SupportBrain, text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
     try:
-        return await brain.reply(text)
+        return await brain.reply(text, audio=audio, audio_suffix=audio_suffix)
     except LLMUnavailable as e:
         raise HTTPException(429 if e.daily else 502, "LLM_DAILY_LIMIT" if e.daily else "language model unavailable") from e
     except httpx.HTTPError as e:
@@ -320,7 +320,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
             turns.append({**row, "reason": heard.reason, "intents": [], "verified": brain.call.verified, "locked": brain.call.locked, "tool_trace": [], "retrieved": {},
                           "reply_text": None, "reply_audio_b64": None, "latency_ms": round((time.monotonic() - started) * 1000)})
             continue
-        turn = await support_reply(brain, heard.text)
+        turn = await support_reply(brain, heard.text, audio=data, audio_suffix=Path(f.filename or "").suffix or ".wav")
         audio = await spoken_reply(turn.text) if speak and turn.text else None
         turns.append({**row, **turn_json(turn), "reply_audio_b64": audio, "latency_ms": round((time.monotonic() - started) * 1000)})
         if turn.ended:
@@ -329,6 +329,18 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
     if outcome:
         state.support.pop(brain.call.call_id, None)
     return {"call_id": brain.call.call_id, "turns": turns, "ended": brain.ended, "outcome": outcome}
+
+
+@app.get(Route.TURN_AUDIO)
+async def turn_audio(call_id: str, seq: int):
+    """What the caller said on that turn, for playback beside the transcript (local only, like the other support routes)."""
+    from fastapi.responses import FileResponse
+
+    from . import recordings
+    path = recordings.find(call_id, seq)
+    if path is None:
+        raise HTTPException(404, "no audio for that turn")
+    return FileResponse(path, media_type=recordings.MEDIA_TYPES.get(path.suffix, "application/octet-stream"))
 
 
 @app.post(Route.SUPPORT_END)

@@ -115,3 +115,10 @@ describe('SupportCall', () => {
     expect(screen.getByLabelText('Reply to a.wav')).toHaveAttribute('src', 'data:audio/wav;base64,UklGRgAAAA==');
   });
 });
+
+describe('customer turn playback', () => {
+  it('builds the voice service URL for a recorded turn', async () => {
+    const { turnAudioUrl } = await import('../api/support');
+    expect(turnAudioUrl('11111111-1111-1111-1111-111111111111', 3)).toMatch(/\/support\/calls\/11111111-1111-1111-1111-111111111111\/turns\/3\/audio$/);
+  });
+});

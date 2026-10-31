@@ -95,3 +95,28 @@ def test_sim_audio_rejects_bad_requests():
     main.state.stt_transport, _ = stt("x")
     assert c.post("/sim/audio", files=[("files", ("a.txt", b"not audio", "text/plain"))]).status_code == 422
     main.state.stt_transport = None
+
+
+def test_uploaded_turn_audio_is_kept_and_served(tmp_path, monkeypatch):
+    from app import recordings
+    monkeypatch.setattr(recordings, "RECORDINGS_DIR", tmp_path)
+    llm = Scripted(text("Sure, what's your registered mobile number?"))
+    c, spring = client(llm)
+    main.state.stt_transport, _ = stt("When is my next EMI?")
+    body = c.post("/sim/audio", files=[("files", ("t1.wav", SPEECH, "audio/wav"))], data={"speak": "false"}).json()
+    patches = [b for m, p, b in spring if m == "PATCH"]
+    assert patches and patches[-1].get("audio") is True
+    seq = next(b for m, p, b in spring if m == "POST" and p.endswith("/turns") and b["role"] == "customer") and 2
+    r = c.get(f"/support/calls/{body['call_id']}/turns/{seq}/audio")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content == SPEECH
+    assert c.get(f"/support/calls/{body['call_id']}/turns/99/audio").status_code == 404
+    assert c.get("/support/calls/not-a-uuid/turns/1/audio").status_code == 404
+    main.state.stt_transport = None
+
+
+def test_live_segments_join_into_one_turn_recording():
+    from app.recordings import join_wavs
+    joined = join_wavs([SILENCE, SILENCE, b"not a wav"])
+    with wave.open(io.BytesIO(joined)) as w:
+        assert w.getframerate() == 16000 and w.getnframes() == 16000 * 4
+    assert join_wavs([]) is None

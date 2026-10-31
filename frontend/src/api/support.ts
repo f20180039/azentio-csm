@@ -5,7 +5,7 @@ import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
 import { SimulatorPath } from './paths/simulator';
-import { VoicePath } from './paths/voice';
+import { turnAudioPath, VoicePath } from './paths/voice';
 import {
   FeedbackVerdict,
   Intent,
@@ -44,6 +44,7 @@ export interface TurnMeta {
   verify_failures?: number;
   locked?: boolean;
   no_speech?: boolean;
+  audio?: boolean;
   tool_trace?: ToolTrace[];
   retrieved?: Record<string, unknown>;
   refs?: string[];
@@ -307,6 +308,8 @@ export interface SupportVoiceHandlers {
  */
 /** Browser-side clean-up of the caller's microphone: background noise, the agent's own voice (echo) and level swings. */
 export const MIC_CONSTRAINTS: MediaTrackConstraints = { noiseSuppression: true, echoCancellation: true, autoGainControl: true };
+
+export const turnAudioUrl = (callId: string, seq: number) => `${VOICE_BASE}${turnAudioPath(callId, seq)}`;
 
 export async function cleanMicrophone(track: MediaStreamTrack): Promise<void> {
   try {

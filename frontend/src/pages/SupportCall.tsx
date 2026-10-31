@@ -20,6 +20,7 @@ import {
   type SupportOutcome,
   type SupportTurn,
   type ToolTrace,
+  turnAudioUrl,
 } from '../api/support';
 import { getPhoneAllowed, placeSupportPhoneCall, type PhoneAllowed } from '../api/phone';
 import type { VoiceSession } from '../api/voice';
@@ -213,6 +214,9 @@ function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTur
           <p>
             <Highlight text={t.text} query={query} />
           </p>
+        )}
+        {m.audio && callId && (
+          <audio controls preload="none" src={turnAudioUrl(callId, t.seq)} aria-label="What the customer said" className="sc-audio" />
         )}
         <div className="row" style={{ gap: 6 }}>
           <IntentChips intents={m.intents ?? []} query={query} />

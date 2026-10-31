@@ -11,3 +11,6 @@ export const VoicePath = {
   EVAL_LATEST: '/v1/eval/latest',
   LLM_STATUS: '/v1/llm/status',
 } as const;
+
+/** What the caller said on one turn (recorded by the voice service), for playback beside the transcript. */
+export const turnAudioPath = (callId: string, seq: number) => `/support/calls/${encodeURIComponent(callId)}/turns/${seq}/audio`;

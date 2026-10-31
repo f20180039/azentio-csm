@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
+from . import recordings
 from .api_client import ApiUnavailable, SupportCallsApi
 from .brain import ChatClient, ToolTrace
 from .intents import Intent
@@ -98,11 +99,12 @@ class SupportBrain:
     async def open(self) -> None:
         await self._record(TurnRole.AGENT, GREETING, {MetaKey.GREETING: True})
 
-    async def reply(self, user_text: str) -> SupportTurn:
+    async def reply(self, user_text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
         async with self._lock:
             history = [m for m in self._messages if m["role"] in {"user", "assistant"} and m.get("content")][-4:]
             intents = asyncio.create_task(self._intents(user_text, history))
             customer_seq = await self._record(TurnRole.CUSTOMER, user_text, self._verification())
+            has_audio = self._keep_audio(customer_seq, audio, audio_suffix)
             self._messages.append({"role": "user", "content": user_text})
             turn = await self._loop()
             self._messages.append({"role": "assistant", "content": turn.text})
@@ -116,7 +118,8 @@ class SupportBrain:
                                                      for t in turn.tool_calls],
                                 MetaKey.RETRIEVED: {t.name: _trim(t.result) for t in turn.tool_calls},
                                 MetaKey.REFS: turn.refs, MetaKey.VERIFIED: self.call.verified})
-            await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source})
+            await self._patch(customer_seq, {**self._verification(), MetaKey.INTENTS: turn.intents, MetaKey.INTENT_SOURCE: turn.intent_source,
+                                             **({MetaKey.AUDIO: True} if has_audio else {})})
             return turn
 
     def mark_unheard(self) -> None:
@@ -180,6 +183,16 @@ class SupportBrain:
         if name == SupportTool.RECORD_RATING:
             return ToolTrace(name, args, await self._record_rating(args))
         return ToolTrace(name, args, await run_support_tool(self._sim, self.call, name, args))
+
+    def _keep_audio(self, seq: int, audio: bytes | None, suffix: str) -> bool:
+        if not audio:
+            return False
+        try:
+            recordings.save(self.call.call_id, seq, audio, suffix)
+            return True
+        except (OSError, ValueError) as e:
+            logger.warning(f"turn audio not kept: {e}")
+            return False
 
     async def _record_rating(self, args: dict) -> dict:
         try:

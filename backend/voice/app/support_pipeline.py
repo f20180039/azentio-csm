@@ -22,6 +22,7 @@ from pipecat.transports.base_transport import BaseTransport
 
 from . import phone
 from .edge_tts_service import EdgeTTSService
+from .recordings import join_wavs
 from .speech import build_stt, build_vad, keep_transcript
 from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
@@ -86,6 +87,8 @@ class TurnGate:
         self.generation = 0
         self.speaking = False
         self._parts: list[str] = []
+        self._audio: list[bytes] = []
+        self.audio_by_generation: dict[int, list[bytes]] = {}
         self._timer: asyncio.Task | None = None
         self._replies: set[asyncio.Task] = set()
 
@@ -104,8 +107,10 @@ class TurnGate:
         if self._parts:
             self._arm()
 
-    def transcript(self, text: str) -> None:
+    def transcript(self, text: str, audio: bytes | None = None) -> None:
         self._parts.append(text)
+        if audio:
+            self._audio.append(audio)
         self._arm()
 
     def is_current(self, generation: int) -> bool:
@@ -124,6 +129,8 @@ class TurnGate:
         if self.speaking or not self._parts:
             return
         text, self._parts = " ".join(self._parts), []
+        if self._audio:
+            self.audio_by_generation[self.generation], self._audio = self._audio, []
         # the reply runs on its own: a caller who speaks again cancels the timer, never a reply half-way through a tool call
         task = asyncio.create_task(self._answer(text, self.generation))
         self._replies.add(task)
@@ -185,7 +192,7 @@ class SupportResponder(FrameProcessor):
             if text:
                 self._noisy = 0
                 self._idle.caller_active()
-                self._gate.transcript(text)
+                self._gate.transcript(text, getattr(frame, "audio_wav", None))
             else:
                 self._noisy += 1  # the caller made sound but nothing usable came through
                 if self._noisy == NOISY_BEFORE_ASKING and not self._gate.busy:
@@ -205,7 +212,8 @@ class SupportResponder(FrameProcessor):
 
     async def _answer(self, text: str, generation: int) -> None:
         try:
-            turn = await self._brain.reply(text)
+            audio = join_wavs(self._gate.audio_by_generation.pop(generation, []))
+            turn = await (self._brain.reply(text, audio=audio) if audio else self._brain.reply(text))
             reply = turn.text or FALLBACK
         except Exception as e:  # the caller always hears something
             logger.warning(f"support reply failed: {e!r}")
