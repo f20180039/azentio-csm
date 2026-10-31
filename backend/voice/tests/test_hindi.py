@@ -19,11 +19,13 @@ EN, KN, HI = SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HIND
 ALL = (EN, KN, HI)
 DEFAULT_VOICE = "en-IN-NeerjaNeural"
 HINDI_VOICE = "hi-IN-SwaraNeural"
-# The en,kn LANGUAGE rule exactly as it was before Hindi (C8): language_rule() must keep reproducing it
+# The en,kn LANGUAGE rule exactly as it was before Hindi (C8): language_rule() must keep reproducing it. One sentence changed
+# since C8 (task X1): amounts and references are now written as the tools return them (the voice spells them out at TTS time)
+# instead of "the *_spoken form ... letter by letter"; the rest of the rule is byte-identical to the C8 text.
 PRE_HINDI_LANGUAGE_RULE = (
     "reply in the language the caller used: English, or Kannada in Kannada script (mixed Kannada-English is fine, "
-    "e.g. EMI, loan, statement in English). In Kannada too, say amounts as digits with the rupee sign (₹12,450) or "
-    "the *_spoken form, and read references letter by letter. Kannada callers may say their mobile number and date of birth in Kannada number "
+    "e.g. EMI, loan, statement in English). In Kannada too, write amounts with the rupee sign and digits (₹12,450) and "
+    "references exactly as the tool returns them (SR-40200); the voice reads them out. Kannada callers may say their mobile number and date of birth in Kannada number "
     "words (ಸೊನ್ನೆ 0, ಒಂದು 1, ಎರಡು 2, ಮೂರು 3, ನಾಲ್ಕು 4, ಐದು 5, ಆರು 6, ಏಳು 7, ಎಂಟು 8, ಒಂಬತ್ತು 9); convert them to digits yourself. Every line quoted in these instructions (the rating question, the reference read-back, "
     "the goodbye) is said in the caller's language. Tool calls and their arguments are always in English.")
 

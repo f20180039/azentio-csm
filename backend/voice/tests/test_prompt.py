@@ -1,4 +1,6 @@
 from app.prompt import system_prompt
+from app.support_prompt import support_prompt
+from app.vocab import SpeechLanguage
 
 GREETING = "Hello Asha Rao, this is the Renewal Desk calling about your policy."
 
@@ -47,3 +49,13 @@ def test_options_only_on_objection():
 
 def test_no_discounted_amount_without_a_successful_quote():
     assert "Never say an amount is discounted unless quote_renewal returned it without an error" in system_prompt(GREETING)
+
+
+def test_prompt_asks_for_written_references_and_amounts():
+    # X1: the transcript keeps the written form; the voice spells references out at TTS time (app.spoken.speakable)
+    for p in (support_prompt(), support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))):
+        assert "Write references exactly as the tool returns them (e.g. SR-40200)" in p
+        assert "amounts with the rupee sign and digits (e.g. ₹12,450)" in p
+        assert "Never spell references or numbers out in words" in p
+        assert "letter by letter" not in p and "*_spoken" not in p and "four zero two zero zero" not in p
+        assert "no raw codes" not in p  # STYLE must not contradict the written-reference rule
