@@ -1,0 +1,32 @@
+[
+  {
+    "customer_ref": "CUST-1004",
+    "ref": "TXN-88213",
+    "days_ago": 1,
+    "description": "NEFT Transfer to Rajesh Sharma",
+    "amount": 15000,
+    "direction": "DEBIT",
+    "status": "FAILED",
+    "recorded_reason": null
+  },
+  {
+    "customer_ref": "CUST-1004",
+    "ref": "TXN-88214",
+    "days_ago": 0,
+    "description": "UPI Payment to Swiggy",
+    "amount": 2300,
+    "direction": "DEBIT",
+    "status": "PENDING",
+    "recorded_reason": null
+  },
+  {
+    "customer_ref": "CUST-1008",
+    "ref": "TXN-90011",
+    "days_ago": 1,
+    "description": "POS Debit - Luxury Electronics Mumbai",
+    "amount": 48999,
+    "direction": "DEBIT",
+    "status": "POSTED",
+    "recorded_reason": null
+  }
+]

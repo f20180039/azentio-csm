@@ -5,6 +5,7 @@ backend/api/data/
 backend/agent/.venv/
 backend/voice/.venv/
 backend/simulator/.venv/
+backend/simulator/data/runtime/
 data/simulator/
 frontend/node_modules/
 frontend/dist/

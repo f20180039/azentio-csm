@@ -1,0 +1,12 @@
+[
+  {
+    "customer_ref": "CUST-1006",
+    "ref": "CMP-50011",
+    "category": "INCORRECT_CHARGE",
+    "severity": "MEDIUM",
+    "status": "OPEN",
+    "description": "Incorrect annual maintenance charge debited to home loan account",
+    "days_ago": 3,
+    "escalated": false
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "customer_ref": "CUST-1005",
+    "claim_no": "CLM-7001",
+    "policy_no": "HP-77001",
+    "status": "UNDER_REVIEW",
+    "submitted_days_ago": 4,
+    "amount_claimed": 65000,
+    "amount_approved": null
+  }
+]
