@@ -64,9 +64,11 @@ describe('Call page: call a phone', () => {
     };
     h.placed = [];
     await mount('sample-call-phone-2');
-    const select = (await screen.findByLabelText('Phone number')) as HTMLSelectElement;
+    const select = await screen.findByLabelText('Phone number');
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.click(select);
     expect(screen.getByRole('option', { name: '+91 ••••• •4417' })).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('option', { name: '+1 ••••• •0123' }));
     const button = screen.getByRole('button', { name: 'Call a phone' });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);

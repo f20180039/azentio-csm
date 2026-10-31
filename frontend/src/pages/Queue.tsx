@@ -3,11 +3,20 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { CASE_STATUSES, type CaseStatus, type CaseSummary, type RulePackInfo, type Stats } from '../api/types';
 import { ScoreBar, StatusPill } from '../components/StatusPill';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { UploadDialog } from '../components/UploadDialog';
 import { formatAge, formatInr, humanise } from '../format';
 
 const REFRESH_MS = 3000;
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+      <path d="M2 4h12M4.5 8h7M7 12h2" />
+    </svg>
+  );
+}
 
 export function Queue() {
   const [params, setParams] = useSearchParams();
@@ -88,26 +97,28 @@ export function Queue() {
         <label className="sr-only" htmlFor="filter-status">
           Status
         </label>
-        <select id="filter-status" value={status} onChange={(e) => setFilter('status', e.target.value)}>
-          <option value="">All statuses</option>
-          {CASE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {humanise(s)}
-              {stats?.byStatus?.[s] != null ? ` (${stats.byStatus[s]})` : ''}
-            </option>
-          ))}
-        </select>
+        <Select
+          id="filter-status"
+          value={status}
+          onChange={(v) => setFilter('status', v)}
+          icon={<FilterIcon />}
+          options={[
+            { value: '', label: 'All statuses' },
+            ...CASE_STATUSES.map((s) => ({
+              value: s,
+              label: `${humanise(s)}${stats?.byStatus?.[s] != null ? ` (${stats.byStatus[s]})` : ''}`,
+            })),
+          ]}
+        />
         <label className="sr-only" htmlFor="filter-type">
           Case type
         </label>
-        <select id="filter-type" value={caseType} onChange={(e) => setFilter('caseType', e.target.value)}>
-          <option value="">All case types</option>
-          {packs.map((p) => (
-            <option key={p.caseType} value={p.caseType}>
-              {p.label ?? p.caseType}
-            </option>
-          ))}
-        </select>
+        <Select
+          id="filter-type"
+          value={caseType}
+          onChange={(v) => setFilter('caseType', v)}
+          options={[{ value: '', label: 'All case types' }, ...packs.map((p) => ({ value: p.caseType, label: p.label ?? humanise(p.caseType) }))]}
+        />
         {(status || caseType) && (
           <button className="btn ghost sm" onClick={() => setParams({}, { replace: true })}>
             Clear filters
@@ -147,7 +158,7 @@ export function Queue() {
                 <td>
                   <StatusPill status={c.status} />
                 </td>
-                <td className="mono small">{c.caseType}</td>
+                <td className="small">{packs.find((p) => p.caseType === c.caseType)?.label ?? humanise(c.caseType)}</td>
                 <td className="title-cell">{c.title}</td>
                 <td>
                   <ScoreBar score={c.riskScore} />

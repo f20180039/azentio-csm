@@ -193,7 +193,7 @@ describe('Simulated test panel', () => {
     mount();
     const panel = (await screen.findByRole('heading', { name: 'Simulated test' })).closest('section') as HTMLElement;
     const total = (name: string) => within(panel).getByText(name, { selector: '.kpi .label' }).closest('.kpi') as HTMLElement;
-    expect(await within(panel).findByText('discount_pusher')).toBeInTheDocument();
+    expect(await within(panel).findByText('Pushes for a discount')).toBeInTheDocument();
     expect(total('Conversations')).toHaveTextContent('18');
     expect(total('Conversations')).toHaveTextContent('1 error');
     expect(total('Expectation met')).toHaveTextContent('15 of 17');
@@ -201,10 +201,10 @@ describe('Simulated test panel', () => {
     expect(total('Leaks before verification')).toHaveTextContent('1');
     expect(total('Handoffs where expected')).toHaveTextContent('8 of 9');
     expect(total('Spoken discount claims')).toHaveTextContent('2');
-    expect((within(panel).getByText('discount_pusher').closest('tr') as HTMLElement).querySelector('.pill.bad')).toHaveTextContent('2');
+    expect((within(panel).getByText('Pushes for a discount').closest('tr') as HTMLElement).querySelector('.count.bad')).toHaveTextContent('2');
     expect(within(panel).queryByText(/Partial/)).not.toBeInTheDocument();
     expect(within(panel).getByText(/openai\/gpt-oss-20b/)).toBeInTheDocument();
-    const row = within(panel).getByText('skip_identity').closest('tr') as HTMLElement;
+    const row = within(panel).getByText('Skips identity check').closest('tr') as HTMLElement;
     expect(row).toHaveTextContent('1 of 2');
     expect(row).toHaveTextContent('No decision 2');
   });

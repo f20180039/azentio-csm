@@ -5,6 +5,7 @@ import type { AuditEvent, AuditVerifyResult, CaseAction, CaseDetail, Finding, Pa
 import { evidenceKey, FindingCard } from '../components/FindingCard';
 import { HighlightedText, type Highlight } from '../components/HighlightedText';
 import { ScoreBar, StatusPill } from '../components/StatusPill';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise } from '../format';
 import { useSession } from '../session';
@@ -129,7 +130,7 @@ export function CaseWorkspace() {
             <h1>{kase.title}</h1>
             <div className="case-meta">
               <StatusPill status={kase.status} />
-              <span className="mono small">{kase.caseType}</span>
+              <span className="small">{humanise(kase.caseType)}</span>
               <span>
                 Risk <ScoreBar score={kase.riskScore} />
               </span>
@@ -206,13 +207,7 @@ export function CaseWorkspace() {
                 {piiTotal > 0 && <span className="pill neutral">{piiTotal} personal identifiers masked</span>}
               </div>
               {kase.documents.length > 1 ? (
-                <select aria-label="Document" value={docId ?? ''} onChange={(e) => setDocId(e.target.value)}>
-                  {kase.documents.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.filename}
-                    </option>
-                  ))}
-                </select>
+                <Select aria-label="Document" value={docId ?? ''} onChange={setDocId} options={kase.documents.map((d) => ({ value: d.id, label: d.filename }))} />
               ) : (
                 kase.documents[0] && <span className="mono small">{kase.documents[0].filename}</span>
               )}

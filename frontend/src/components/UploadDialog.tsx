@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { api } from '../api/client';
 import type { RulePackInfo, UploadResult } from '../api/types';
+import { humanise } from '../format';
+import { Select } from './Select';
 import { useToast } from './Toasts';
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -76,13 +78,7 @@ export function UploadDialog({ onClose, onUploaded }: { onClose: () => void; onU
         </div>
         <div className="field">
           <label htmlFor="upload-type">Case type</label>
-          <select id="upload-type" value={caseType} onChange={(e) => setCaseType(e.target.value)}>
-            {packs.map((p) => (
-              <option key={p.caseType} value={p.caseType}>
-                {p.label ?? p.caseType}
-              </option>
-            ))}
-          </select>
+          <Select id="upload-type" value={caseType} onChange={setCaseType} options={packs.map((p) => ({ value: p.caseType, label: p.label ?? humanise(p.caseType) }))} />
         </div>
         <div className="field">
           <label htmlFor="upload-title-input">Title (optional)</label>
@@ -118,8 +114,10 @@ export function UploadDialog({ onClose, onUploaded }: { onClose: () => void; onU
           tabIndex={0}
           onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
         >
-          <strong>Drop files here or choose files</strong>
+          <UploadIcon />
+          <strong>Drop PDFs here</strong>
           <span className="small">Bank statements, bills, invoices, circulars</span>
+          <span className="btn sm dropzone-btn" aria-hidden="true">Choose files</span>
           <input id="upload-files" ref={inputRef} type="file" multiple accept="application/pdf,.pdf" hidden onChange={(e) => addFiles(e.target.files)} />
         </div>
         {files.length > 0 && (
@@ -155,4 +153,12 @@ function validateAttributes(raw: string): string | null {
   } catch {
     return 'This is not valid JSON. Check quotes and commas.';
   }
+}
+
+function UploadIcon() {
+  return (
+    <svg className="dropzone-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+    </svg>
+  );
 }
