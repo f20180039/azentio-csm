@@ -21,7 +21,7 @@ Dates are relative to the simulator's start, as the seed stores them ("in 5 days
 | Vikram Rao (`CUST-1006`) | `81935 62704` | `1995-12-05` | Home loan, open complaint |
 | Sana Mirza (`CUST-1007`) | `75819 40362` | `1999-05-18` | Rejected application, low balance |
 | David Fernandes (`CUST-1008`) | `93047 61852` | `1982-03-09` | Disputed ₹48,999 card payment |
-| Demo Caller (`CUST-1009`) | `93809 39280` | `1990-01-01` |  |
+| Karthik Menon (`CUST-1009`) | `93809 39280` | `1990-01-01` |  |
 
 ## Asha Verma
 
@@ -192,7 +192,7 @@ Card payment TXN-90011 he will say he didn't make: complaint plus escalation.
 | `TXN-90011` | 1 days ago | POS Debit - Luxury Electronics Mumbai | −₹48,999 | posted |
 
 
-## Demo Caller
+## Karthik Menon
 
 
 

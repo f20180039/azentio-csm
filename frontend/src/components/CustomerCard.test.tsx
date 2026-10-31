@@ -43,7 +43,7 @@ describe('CustomerCard', () => {
     unmount();
 
     const empty: CustomerProfile = {
-      customer: { customer_ref: 'CUST-1009', first_name: 'Demo', last_name: 'Caller', mobile: '9380939280', dob: '1990-01-01' },
+      customer: { customer_ref: 'CUST-1009', first_name: 'Karthik', last_name: 'Menon', mobile: '9380939280', dob: '1990-01-01' },
       accounts: [], loans: [], applications: [], transactions: [], policies: [], claims: [], tickets: [], complaints: [],
     };
     render(<CustomerCard profile={empty} />);
