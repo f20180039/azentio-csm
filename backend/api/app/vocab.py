@@ -18,6 +18,7 @@ class Channel(StrEnum):
     VOICE = "VOICE"
     SIM_AUDIO = "SIM_AUDIO"
     TEXT = "TEXT"
+    PHONE = "PHONE"
 
 
 class Outcome(StrEnum):

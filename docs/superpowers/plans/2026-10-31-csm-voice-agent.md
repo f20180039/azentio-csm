@@ -101,7 +101,7 @@ All bodies are JSON. Errors look like `{"error": CODE, "detail": str}`. Personal
 
 | Request | Body | Returns |
 |---|---|---|
-| `POST /support/calls` | `{"channel": "VOICE\|SIM_AUDIO\|TEXT"}` | 201 `{"id"}` |
+| `POST /support/calls` | `{"channel": "VOICE\|SIM_AUDIO\|TEXT\|PHONE"}` | 201 `{"id"}` |
 | `POST /support/calls/{id}/turns` | `{"role": "customer\|agent", "text", "at", "meta": {}}` | |
 | `PATCH /support/calls/{id}/turns/{seq}/meta` | `{...}` | merges keys into that turn's meta (used to add intents later) |
 | `POST /support/calls/{id}/end` | `{"outcome": "RESOLVED\|TICKET_CREATED\|COMPLAINT_REGISTERED\|ROUTED\|ESCALATED\|ABANDONED"}` | |
