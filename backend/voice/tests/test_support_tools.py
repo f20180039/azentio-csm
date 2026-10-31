@@ -33,6 +33,8 @@ class FakeSimulator:
             return httpx.Response(200, json={"items": [] if "weather" in q else [{"id": "FAQ-004", "question": "q", "answer": "a", "score": 3.1}]})
         if path == "/csm/routed":
             return httpx.Response(201, json={"ref": "RQ-60200"})
+        if path == "/csm/escalations":
+            return httpx.Response(201, json={"ref": "ESC-70200"})
         if request.headers.get(SESSION_HEADER) != "tok":
             return httpx.Response(401, json={"error": "NOT_VERIFIED"})
         if path == "/lms/loans":
@@ -42,6 +44,8 @@ class FakeSimulator:
             return httpx.Response(200, json={"items": [x for x in loans if not t or x["product_type"] == t]})
         if path == "/lms/loans/VL-31007/schedule":
             return httpx.Response(403, json={"error": "NOT_YOUR_RECORD"})
+        if path == "/csm/complaints" and request.method == "POST":
+            return httpx.Response(201, json={"ref": "CMP-50200", "status": "OPEN"})
         if path == "/csm/tickets" and request.method == "POST":
             return httpx.Response(201, json={"ref": "SR-40200", "status": "OPEN", "eta_days": 2})
         return httpx.Response(404, json={"error": "NOT_FOUND"})
@@ -176,3 +180,11 @@ def test_verify_without_real_details_spends_no_attempt():
                  {"mobile": "9876500002", "date_of_birth": "third November"}):
         assert run(client, call, "verify_customer", args)["error"] == "NOT_VERIFIED"
     assert sim.requests == [] and call.verify_failures == 0
+
+
+def test_a_named_loan_comes_back_only_if_it_is_the_callers():
+    sim, client, call = setup()
+    verify(client, call)
+    assert [x["loan_id"] for x in run(client, call, "get_loans", {"loan_id": "vl-31003"})["items"]] == ["VL-31003"]
+    other = run(client, call, "get_loans", {"loan_id": "VL-31007"})
+    assert other["error"] == "NOT_YOUR_RECORD" and "items" not in other

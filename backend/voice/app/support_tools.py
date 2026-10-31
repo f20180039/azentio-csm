@@ -72,7 +72,8 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
            "date_of_birth": {"type": "string", "description": "YYYY-MM-DD"}}, ["mobile", "date_of_birth"]),
     _tool(SupportTool.GET_LOAN_APPLICATIONS, "The verified caller's loan applications and their current stage."),
     _tool(SupportTool.GET_LOANS, "The verified caller's loan accounts: next instalment, overdue amount, outstanding principal.",
-          {"product_type": {"type": "string", "enum": ["personal", "vehicle", "home"], "description": "Filter by loan type when the caller names one"}}),
+          {"product_type": {"type": "string", "enum": ["personal", "vehicle", "home"], "description": "Filter by loan type when the caller names one"},
+           "loan_id": {"type": "string", "description": "The loan reference when the caller names one, e.g. VL-31003; the bank checks it is theirs"}}),
     _tool(SupportTool.GET_SCHEDULE, "Repayment schedule of one of the caller's loans.", {"loan_id": {"type": "string"}}, ["loan_id"]),
     _tool(SupportTool.GET_ACCOUNTS, "The verified caller's bank accounts and balances."),
     _tool(SupportTool.GET_TRANSACTIONS, "Recent transactions; filter by status or by a transaction reference the caller gives.",
@@ -161,7 +162,11 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
         case SupportTool.GET_LOAN_APPLICATIONS:
             return await client.applications(s)
         case SupportTool.GET_LOANS:
-            return await client.loans(s, args.get("product_type"))
+            out = await client.loans(s, args.get("product_type"))
+            if not (loan_id := str(args.get("loan_id") or "").strip().upper()) or "error" in out:
+                return out
+            mine = [l for l in out.get("items", []) if l.get("loan_id") == loan_id]
+            return {**out, "items": mine} if mine else await client.schedule(s, loan_id)  # not theirs: the bank's own refusal
         case SupportTool.GET_SCHEDULE:
             return await client.schedule(s, args["loan_id"])
         case SupportTool.GET_ACCOUNTS:

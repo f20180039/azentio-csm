@@ -14,8 +14,8 @@ from .brain import ChatClient, ToolTrace
 from .intents import Intent
 from .simulator_client import SimulatorClient
 from .support_prompt import GREETING, support_prompt
-from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, run_support_tool
-from .vocab import MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
+from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
+from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -81,6 +81,7 @@ def window(messages: list[dict], turns: int = HISTORY_TURNS, state: str = "") ->
     return out
 
 
+UNAUTHORISED = re.compile(r"\b(did ?n[o']?t|never)\s+(make|made|do|authori[sz]e|recogni[sz]e)\b|\bunauthori[sz]ed\b|\bfraud", re.I)
 TEXT_TOOL_NAME = re.compile(r'^\s*\{.*?"name\\?"\s*:\s*\\?"(\w+)', re.S)
 
 
@@ -130,6 +131,9 @@ class SupportBrain:
             has_audio = self._keep_audio(customer_seq, audio, audio_suffix)
             self._messages.append({"role": "user", "content": user_text})
             turn = await self._loop()
+            if await self._act_on_fraud_if_missed(user_text, turn):
+                again = await self._loop()  # the reply the caller hears now carries the complaint and escalation references
+                turn = SupportTurn(again.text, turn.tool_calls + again.tool_calls, model=again.model or turn.model, ended=self.ended)
             self._messages.append({"role": "assistant", "content": turn.text})
             found = await intents  # usually done long before the reply; needed here for the routing backstop
             turn.intents, turn.intent_source = found
@@ -156,6 +160,31 @@ class SupportBrain:
         """A customer turn with nothing to answer (silence, or noise the model turned into words): recorded, not replied to."""
         async with self._lock:
             await self._record(TurnRole.CUSTOMER, "", {**self._verification(), MetaKey.NO_SPEECH: True, MetaKey.REASON: reason, MetaKey.INTENTS: []})
+
+    async def _act_on_fraud_if_missed(self, user_text: str, turn: SupportTurn) -> bool:
+        """Backstop for 'unauthorised transaction: complaint plus escalation at once': a verified caller reporting a payment
+        they did not make gets both, even when the model only offered options. Runs the missing tools; True if it ran any."""
+        if not self.call.verified or not UNAUTHORISED.search(user_text):
+            return False
+        done = {t.name for t in turn.tool_calls if "error" not in t.result}
+        has = lambda prefix: any(r.startswith(prefix) for r in self.call.refs)
+        needed = []
+        if SupportTool.REGISTER_COMPLAINT not in done and not has(RefPrefix.COMPLAINT):
+            needed.append((SupportTool.REGISTER_COMPLAINT, {"category": ComplaintCategory.UNAUTHORISED_TRANSACTION, "description": user_text,
+                                                            "severity": Severity.HIGH}))
+        if SupportTool.ESCALATE_TO_HUMAN not in done and not has(RefPrefix.ESCALATION):
+            needed.append((SupportTool.ESCALATE_TO_HUMAN, {"trigger": EscalationTrigger.SENSITIVE, "summary": user_text,
+                                                           "reason": "The caller reports a transaction they did not authorise"}))
+        if not needed:
+            return False
+        calls = [{"id": f"backstop-{len(self._messages)}-{i}", "type": "function", "function": {"name": str(n), "arguments": json.dumps(a)}}
+                 for i, (n, a) in enumerate(needed)]
+        self._messages.append({"role": "assistant", "content": None, "tool_calls": calls})
+        for c in calls:
+            trace = await self._run(c)
+            turn.tool_calls.append(trace)
+            self._messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(trace.result)})
+        return True
 
     async def _route_if_missed(self, user_text: str, turn: SupportTurn) -> None:
         """Backstop for the acceptance rule 'route unsupported requests': if the caller's request was detected as

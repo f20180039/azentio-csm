@@ -203,3 +203,25 @@ def test_a_tool_call_written_as_text_is_run_and_never_spoken():
     asyncio.run(brain.reply("My number is 98765 00002, born third November 85."))
     turn = asyncio.run(brain.reply("When is my vehicle loan EMI?"))
     assert turn.text == "Nine thousand eight hundred rupees." and tools_called(sim)[-1] == ("/v1/lms/loans", {"type": "vehicle"})
+
+
+def test_an_unauthorised_payment_gets_a_complaint_and_escalation_even_if_the_model_only_offers_options():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Verified."),
+                   text("I can look into it, file a complaint, or connect you. Which would you like?"),
+                   text("I've raised complaint C M P five zero two zero zero and a colleague will call you back."),
+                   text("Your complaint is already registered and a colleague will call you back."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("My number is 98765 00002, born third November 85."))
+    turn = asyncio.run(brain.reply("I did not authorise that card payment. Please help and get a person."))
+    complaint = next(json.loads(r.content) for r in sim.requests if r.url.path == "/v1/csm/complaints")
+    assert complaint["category"] == "UNAUTHORISED_TRANSACTION" and complaint["severity"] == "HIGH"
+    assert {"CMP-50200", "ESC-70200"} <= set(turn.refs) and turn.text.startswith("I've raised complaint")
+    again = asyncio.run(brain.reply("Again, I never made that payment."))  # nothing raised twice
+    assert again.refs.count("CMP-50200") == 1 and sum(r.url.path == "/v1/csm/complaints" for r in sim.requests) == 1
+
+
+def test_no_backstop_before_verification_or_for_ordinary_questions():
+    llm = Scripted(text("Please tell me your mobile number and date of birth first."), text("Your EMI is due soon."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("I didn't make this payment."))
+    assert not any(r.url.path.startswith("/v1/csm") for r in sim.requests)
