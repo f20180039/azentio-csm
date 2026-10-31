@@ -6,23 +6,32 @@ and Kannada numerals are ASCII; both are applied again here, harmlessly, for tex
 import re
 from datetime import date
 
-from .speech import _DIGIT_WORDS, HOMOPHONES, KANNADA_DIGITS, normalise_spoken_digits
+from .speech import (  # the mobile's shape lives in speech.py, where the digit normaliser needs it too
+    _DIGIT_WORDS,
+    HOMOPHONES,
+    KANNADA_DIGITS,
+    MOBILE_FIRST_DIGITS,
+    MOBILE_LEN,
+    MONTHS,
+    PAUSE,
+    alt,
+    bridged_mobile_end,
+    normalise_spoken_digits,
+    without_prefix,
+    is_mobile,
+)
+from .vocab import VerifyField
 
-MOBILE_LEN = 10
-COUNTRY_CODE = "91"
-TRUNK_PREFIX = "0"
-MOBILE_FIRST_DIGITS = "6789"  # Indian mobiles
 MIN_BIRTH_YEARS, MAX_BIRTH_YEARS = 10, 120  # a date of birth this many years before today
 MOBILE_ATTEMPT_MIN, MOBILE_ATTEMPT_MAX = 7, 13  # a digit run this long that is not 10 digits was an attempt at a mobile number
 
 _WORD_DIGITS = {w: d for w, d in _DIGIT_WORDS.items() if w not in HOMOPHONES}
 _DIGIT_TOKEN = r"(?:\d+|" + "|".join(sorted(_WORD_DIGITS, key=len, reverse=True)) + r")"
 _DIGIT_GROUP = re.compile(r"(?<!\w)\+?" + _DIGIT_TOKEN + r"(?:[\s-]+" + _DIGIT_TOKEN + r")*(?!\w)", re.I)
+_PAUSE_GAP = re.compile(PAUSE)
 _NUMERIC_DATE = re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{4}\b")
 
-_MONTH_NAMES = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
-_MONTHS = {name: i for i, name in enumerate(_MONTH_NAMES, 1)} | {name[:3]: i for i, name in enumerate(_MONTH_NAMES, 1)} | {"sept": 9}
-_MONTH = r"(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\.?,?"
+_MONTH = r"(" + alt(MONTHS) + r")\.?,?"
 _ORDINAL_SUFFIX = r"(?:st|nd|rd|th)?"
 
 _UNITS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
@@ -36,28 +45,27 @@ _ORDINAL_TEENS = {"tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13, 
 _ORDINALS = {**_ORDINAL_UNITS, **_ORDINAL_TEENS,
              **{f"{tens} {unit}": _TENS[tens] + n for tens in ("twenty", "thirty") for unit, n in _ORDINAL_UNITS.items() if _TENS[tens] + n <= 31}}
 _ORDINAL_ALT = "|".join(sorted(_ORDINALS, key=len, reverse=True)).replace(" ", r"[\s-]+")
-_MONTH_ALT = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTH_ALT = alt(MONTHS)
 _ORDINAL_BEFORE_MONTH = re.compile(rf"\b({_ORDINAL_ALT})\b(?=\s+(?:of\s+)?(?:{_MONTH_ALT})\b)", re.I)  # 'third of November'
 _ORDINAL_AFTER_MONTH = re.compile(rf"\b((?:{_MONTH_ALT})\s+)({_ORDINAL_ALT})\b", re.I)  # 'November third'
-_REFERENCE = re.compile(r"\b[A-Za-z]{2,4}-\d+\b")  # PL-31002, SR-40102, TXN-88213, CUST-1002
+REFERENCE_HYPHEN = "-"
+_REFERENCE = re.compile(rf"\b[A-Za-z]{{2,4}}{REFERENCE_HYPHEN}\d+\b")  # PL-31002, SR-40102, TXN-88213, CUST-1002
 _AMOUNT = re.compile(r"(?:₹|\brs\.?|\brupees)\s*\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s*(?:rupees|rs|lakhs?|crores?|thousand|k)\b"
                      r"|\b\d{1,3}(?:,\d{2,3})+\b", re.I)  # Rs 9800, 6 lakh, 12,450, 1,00,000
 SMALL_NUMBER_DIGITS = 2  # a leftover run this short (a count, a day, 'Question 0') is not an identity detail
 
-
-def _alt(words) -> str:
-    return "|".join(sorted(words, key=len, reverse=True))
-
-
 _SEP = r"[\s-]+"
-_UNDER_HUNDRED = rf"(?:{_alt(_TEENS)}|(?:{_alt(_TENS)})(?:{_SEP}(?:{_alt(_UNITS)}))?|{_alt(_UNITS)})"
-_CENTURY_YEAR = re.compile(rf"\b(?P<century>{_alt(_CENTURIES)}){_SEP}"
-                           rf"(?P<rest>hundred(?:{_SEP}and)?(?:{_SEP}{_UNDER_HUNDRED})?|oh{_SEP}(?:{_alt(_UNITS)})|{_UNDER_HUNDRED})\b", re.I)
+_UNDER_HUNDRED = rf"(?:{alt(_TEENS)}|(?:{alt(_TENS)})(?:{_SEP}(?:{alt(_UNITS)}))?|{alt(_UNITS)})"
+_CENTURY_YEAR = re.compile(rf"\b(?P<century>{alt(_CENTURIES)}){_SEP}"
+                           rf"(?P<rest>hundred(?:{_SEP}and)?(?:{_SEP}{_UNDER_HUNDRED})?|oh{_SEP}(?:{alt(_UNITS)})|{_UNDER_HUNDRED})\b", re.I)
 _THOUSAND_YEAR = re.compile(rf"\btwo{_SEP}thousand(?P<rest>(?:{_SEP}and)?{_SEP}{_UNDER_HUNDRED})?\b", re.I)
+_CARDINAL_BEFORE_MONTH = re.compile(rf"\b({_UNDER_HUNDRED})\b(?=\s+(?:of\s+)?(?:{_MONTH_ALT})\b)", re.I)  # 'five December', 'twenty five of May'
+_SAID_IN_WORDS = re.compile(r"[^\W\d_]")  # a letter in a digit run: digit words normalisation left as words
+_BROKEN_DATE = re.compile(r"\b(?:19|20)\d{2}[-/ ]?\d{4}\b")  # '1995-1205', '19951205': a date of birth Whisper wrote wrongly
 
 _ISO = re.compile(r"\b(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\b")
 _DAY_FIRST = re.compile(r"\b(?P<d>\d{1,2})[/-](?P<m>\d{1,2})[/-](?P<y>\d{4})\b")
-_DAY_MONTH_YEAR = re.compile(rf"\b(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<y>\d{{4}})\b", re.I)
+_DAY_MONTH_YEAR = re.compile(rf"\b(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?:of\s+)?{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<y>\d{{4}})\b", re.I)  # '5, December 1995' too
 _MONTH_DAY_YEAR = re.compile(rf"\b{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<y>\d{{4}})\b", re.I)
 _SHORT_YEAR_DATE = re.compile(rf"\b(?:\d{{1,2}}{_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH}|{_MONTH}\s+\d{{1,2}}{_ORDINAL_SUFFIX},?)\s+'?\d{{2}}\b", re.I)  # '3 Nov 85'
 
@@ -78,16 +86,43 @@ def _blank_dates(converted: str) -> str:
     return converted
 
 
-def _groups_in(blanked: str) -> list[str]:
-    out = []
-    for m in _DIGIT_GROUP.finditer(blanked):
-        tokens = re.split(r"[\s-]+", m.group(0).lstrip("+"))
-        out.append("".join(t if t.isdigit() else _WORD_DIGITS[t.lower()] for t in tokens if t))
+def _group_digits(group: str) -> str:
+    return "".join(t if t.isdigit() else _WORD_DIGITS[t.lower()] for t in re.split(r"[\s-]+", group.lstrip("+")) if t)
+
+
+def _joined_across_pauses(blanked: str, found: list[re.Match], i: int) -> int:
+    """The index of the last group that, with group i and the pause-separated groups between, makes one mobile
+    ('98765, 00002', '98765, 00, 002'); i itself when no such run starts there, so '500, 2 times' stays two numbers, a lone
+    digit after nine ('98765 0006, 5 November') stays apart and the digits of a reference ('CMP-98765, …') start none."""
+    if found[i].start() and blanked[found[i].start() - 1] == REFERENCE_HYPHEN:
+        return i
+    chain = [_group_digits(found[i].group(0))]
+    for j in range(i + 1, len(found)):
+        if not _PAUSE_GAP.fullmatch(blanked, found[j - 1].end(), found[j].start()):
+            break
+        chain.append(_group_digits(found[j].group(0)))
+    return i + bridged_mobile_end(chain, 0)
+
+
+def _runs_in(blanked: str) -> list[tuple[str, str]]:
+    """Each run of digits as (what was said, the digits), pause-separated groups that make one mobile joined into one run."""
+    found = list(_DIGIT_GROUP.finditer(blanked))
+    out, i = [], 0
+    while i < len(found):
+        end = _joined_across_pauses(blanked, found, i)
+        run = found[i:end + 1]
+        out.append((" ".join(m.group(0) for m in run), "".join(_group_digits(m.group(0)) for m in run)))
+        i = end + 1
     return out
 
 
+def _groups_in(blanked: str) -> list[str]:
+    return [digits for _, digits in _runs_in(blanked)]
+
+
 def _groups(text: str) -> list[str]:
-    """Every run of digits the caller said, as digit strings: '98765 00002' and 'nine eight seven…' alike; dates left out."""
+    """Every run of digits the caller said, as digit strings: '98765 00002' and 'nine eight seven…' alike, a pause inside a
+    mobile ('98765, 00002') bridged; dates left out."""
     return _groups_in(_blank_dates(_converted(text)))
 
 
@@ -96,32 +131,20 @@ def is_mobile_attempt(run: str) -> bool:
     return MOBILE_ATTEMPT_MIN <= len(run) <= MOBILE_ATTEMPT_MAX and len(run) != MOBILE_LEN
 
 
-def _without_prefix(d: str) -> str:
-    if len(d) > MOBILE_LEN and d.startswith(COUNTRY_CODE):
-        return d[len(COUNTRY_CODE):]
-    if len(d) > MOBILE_LEN and d.startswith(TRUNK_PREFIX):
-        return d[len(TRUNK_PREFIX):]
-    return d
-
-
 def _mobile_in(d: str) -> str | None:
-    d = _without_prefix(d)
-    if len(d) < MOBILE_LEN:
+    """The mobile a digit run is, or the last of two said back to back ('…00002 93809 39280': the correction). A run of any
+    other length (11 digits, a 16-digit account number) gives None rather than its first ten, so it is asked for again."""
+    d = without_prefix(d)
+    if not d or len(d) % MOBILE_LEN:
         return None
-    if len(d) % MOBILE_LEN == 0:  # two numbers said back to back ('…00002 93809 39280'): the last one is the correction
-        chunks = [d[i:i + MOBILE_LEN] for i in range(0, len(d), MOBILE_LEN)]
-        if all(c[0] in MOBILE_FIRST_DIGITS for c in chunks):
-            return chunks[-1]
-    for i in range(len(d) - MOBILE_LEN + 1):  # a stray digit may have joined the run ('…00002 3 November'): the first good window
-        if (window := d[i:i + MOBILE_LEN])[0] in MOBILE_FIRST_DIGITS:
-            return window
-    return None
+    chunks = [d[i:i + MOBILE_LEN] for i in range(0, len(d), MOBILE_LEN)]
+    return chunks[-1] if all(c[0] in MOBILE_FIRST_DIGITS for c in chunks) else None
 
 
 def clean_mobile(raw: str) -> str | None:
     """A 10-digit Indian mobile from a model's or form's value ('+91 98765 00002'), or None when it is not exactly that."""
-    d = _without_prefix("".join(c for c in str(raw or "") if c.isdigit()))
-    return d if len(d) == MOBILE_LEN and d[0] in MOBILE_FIRST_DIGITS else None
+    d = without_prefix("".join(c for c in str(raw or "") if c.isdigit()))
+    return d if is_mobile(d) else None
 
 
 def extract_mobile(text: str) -> str | None:
@@ -132,19 +155,22 @@ def extract_mobile(text: str) -> str | None:
 
 def digit_run(text: str) -> str | None:
     """The longest run of digits said (country code and trunk zero dropped), to show a short or long attempt at a mobile number."""
-    runs = [_without_prefix(g) for g in _groups(text)]
+    runs = [without_prefix(g) for g in _groups(text)]
     return max(reversed(runs), key=len) if runs else None
 
 
 def _words_to_numbers(text: str) -> str:
+    def under_hundred(words: str) -> int:
+        return sum(_TEENS.get(w, 0) + _TENS.get(w, 0) + _UNITS.get(w, 0) for w in re.split(r"[\s-]+", words.lower()))
+
     def year(m: re.Match) -> str:
         base = _CENTURIES.get((m.groupdict().get("century") or "").lower(), 2000)
-        words = re.split(r"[\s-]+", (m.group("rest") or "").lower())  # 'hundred', 'and', 'oh' add nothing
-        return str(base + sum(_TEENS.get(w, 0) + _TENS.get(w, 0) + _UNITS.get(w, 0) for w in words))
+        return str(base + under_hundred(m.group("rest") or ""))  # 'hundred', 'and', 'oh' add nothing
 
     def ordinal(word: str) -> str:
         return str(_ORDINALS[re.sub(r"[\s-]+", " ", word.lower())])
 
+    text = _CARDINAL_BEFORE_MONTH.sub(lambda m: str(under_hundred(m.group(1))), text)  # 'twenty five December': a day before a year
     text = _CENTURY_YEAR.sub(year, _THOUSAND_YEAR.sub(year, text))
     text = _ORDINAL_BEFORE_MONTH.sub(lambda m: ordinal(m.group(1)), text)
     return _ORDINAL_AFTER_MONTH.sub(lambda m: m.group(1) + ordinal(m.group(2)), text)
@@ -174,7 +200,7 @@ def extract_dob(text: str, today: date) -> str | None:
     for pattern in (_ISO, _DAY_FIRST, _DAY_MONTH_YEAR, _MONTH_DAY_YEAR):
         for m in pattern.finditer(text):
             month = m["m"]
-            month_n = _MONTHS[month.lower()] if not month.isdigit() else int(month)
+            month_n = MONTHS[month.lower()] if not month.isdigit() else int(month)
             day, year = int(m["d"]), int(m["y"])
             iso = _birth_date(year, month_n, day, today)
             if iso is None and pattern is _DAY_FIRST and month_n <= 31 and day <= 12:  # '11/03/1985' said month first
@@ -184,19 +210,33 @@ def extract_dob(text: str, today: date) -> str | None:
     return max(found)[1] if found else None
 
 
-def unexplained_numbers(text: str) -> bool:
-    """Whether the turn carried numbers this code could not read, so the model may have heard a detail it did not: letters
-    outside the Latin scripts (Kannada or Hindi number words), a date with a two-digit year ('3 Nov 85'), or a digit run of
-    three or more left over once the mobile number, the dates, a wrong-length attempt at the mobile, bank references
-    (PL-31002) and amounts (Rs 9800, 6 lakh, 12,450) are taken out. A turn fully accounted for gives the model nothing to add."""
+def unexplained_fields(text: str) -> set[VerifyField]:
+    """The verification fields the model may fill from its own copy because the turn carried numbers this code could not
+    read. Both fields for letters outside the Latin scripts (Kannada or Hindi number words), a date with a two-digit year
+    ('3 Nov 85'), or a digit run of three or more still said in words once the mobile number, the dates, a wrong-length
+    attempt at the mobile, bank references (PL-31002) and amounts (Rs 9800, 6 lakh, 12,450) are taken out. The date of birth
+    alone for a leftover shaped like a broken date ('1995-1205'): the model may have read it, but it is no mobile. Leftover
+    runs written in digits ('9282, 766, 0006') were read; they just were not a mobile, and open nothing. A turn fully
+    accounted for gives the model nothing to add."""
     converted = _converted(text)
-    if any(ch.isalpha() and ord(ch) > 0x024F for ch in converted):
-        return True
-    if _SHORT_YEAR_DATE.search(converted):
-        return True
-    groups = _groups_in(_AMOUNT.sub(" ", _REFERENCE.sub(" ", _blank_dates(converted))))
-    if any(_mobile_in(g) for g in groups):
-        groups = [g for g in groups if _mobile_in(g) is None]
-    elif groups and is_mobile_attempt(_without_prefix(longest := max(reversed(groups), key=len))):
-        groups.remove(longest)
-    return any(len(g) > SMALL_NUMBER_DIGITS for g in groups)
+    if any(ch.isalpha() and ord(ch) > 0x024F for ch in converted) or _SHORT_YEAR_DATE.search(converted):
+        return set(VerifyField)
+    runs = _runs_in(_AMOUNT.sub(" ", _REFERENCE.sub(" ", _blank_dates(converted))))
+    if any(_mobile_in(digits) for _, digits in runs):
+        runs = [run for run in runs if _mobile_in(run[1]) is None]
+    elif runs:
+        longest = max(reversed(runs), key=lambda run: len(run[1]))
+        if is_mobile_attempt(without_prefix(longest[1])):
+            runs.remove(longest)
+    fields: set[VerifyField] = set()
+    for said, digits in runs:
+        if len(digits) > SMALL_NUMBER_DIGITS and _SAID_IN_WORDS.search(said):
+            return set(VerifyField)
+        if _BROKEN_DATE.search(said):
+            fields.add(VerifyField.DOB)
+    return fields
+
+
+def unexplained_numbers(text: str) -> bool:
+    """Whether the turn carried numbers this code could not read (unexplained_fields says which detail they may hold)."""
+    return bool(unexplained_fields(text))

@@ -5,10 +5,12 @@ import json
 from datetime import date
 
 import httpx
+from pipecat.frames.frames import TranscriptionFrame
 
 from app.api_client import SupportCallsApi
 from app.config import Settings
 from app.simulator_client import SimulatorClient
+from app.speech import MOBILE_EXAMPLE, MOBILE_EXAMPLE_DIGITS, MOBILE_EXAMPLE_DOB, keep_transcript
 from app.support_brain import SupportBrain
 from app.support_tools import CallSession
 from app.vocab import ToolError, VerifyField
@@ -126,6 +128,54 @@ def test_a_short_mobile_is_asked_for_again_alone():
                            "Keep the date of birth.")
     assert sim.verify_bodies() == [] and brain.call.verify_failures == 0
     assert brain.call.heard_dob == "1985-11-03" and brain.call.heard_mobile is None
+
+
+def test_repeated_zeros_said_with_a_pause_are_verified():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "98765", "date_of_birth": "1985-11-03"}), text("Thanks Rahul, you are verified."))
+    brain, sim = make(llm)
+    turn = asyncio.run(brain.reply("my number is nine eight seven six five, zero zero zero zero two, born 3rd November 1985"))
+    assert sim.verify_bodies() == [{"mobile": "9876500002", "dob": "1985-11-03", "call_id": CALL}]
+    assert verify_result(turn)["verified"] is True and brain.call.heard_mobile == "9876500002"
+
+
+def test_an_over_long_mobile_is_asked_for_again_not_cut():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500000", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("98765 double zero triple zero two, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS
+    assert out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert "heard 11 digits (98765 000002)" in out["note"] and "Keep the date of birth" in out["note"]
+    assert sim.verify_bodies() == [] and brain.call.heard_mobile is None and brain.call.heard_dob == "1985-11-03"
+
+
+def test_a_collapsed_repeat_is_asked_for_again_with_its_count():
+    # Whisper wrote "zero zero zero zero" as "zero zero": the code cannot recover the digits, so the mobile is re-asked alone
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("nine eight seven six five zero zero two, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert "only 8 digits (98765 002)" in out["note"] and "Keep the date of birth" in out["note"]
+    assert sim.verify_bodies() == [] and brain.call.heard_mobile is None
+
+
+def test_a_prompt_echo_never_reaches_verification():
+    # Whisper repeating the prompt's example on noise is dropped at the speech stage (the pipeline records a no-speech turn),
+    # so nothing is heard, the model's copy of it may not fill anything, and no attempt is spent
+    llm = Scripted(tool_call("verify_customer", {"mobile": MOBILE_EXAMPLE_DIGITS, "date_of_birth": MOBILE_EXAMPLE_DOB}), text("Your number, please?"))
+    brain, sim = make(llm)
+    assert keep_transcript(TranscriptionFrame(MOBILE_EXAMPLE, "u", "t")) is None
+    asyncio.run(brain.no_speech("phantom"))
+    assert brain.call.heard_mobile is None and brain.call.heard_dob is None and brain.call.heard_digits is None
+    assert not brain.call.model_may_fill and sim.verify_bodies() == [] and brain.call.verify_failures == 0
+
+
+def test_a_leftover_number_does_not_let_the_model_guess_the_mobile():
+    # "9282, 766, 0006" is read (no mobile in it), so the model's own 10-digit guess is not sent and no attempt is burnt
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9282766000", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("9282, 766, 0006, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert sim.verify_bodies() == [] and not brain.call.model_may_fill and brain.call.heard_mobile is None
 
 
 def test_short_mobile_note_reads_back_the_digits():
