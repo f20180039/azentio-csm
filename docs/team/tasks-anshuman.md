@@ -12,7 +12,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
 
 ---
 
-- [ ] **A1: Simulator client and support tools** (needs: contract)
+- [~] (Anshuman, feat/A1-support-tools) **A1: Simulator client and support tools** (needs: contract)
 
 **Files:** create `backend/voice/app/simulator_client.py` and `backend/voice/app/support_tools.py`; modify `config.py` (`SIMULATOR_BASE`, default `http://localhost:8090/v1`). Test: `tests/test_support_tools.py`.
 - `SimulatorClient(settings, transport=None)` with `verify(mobile, dob, call_id) -> dict`. Each record method takes the session it holds and returns the JSON, or `{"error": CODE}` (no exceptions for 401, 403, 404, 422 or 423). It raises `ApiUnavailable` on connection errors.
@@ -50,7 +50,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
   - the correction path calls `get_loans(type=vehicle)` after `get_loans(type=personal)`;
   - an unsupported request after a ticket calls `create_service_request`, then `route_unsupported`.
 
-- [ ] **A3: Parallel intent classifier** (needs: none)
+- [~] (Anshuman, feat/A3-intents) **A3: Parallel intent classifier** (needs: none)
 
 **Files:** create `backend/voice/app/intents.py`. Test: `tests/test_intents.py`.
 - `Intent` `StrEnum` (the 12 labels).
@@ -58,7 +58,7 @@ Status markers: `[ ]` todo · `[~]` in progress · `[x]` merged into `develop`.
 - It runs as `asyncio.create_task` on each final transcription, never awaited before the reply.
 - Tests: the rules map the four EMI phrasings to `REPAYMENT`, "weather" to `UNSUPPORTED` and "the thing from last time" to `UNCLEAR`; a fake LLM timeout falls back to rules.
 
-- [ ] **A4: Spring V4: support calls and turn metadata** (needs: none)
+- [~] (Anshuman, feat/A4-support-calls) **A4: Spring V4: support calls and turn metadata** (needs: none)
 
 **Files:**
 - `backend/api/src/main/resources/db/migration/V4__support_calls.sql`: `calls.policy_id` nullable; add `kind` (`SUPPORT` | `RENEWAL`, default `RENEWAL`), `outcome` and `turns.meta jsonb`.
