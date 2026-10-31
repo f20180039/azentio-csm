@@ -37,7 +37,7 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/caseintel
       AGENT_URL: http://agent:8000
-      CORS_ORIGINS: '["http://localhost:5173"]'
+      CORS_ORIGINS: http://localhost:5173
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       ENFORCE_CALLING_HOURS: ${ENFORCE_CALLING_HOURS:-true}
     volumes:

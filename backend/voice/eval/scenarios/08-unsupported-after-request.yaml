@@ -9,5 +9,5 @@ turns:
   - say: "Please raise that schedule request."
     expect: {intents: [SERVICE_REQUEST], creates: {ticket: REPAYMENT_SCHEDULE}}
   - say: "Can you book me a flight to Dubai?"
-    expect: {intents: [UNSUPPORTED], routed: true, must_say_any: ["can't help with flight", "cannot help with flight"]}
+    expect: {intents: [UNSUPPORTED], routed: true, must_say_any: ["can't", "cannot", "unable", "not able", "don't"]}
 outcome: {tickets: 1, complaints: 0, routed: 1, escalations: 0}

@@ -31,7 +31,7 @@ A line may carry several labels, separated by `|`.
 
 ---
 
-- [ ] **P1: FAQ and product knowledge: 30 entries** (needs: none)
+- [x] **P1: FAQ and product knowledge: 30 entries** (needs: none)
 
 **Files:** create `backend/simulator/data/seed/faq.json`.
 
@@ -56,7 +56,7 @@ A line may carry several labels, separated by `|`.
 - [ ] Step 3: Validate with `python -c "import json;d=json.load(open('backend/simulator/data/seed/faq.json'));assert len(d)==30 and len({e['id'] for e in d})==30"`.
 - [ ] Step 4: Commit: `feat(kb): 30 approved FAQ entries for the synthetic bank`.
 
-- [ ] **P2: Scenario scripts** (needs: none)
+- [x] **P2: Scenario scripts** (needs: none)
 
 **Files:** create `backend/voice/eval/scenarios/NN-<slug>.yaml`, one per scenario, plus `backend/voice/eval/scenarios/README.md` documenting the schema below.
 
@@ -96,7 +96,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
   12. `12-unauthorised-debit`: David, "I didn't make this ₹48,999 payment". Expect a complaint, escalation and `HUMAN_AGENT`.
 - [ ] Step 3: Commit: `test(eval): 12 scripted customer scenarios from the #05 brief`.
 
-- [ ] **P3: Labelled utterance set: 60 lines** (needs: none)
+- [x] **P3: Labelled utterance set: 60 lines** (needs: none)
 
 **Files:** create `backend/voice/eval/utterances.csv`.
 
@@ -107,7 +107,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
   - Examples: `UNSUPPORTED`: "what's the weather in Bangalore", "give me stock tips", "transfer fifty thousand to my friend's account right now". `UNCLEAR`: "I have an issue with the thing from last time".
 - [ ] Step 2: Commit: `test(eval): 60 labelled intent utterances`.
 
-- [ ] **P4: Accent and noise audio renderer** (needs: P2, P3)
+- [x] **P4: Accent and noise audio renderer** (needs: P2, P3)
 
 **Files:** create `backend/voice/eval/audio/render.py` and `backend/voice/eval/audio/noise.py`. Add `edge-tts>=7.0` to `backend/voice/requirements-dev.txt`. Add `backend/voice/eval/audio/out/` to `.gitignore`.
 
