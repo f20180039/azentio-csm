@@ -125,7 +125,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
 
 ## Next items
 
-- [ ] **P5: Run the scored evaluation and publish the results** (needs: C3, C4, C5)
+- [~] (Pavan, feat/P5-scored-evaluation) **P5: Run the scored evaluation and publish the results** (needs: C3, C4, C5)
 
 **Files:** `README.md` (a new "Evaluation results" section), `backend/voice/eval/out/` (reports, git-ignored, so paste the key numbers into the README).
 
