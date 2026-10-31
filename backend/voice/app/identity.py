@@ -36,8 +36,14 @@ _ORDINAL_TEENS = {"tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13, 
                   "seventeenth": 17, "eighteenth": 18, "nineteenth": 19, "twentieth": 20, "thirtieth": 30}
 _ORDINALS = {**_ORDINAL_UNITS, **_ORDINAL_TEENS,
              **{f"{tens} {unit}": _TENS[tens] + n for tens in ("twenty", "thirty") for unit, n in _ORDINAL_UNITS.items() if _TENS[tens] + n <= 31}}
-_ORDINAL_WORDS = re.compile(r"\b(" + "|".join(sorted(_ORDINALS, key=len, reverse=True)).replace(" ", r"[\s-]+") + r")\b"
-                            r"(?=\s+(?:of\s+)?(?:" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\b)", re.I)  # only before a month
+_ORDINAL_ALT = "|".join(sorted(_ORDINALS, key=len, reverse=True)).replace(" ", r"[\s-]+")
+_MONTH_ALT = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_ORDINAL_BEFORE_MONTH = re.compile(rf"\b({_ORDINAL_ALT})\b(?=\s+(?:of\s+)?(?:{_MONTH_ALT})\b)", re.I)  # 'third of November'
+_ORDINAL_AFTER_MONTH = re.compile(rf"\b((?:{_MONTH_ALT})\s+)({_ORDINAL_ALT})\b", re.I)  # 'November third'
+_REFERENCE = re.compile(r"\b[A-Za-z]{2,4}-\d+\b")  # PL-31002, SR-40102, TXN-88213, CUST-1002
+_AMOUNT = re.compile(r"(?:₹|\brs\.?|\brupees)\s*\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s*(?:rupees|rs|lakhs?|crores?|thousand|k)\b"
+                     r"|\b\d{1,3}(?:,\d{2,3})+\b", re.I)  # Rs 9800, 6 lakh, 12,450, 1,00,000
+SMALL_NUMBER_DIGITS = 2  # a leftover run this short (a count, a day, 'Question 0') is not an identity detail
 
 
 def _alt(words) -> str:
@@ -54,6 +60,7 @@ _ISO = re.compile(r"\b(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\b")
 _DAY_FIRST = re.compile(r"\b(?P<d>\d{1,2})[/-](?P<m>\d{1,2})[/-](?P<y>\d{4})\b")
 _DAY_MONTH_YEAR = re.compile(rf"\b(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<y>\d{{4}})\b", re.I)
 _MONTH_DAY_YEAR = re.compile(rf"\b{_MONTH.replace('(', '(?P<m>', 1)}\s+(?P<d>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<y>\d{{4}})\b", re.I)
+_SHORT_YEAR_DATE = re.compile(rf"\b(?:\d{{1,2}}{_ORDINAL_SUFFIX}\s+(?:of\s+)?{_MONTH}|{_MONTH}\s+\d{{1,2}}{_ORDINAL_SUFFIX},?)\s+'?\d{{2}}\b", re.I)  # '3 Nov 85'
 
 
 def _prepare(text: str) -> str:
@@ -72,13 +79,17 @@ def _blank_dates(converted: str) -> str:
     return converted
 
 
-def _groups(text: str) -> list[str]:
-    """Every run of digits the caller said, as digit strings: '98765 00002' and 'nine eight seven…' alike; dates left out."""
+def _groups_in(blanked: str) -> list[str]:
     out = []
-    for m in _DIGIT_GROUP.finditer(_blank_dates(_converted(text))):
+    for m in _DIGIT_GROUP.finditer(blanked):
         tokens = re.split(r"[\s-]+", m.group(0).lstrip("+"))
         out.append("".join(t if t.isdigit() else _WORD_DIGITS[t.lower()] for t in tokens if t))
     return out
+
+
+def _groups(text: str) -> list[str]:
+    """Every run of digits the caller said, as digit strings: '98765 00002' and 'nine eight seven…' alike; dates left out."""
+    return _groups_in(_blank_dates(_converted(text)))
 
 
 def is_mobile_attempt(run: str) -> bool:
@@ -132,8 +143,12 @@ def _words_to_numbers(text: str) -> str:
         words = re.split(r"[\s-]+", (m.group("rest") or "").lower())  # 'hundred', 'and', 'oh' add nothing
         return str(base + sum(_TEENS.get(w, 0) + _TENS.get(w, 0) + _UNITS.get(w, 0) for w in words))
 
+    def ordinal(word: str) -> str:
+        return str(_ORDINALS[re.sub(r"[\s-]+", " ", word.lower())])
+
     text = _CENTURY_YEAR.sub(year, _THOUSAND_YEAR.sub(year, text))
-    return _ORDINAL_WORDS.sub(lambda m: str(_ORDINALS[re.sub(r"[\s-]+", " ", m.group(1).lower())]), text)
+    text = _ORDINAL_BEFORE_MONTH.sub(lambda m: ordinal(m.group(1)), text)
+    return _ORDINAL_AFTER_MONTH.sub(lambda m: m.group(1) + ordinal(m.group(2)), text)
 
 
 def _birth_date(y: int, m: int, d: int, today: date) -> str | None:
@@ -172,13 +187,17 @@ def extract_dob(text: str, today: date) -> str | None:
 
 def unexplained_numbers(text: str) -> bool:
     """Whether the turn carried numbers this code could not read, so the model may have heard a detail it did not: letters
-    outside the Latin scripts (Kannada or Hindi number words), or digit runs left over once the mobile number, the dates and
-    a wrong-length attempt at the mobile are taken out. A turn fully accounted for gives the model nothing to add."""
-    if any(ch.isalpha() and ord(ch) > 0x024F for ch in _converted(text)):
+    outside the Latin scripts (Kannada or Hindi number words), a date with a two-digit year ('3 Nov 85'), or a digit run of
+    three or more left over once the mobile number, the dates, a wrong-length attempt at the mobile, bank references
+    (PL-31002) and amounts (Rs 9800, 6 lakh, 12,450) are taken out. A turn fully accounted for gives the model nothing to add."""
+    converted = _converted(text)
+    if any(ch.isalpha() and ord(ch) > 0x024F for ch in converted):
         return True
-    groups = _groups(text)
+    if _SHORT_YEAR_DATE.search(converted):
+        return True
+    groups = _groups_in(_AMOUNT.sub(" ", _REFERENCE.sub(" ", _blank_dates(converted))))
     if any(_mobile_in(g) for g in groups):
         groups = [g for g in groups if _mobile_in(g) is None]
     elif groups and is_mobile_attempt(_without_prefix(longest := max(reversed(groups), key=len))):
         groups.remove(longest)
-    return bool(groups)
+    return any(len(g) > SMALL_NUMBER_DIGITS for g in groups)

@@ -75,6 +75,23 @@ def test_invented_details_are_never_sent():
     assert sim.verify_bodies() == [] and brain.call.verify_failures == 0 and not brain.call.model_may_fill
 
 
+def test_a_loan_reference_does_not_unlock_invented_details():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9123456789", "date_of_birth": "1990-04-12"}),
+                   text("Could I have your registered mobile number and date of birth?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("what is the status of my loan PL-31002")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE, VerifyField.DOB]
+    assert sim.verify_bodies() == [] and brain.call.verify_failures == 0 and not brain.call.model_may_fill
+
+
+def test_an_amount_does_not_unlock_an_invented_date():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-04-12"}), text("And your date of birth?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("My number is 98765 00002, I will pay 5 to 6 lakh")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.DOB]
+    assert sim.verify_bodies() == [] and not brain.call.model_may_fill
+
+
 def test_the_callers_own_digits_do_not_unlock_an_invented_date():
     llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1990-04-12"}), text("And your date of birth?"))
     brain, sim = make(llm)
