@@ -142,6 +142,7 @@ class Route(StrEnum):
     CSM_COMPLAINTS = "/csm/complaints"
     CSM_ROUTED = "/csm/routed"
     CSM_ESCALATIONS = "/csm/escalations"
+    FAQ_SEARCH = "/faq/search"
     OPS_RECORDS = "/ops/records"
     OPS_RESET = "/ops/reset"
 
