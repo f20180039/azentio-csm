@@ -68,6 +68,21 @@ export type TxnDirection = ValueOf<typeof TxnDirection>;
 export const RecordKind = { TICKET: 'ticket', COMPLAINT: 'complaint', ROUTED: 'routed', ESCALATION: 'escalation' } as const;
 export type RecordKind = ValueOf<typeof RecordKind>;
 
+/** backend/simulator/app/enums.py TicketStatus: where a service request stands; the panel moves it with PATCH /ops/tickets/{ref}. */
+export const TicketStatus = {
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  AWAITING_INFO: 'AWAITING_INFO',
+  REJECTED: 'REJECTED',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+} as const;
+export type TicketStatus = ValueOf<typeof TicketStatus>;
+
+/** backend/voice/app/vocab.py OpOutcome: how one tool call went, on every tool_trace entry. */
+export const OpOutcome = { OK: 'OK', FAILED: 'FAILED', DECLINED: 'DECLINED' } as const;
+export type OpOutcome = ValueOf<typeof OpOutcome>;
+
 /** POST /support/calls/{id}/rating source. */
 export const RatingSource = { VOICE: 'VOICE', PANEL: 'PANEL' } as const;
 export type RatingSource = ValueOf<typeof RatingSource>;

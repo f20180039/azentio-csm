@@ -25,7 +25,18 @@ import type {
 } from './support';
 import type { VoiceSession } from './voice';
 import { currentUsername } from './client';
-import { FeedbackVerdict, LessonStatus, RatingSource, ReviewReason, SupportChannel as Channel, SupportOutcome as Outcome, TurnRole } from '../vocab';
+import {
+  FeedbackVerdict,
+  LessonStatus,
+  OpOutcome,
+  RatingSource,
+  RecordKind as RecordKindValue,
+  ReviewReason,
+  SupportChannel as Channel,
+  SupportOutcome as Outcome,
+  TicketStatus,
+  TurnRole,
+} from '../vocab';
 import { ApiError } from './errors';
 import { LessonLength } from '../vocab';
 
@@ -56,7 +67,12 @@ export const SAMPLE_PROFILE: CustomerProfile = {
   transactions: [],
   policies: [],
   claims: [],
-  tickets: [{ ref: 'SR-40102', category: 'STATEMENT', status: 'IN_PROGRESS', summary: 'Account statement request for last 6 months' }],
+  tickets: [
+    {
+      ref: 'SR-40102', category: 'STATEMENT', status: TicketStatus.IN_PROGRESS, summary: 'Account statement request for last 6 months',
+      department: 'Account Services', progress: 'Statement is being generated.',
+    },
+  ],
   complaints: [],
 };
 
@@ -70,8 +86,8 @@ export const REPAYMENT_SCRIPT: Step[] = [
     text: `Thank you, Rahul, you are verified. Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,
     meta: {
       tool_trace: [
-        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'Verified CUST-1002' },
-        { name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002' },
+        { name: 'verify_customer', args: { mobile: '98XXXXXX02', dob: '1985-11-03' }, result_summary: 'Verified CUST-1002', outcome: OpOutcome.OK },
+        { name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002', outcome: OpOutcome.OK },
       ],
       retrieved: {
         verify_customer: { customer: { customer_ref: 'CUST-1002', first_name: 'Rahul' }, expires_in: 900 },
@@ -85,7 +101,7 @@ export const REPAYMENT_SCRIPT: Step[] = [
     role: 'agent',
     text: `Got it. Your vehicle loan instalment is ₹9,800, due on ${VEHICLE_LOAN.next_instalment.due_date}. Nothing is overdue.`,
     meta: {
-      tool_trace: [{ name: 'get_loans', args: { type: 'vehicle' }, result_summary: '1 loan: VL-31003' }],
+      tool_trace: [{ name: 'get_loans', args: { type: 'vehicle' }, result_summary: '1 loan: VL-31003', outcome: OpOutcome.OK }],
       retrieved: { get_loans: { items: [VEHICLE_LOAN] } },
       refs: [],
     },
@@ -95,8 +111,8 @@ export const REPAYMENT_SCRIPT: Step[] = [
     role: 'agent',
     text: 'I have raised a request for your vehicle loan repayment schedule. Your reference is SR-40200, and it should reach you within 2 working days.',
     meta: {
-      tool_trace: [{ name: 'create_service_request', args: { category: 'REPAYMENT_SCHEDULE', summary: 'Repayment schedule for VL-31003' }, result_summary: 'Created SR-40200' }],
-      retrieved: { create_service_request: { ref: 'SR-40200', status: 'OPEN', eta_days: 2 } },
+      tool_trace: [{ name: 'create_service_request', args: { category: 'REPAYMENT_SCHEDULE', summary: 'Repayment schedule for VL-31003' }, result_summary: 'Created SR-40200', outcome: OpOutcome.OK }],
+      retrieved: { create_service_request: { ref: 'SR-40200', status: TicketStatus.OPEN, eta_days: 2, department: 'Loan Servicing', progress: 'Received by the Loan Servicing team.' } },
       refs: ['SR-40200'],
     },
   },
@@ -110,28 +126,35 @@ export const ROUTED_SCRIPT: Step[] = [
     role: 'agent',
     text: 'I am sorry, I cannot help with gold rates on this line. I have passed your question to our team with reference RQ-60200, and someone will follow up.',
     meta: {
-      tool_trace: [{ name: 'route_unsupported', args: { reason: 'Gold rate enquiry is outside supported services', query_text: 'What is the gold rate in Mumbai today?' }, result_summary: 'Routed as RQ-60200' }],
+      tool_trace: [{ name: 'route_unsupported', args: { reason: 'Gold rate enquiry is outside supported services', query_text: 'What is the gold rate in Mumbai today?' }, result_summary: 'Routed as RQ-60200', outcome: OpOutcome.OK }],
       retrieved: { route_unsupported: { ref: 'RQ-60200' } },
       refs: ['RQ-60200'],
     },
   },
 ];
 
+const ESCALATION_STATEMENT = 'There is a card payment of 48,999 rupees I never made.';
+
 const ESCALATION_SCRIPT: Step[] = [
-  { role: 'customer', text: 'There is a card payment of 48,999 rupees I never made.', meta: { intents: ['COMPLAINT'], intent_source: 'llm', verified: true, verify_failures: 0, locked: false, no_speech: false } },
+  { role: 'customer', text: ESCALATION_STATEMENT, meta: { intents: ['COMPLAINT'], intent_source: 'llm', verified: true, verify_failures: 0, locked: false, no_speech: false } },
   {
     role: 'agent',
     text: 'I am sorry to hear that. I have registered complaint CMP-50200 for an unauthorised transaction and escalated it to a specialist, reference ESC-70200.',
     meta: {
       tool_trace: [
-        { name: 'get_transactions', args: { ref: 'TXN-90011' }, result_summary: '1 transaction, POSTED' },
-        { name: 'register_complaint', args: { category: 'UNAUTHORISED_TRANSACTION', severity: 'HIGH' }, result_summary: 'Created CMP-50200, escalated' },
-        { name: 'escalate_to_human', args: { reason: 'Unauthorised card debit' }, result_summary: 'Created ESC-70200' },
+        { name: 'get_transactions', args: { ref: 'TXN-90011' }, result_summary: '1 transaction, POSTED', outcome: OpOutcome.OK },
+        {
+          name: 'register_complaint',
+          args: { category: 'UNAUTHORISED_TRANSACTION', severity: 'HIGH', original_statement: ESCALATION_STATEMENT, related_ref: 'TXN-90011' },
+          result_summary: 'Created CMP-50200, escalated',
+          outcome: OpOutcome.OK,
+        },
+        { name: 'escalate_to_human', args: { reason: 'Unauthorised card debit', related_refs: ['CMP-50200', 'TXN-90011'] }, result_summary: 'Created ESC-70200', outcome: OpOutcome.OK },
       ],
       retrieved: {
         get_transactions: { items: [{ ref: 'TXN-90011', date: inDays(-2), description: 'Card purchase', amount: 48_999, direction: 'DEBIT', status: 'POSTED', recorded_reason: null }] },
-        register_complaint: { ref: 'CMP-50200', status: 'OPEN', escalated: true },
-        escalate_to_human: { ref: 'ESC-70200' },
+        register_complaint: { ref: 'CMP-50200', status: TicketStatus.OPEN, escalated: true, original_statement: ESCALATION_STATEMENT, related_ref: 'TXN-90011' },
+        escalate_to_human: { ref: 'ESC-70200', related_refs: ['CMP-50200', 'TXN-90011'] },
       },
       refs: ['CMP-50200', 'ESC-70200'],
     },
@@ -194,12 +217,24 @@ export const SAMPLE_LESSONS: Lesson[] = [
 
 export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
   ticket: [
-    { ref: 'SR-40200', kind: 'ticket', category: 'REPAYMENT_SCHEDULE', status: 'OPEN', summary: 'Repayment schedule for VL-31003', customer_ref: 'CUST-1002', call_id: SAMPLE_VERIFIED_CALL.id, created_at: ago(39), escalated: null },
-    { ref: 'SR-40102', kind: 'ticket', category: 'STATEMENT', status: 'IN_PROGRESS', summary: 'Savings account statement for the last quarter', customer_ref: 'CUST-1002', call_id: null, created_at: ago(60 * 26), escalated: null },
+    {
+      ref: 'SR-40200', kind: 'ticket', category: 'REPAYMENT_SCHEDULE', status: TicketStatus.OPEN, summary: 'Repayment schedule for VL-31003', customer_ref: 'CUST-1002',
+      call_id: SAMPLE_VERIFIED_CALL.id, created_at: ago(39), escalated: null, department: 'Loan Servicing', progress: 'Received by the Loan Servicing team.',
+    },
+    {
+      ref: 'SR-40102', kind: 'ticket', category: 'STATEMENT', status: TicketStatus.IN_PROGRESS, summary: 'Savings account statement for the last quarter', customer_ref: 'CUST-1002',
+      call_id: null, created_at: ago(60 * 26), escalated: null, department: 'Account Services', progress: 'Statement is being generated.',
+    },
   ],
   complaint: [
-    { ref: 'CMP-50200', kind: 'complaint', category: 'UNAUTHORISED_TRANSACTION', status: 'OPEN', summary: 'Card debit TXN-90011 not made by the customer', customer_ref: 'CUST-1008', call_id: 'sample-call-escalation', created_at: ago(6), escalated: true },
-    { ref: 'CMP-50011', kind: 'complaint', category: 'INCORRECT_CHARGE', status: 'OPEN', summary: 'Processing fee charged twice on home loan', customer_ref: 'CUST-1006', call_id: null, created_at: ago(60 * 50), escalated: false },
+    {
+      ref: 'CMP-50200', kind: 'complaint', category: 'UNAUTHORISED_TRANSACTION', status: TicketStatus.OPEN, summary: 'Card debit TXN-90011 not made by the customer', customer_ref: 'CUST-1008',
+      call_id: 'sample-call-escalation', created_at: ago(6), escalated: true, original_statement: ESCALATION_STATEMENT, related_ref: 'TXN-90011',
+    },
+    {
+      ref: 'CMP-50011', kind: 'complaint', category: 'INCORRECT_CHARGE', status: TicketStatus.OPEN, summary: 'Processing fee charged twice on home loan', customer_ref: 'CUST-1006',
+      call_id: null, created_at: ago(60 * 50), escalated: false, original_statement: null, related_ref: 'HL-31006',
+    },
   ],
   routed: [
     { ref: 'RQ-60200', kind: 'routed', category: null, status: null, summary: 'What is the gold rate in Mumbai today? — Gold rate enquiry is outside supported services', customer_ref: null, call_id: SAMPLE_ROUTED_CALL.id, created_at: ago(17), escalated: null },
@@ -211,11 +246,17 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
     { ref: 'RQ-60194', kind: 'routed', category: null, status: null, summary: 'Gold loan interest rate? — No approved FAQ answer', customer_ref: null, call_id: null, created_at: ago(320), escalated: null },
   ],
   escalation: [
-    { ref: 'ESC-70200', kind: 'escalation', category: null, status: 'OPEN', summary: 'Unauthorised card debit', customer_ref: 'CUST-1008', call_id: 'sample-call-escalation', created_at: ago(6), escalated: null },
+    {
+      ref: 'ESC-70200', kind: 'escalation', category: null, status: TicketStatus.OPEN, summary: 'Unauthorised card debit', customer_ref: 'CUST-1008',
+      call_id: 'sample-call-escalation', created_at: ago(6), escalated: null, related_refs: ['CMP-50200', 'TXN-90011'],
+    },
   ],
 };
 
 const calls = new Map<string, SupportCall>();
+/** Mock-mode copy of the bank records, so a status change sticks until the page reloads. */
+let records: Record<RecordKind, OpsRecord[]> | null = null;
+const recordsOf = (kind: RecordKind): OpsRecord[] => (records ??= structuredClone(SAMPLE_RECORDS))[kind];
 const progress = new Map<string, number>();
 const resolved = new Map<string, string>();
 const paused = new Set<string>();
@@ -294,6 +335,7 @@ function summarise(c: SupportCall): SupportCallSummary {
   return {
     id: c.id, channel: c.channel, startedAt: c.startedAt, endedAt: c.endedAt, outcome: c.outcome, verified: c.verified,
     turnCount: c.turns.length, intents: [...new Set(c.turns.flatMap((t) => t.meta.intents ?? []))], rating: c.rating ?? null,
+    failedOps: c.turns.reduce((n, t) => n + (t.meta.tool_trace ?? []).filter((x) => x.outcome === OpOutcome.FAILED).length, 0),
   };
 }
 
@@ -424,7 +466,16 @@ export const mockSupport = {
 
   async listRecords(kind: RecordKind): Promise<OpsRecord[]> {
     await delay();
-    return structuredClone(SAMPLE_RECORDS[kind]);
+    return structuredClone(recordsOf(kind));
+  },
+
+  async updateTicket(ref: string, status: TicketStatus, progress: string | null): Promise<OpsRecord> {
+    await delay();
+    const t = recordsOf(RecordKindValue.TICKET).find((r) => r.ref === ref.trim().toUpperCase());
+    if (!t) throw new ApiError({ status: 404, title: 'Not found', detail: 'No ticket with that reference.' });
+    t.status = status;
+    if (progress !== null) t.progress = progress;
+    return structuredClone(t);
   },
 
   async pauseCall(callId: string, on: boolean): Promise<void> {
