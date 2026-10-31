@@ -6,6 +6,42 @@ Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [
 
 ---
 
+## For judges: try it
+
+**Through the shared URL** (one laptop hosts everything behind a Cloudflare tunnel; the team shares the `https://….trycloudflare.com` link on the day):
+
+1. Open the link and sign in with a demo login (password = username): `analyst` follows calls and opens cases, `reviewer` can also correct transcripts and decide findings, `admin` has everything including the audit chain.
+2. **Customer service desk** → **Start a call**. Choose **Microphone** → **Start talking** and speak, or **Upload audio** and send short recordings (any format: a phone voice memo is fine), one file per turn, in order. The audio of a microphone call flows directly between your browser and the laptop (no relay server), so it needs an open network; **Upload audio** goes through the shared link and works everywhere.
+3. Verify as a seeded customer when the agent asks. The data is synthetic; say the mobile number and the date of birth:
+
+   | Customer | Mobile | Date of birth | Good for |
+   |---|---|---|---|
+   | Rahul Iyer | 97314 62580 | 3 November 1985 | Two loans (personal and vehicle), an open statement request |
+   | Asha Verma | 98452 13076 | 12 April 1990 | A personal loan application under review |
+   | Arjun Nair | 74061 58293 | 14 February 1978 | A failed transfer, a request awaiting information |
+   | David Fernandes | 93047 61852 | 9 March 1982 | An unauthorised debit |
+
+   All nine seeded customers, with what to say and what must be refused: [docs/verification-lab.md](docs/verification-lab.md); mobiles and dates come from `backend/simulator/data/seed/customers.json`.
+4. A five-step script that touches verification, grounded answers, a ticket and the desk:
+   1. Start a call and say "When is my next EMI?"
+   2. Verify as Rahul Iyer: "97314 62580", then "3 November 1985".
+   3. Hear the next instalment of his personal loan, then say "No, I meant my vehicle loan": the answer changes with no re-verification.
+   4. Say "Please send me my loan statement": the agent raises a service request and reads its `SR-…` reference back.
+   5. End the call and go back to the desk: the call is in **Calls** with its transcript, intents and tool trace, and the ticket is on the **Tickets** tab, department *Account Services*.
+5. Try to break it: ask about another customer's loan, give a wrong date of birth three times, ask for something the bank does not do. Every refusal is on the record in the transcript.
+
+**Run it yourself** (macOS or Linux, Python 3.12, Node 18 or newer):
+
+```bash
+git clone https://github.com/AzentioHackathon-2026/Customer-Service-Management-CSM-Voice-Agent-owl-labs.git && cd Customer-Service-Management-CSM-Voice-Agent-owl-labs
+cp .env.example .env            # add GROQ_API_KEY (free at console.groq.com); never an Anthropic key
+scripts/dev-up.sh               # API :8080, simulator :8090, voice :7861, panel :5173; creates the venvs and node_modules
+open http://localhost:5173       # sign in as analyst/analyst, then Customer service desk → Start a call
+scripts/dev-down.sh
+```
+
+---
+
 ## What it does
 
 A customer phones the bank's service line and speaks naturally in English, Kannada or Hindi. The front-desk agent:
@@ -348,13 +384,14 @@ P1/P2 (transcript PII redaction with an admin reveal) are on hold by owner decis
 
 ### Share the demo from one laptop (free, data persists)
 
-Everything runs on one laptop; the API and simulator keep their SQLite files on its disk, so calls, tickets and complaints survive restarts. Teammates open one public URL.
+Everything runs on one laptop; the API and simulator keep their SQLite files on its disk, so calls, tickets and complaints survive restarts. Judges and teammates open one public URL.
 
-1. Start the simulator (8090), the core API (8080) and the voice service (7861) as usual.
-2. Start the panel in share mode, which serves the API and simulator through the panel's own origin: `cd frontend && npm run dev:share`
-3. Open a public URL for it: `cloudflared tunnel --url http://localhost:5173` and share the `https://…trycloudflare.com` address it prints.
+1. Put a random secret in `.env`: `VOICE_PROXY_TOKEN=` followed by the output of `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` (at least 32 characters; a shorter one is ignored with a warning). The panel's dev server adds it to every voice request it forwards, so the voice service's tunnel guard admits those and nothing else; the secret stays on the laptop and never reaches a browser.
+2. Start the simulator (8090), the core API (8080) and the voice service (7861) as usual (restart the voice service if it was already running, so it reads the token).
+3. Start the panel in share mode, which serves the API, the simulator and the voice service through the panel's own origin (`/api`, `/sim`, `/voice`): `cd frontend && npm run dev:share`
+4. Open a public URL for it: `cloudflared tunnel --url http://localhost:5173` and share the `https://…trycloudflare.com` address it prints.
 
-Teammates can use the desk, call transcripts, records and reviews through that URL. Voice features (mic calls, typed calls, Pause, live transcript correction) run against `localhost:7861`, so use them on the laptop itself. Anyone with the URL can sign in with the demo logins, so stop the tunnel after the demo.
+Through that URL the desk, call transcripts, records, reviews, recorded-audio uploads, Pause and live transcript correction all work. A microphone call's set-up goes through the proxy too, but its audio is a direct WebRTC connection between the browser and the laptop with no STUN or TURN relay, so it works on the laptop's own network and may fail from elsewhere; use **Upload audio** there. Without `VOICE_PROXY_TOKEN` the voice features answer 403 `LOCAL_ONLY` through the tunnel, as before. Anyone with the URL can sign in with the demo logins, so stop the tunnel after the demo.
 
 ## Run it
 
@@ -386,7 +423,7 @@ Their measured speech-to-text numbers are in `docs/stt-benchmark.md` § Hindi; t
 **Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic.
 - Set the `TWILIO_*` and `PUBLIC_BASE_URL` values in `.env` (see `.env.example`).
 - Run `cloudflared tunnel --url http://localhost:7861` and put its https URL in `PUBLIC_BASE_URL`.
-- Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there.
+- Only the Twilio stream is reachable through the tunnel; every other voice endpoint answers 403 `LOCAL_ONLY` there, unless the request comes through the panel's proxy carrying `VOICE_PROXY_TOKEN` (see *Share the demo from one laptop*).
 - Details are in `backend/voice/README.md`.
 
 ---

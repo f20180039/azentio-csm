@@ -3,9 +3,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import dotenv_values
+from loguru import logger
 
 from .llm_chain import Link, default_chain_spec, parse_chain
 from .vocab import SpeechLanguage
+
+PROXY_TOKEN_MIN_CHARS = 32  # a shorter VOICE_PROXY_TOKEN is ignored: the tunnel guard then behaves as if none were set
 
 
 def parse_languages(spec: str) -> tuple[SpeechLanguage, ...]:
@@ -34,6 +37,16 @@ class Settings:
     twilio_from: str = ""
     twilio_allowed_to: tuple[str, ...] = ()
     public_base_url: str = ""
+    # Secret the panel's dev-server proxy adds as x-voice-proxy-token; a tunnelled request reaches a non-public route only with it
+    voice_proxy_token: str = field(default="", repr=False)
+
+
+def proxy_token(raw: str) -> str:
+    """The configured proxy secret, or "" when it is missing or too short to count (warned once, value never shown)."""
+    if raw and len(raw) < PROXY_TOKEN_MIN_CHARS:
+        logger.warning(f"VOICE_PROXY_TOKEN ignored: shorter than {PROXY_TOKEN_MIN_CHARS} characters, so the tunnel guard admits nothing")
+        return ""
+    return raw
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
@@ -65,4 +78,5 @@ def load_settings(env_file: Path | None = None) -> Settings:
         twilio_from=get("TWILIO_FROM", "").replace(" ", ""),
         twilio_allowed_to=tuple(n.replace(" ", "") for n in get("TWILIO_ALLOWED_TO", "").split(",") if n.strip()),
         public_base_url=get("PUBLIC_BASE_URL", "").rstrip("/"),
+        voice_proxy_token=proxy_token(get("VOICE_PROXY_TOKEN", "").strip()),
     )

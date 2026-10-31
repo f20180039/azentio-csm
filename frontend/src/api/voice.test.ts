@@ -35,3 +35,21 @@ describe('connectVoice failures', () => {
     );
   });
 });
+
+describe('isSameRequestUrl', () => {
+  it('matches a relative endpoint against the absolute URL a Request object reports', async () => {
+    const { isSameRequestUrl } = await import('./voice');
+    const abs = new URL('/voice/support/offer', window.location.href).href; // what Request.url reports in a browser
+    expect(abs.startsWith('http')).toBe(true);
+    expect(isSameRequestUrl(abs, '/voice/support/offer')).toBe(true);
+    expect(isSameRequestUrl('/voice/support/offer', '/voice/support/offer')).toBe(true);
+    expect(isSameRequestUrl('http://localhost:7861/support/offer', 'http://localhost:7861/support/offer')).toBe(true);
+  });
+
+  it('does not match another path or another origin', async () => {
+    const { isSameRequestUrl } = await import('./voice');
+    expect(isSameRequestUrl('/voice/support/offer', '/voice/api/offer')).toBe(false);
+    expect(isSameRequestUrl('http://localhost:7861/support/offer', '/voice/support/offer')).toBe(false);
+    expect(isSameRequestUrl('http://other.example/support/offer', 'http://localhost:7861/support/offer')).toBe(false);
+  });
+});
