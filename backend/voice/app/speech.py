@@ -29,16 +29,22 @@ NO_SPEECH_PROB_MAX = 0.5
 AVG_LOGPROB_MIN = -0.7
 # A mobile and date of birth in the format Whisper should copy: with a bare "zero zero zero zero" it sometimes collapses the
 # repeats to "zero zero" (task R1). Unbenchmarked: docs/stt-benchmark.md has the method, this example was not measured with it.
-MOBILE_EXAMPLE = "Mobile 98765 00001, date of birth 1985-11-03."
+# The values belong to no seeded customer (backend/simulator/data/seed/customers.json), and a transcript that carries them is
+# Whisper echoing the prompt on noise, dropped by is_phantom before it can be heard as the caller's details.
+MOBILE_EXAMPLE_DIGITS = "9876543210"
+MOBILE_EXAMPLE_DOB = "1980-01-01"
+MOBILE_EXAMPLE_SPLIT = 5  # "98765 43210": written as two groups, the way callers say it and Whisper writes it
+MOBILE_EXAMPLE = (f"Mobile {MOBILE_EXAMPLE_DIGITS[:MOBILE_EXAMPLE_SPLIT]} {MOBILE_EXAMPLE_DIGITS[MOBILE_EXAMPLE_SPLIT:]}, "
+                  f"date of birth {MOBILE_EXAMPLE_DOB}.")
 # The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
 DOMAIN_PROMPT = f"Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001. {MOBILE_EXAMPLE}"
 # Kannada (docs/stt-benchmark.md, "Kannada"): with the English prompt and no pinned language, Whisper wrote Kannada speech
 # romanised or in Telugu script; Kannada words in the prompt keep it in Kannada script. Groq's detected-language field named
 # the Kannada clips English, Tamil or Hindi, so the call's language is read from the transcript's script instead.
-# The benchmarked literal, plus the mobile example (R1) that multilingual_prompt also appends; tests pin the two equal.
+# The benchmarked literals, plus the mobile example (R1) that multilingual_prompt also appends; tests pin en,kn and BILINGUAL equal.
 BILINGUAL_PROMPT = f"Bank customer call. ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, NACH, KYC, statement, SR-40102. {MOBILE_EXAMPLE}"
-KANNADA_PROMPT = "ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102."
-HINDI_PROMPT = "बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102."
+KANNADA_PROMPT = f"ಬ್ಯಾಂಕ್ ಗ್ರಾಹಕರ ಕರೆ. EMI, ಸಾಲ, ಲೋನ್, ಖಾತೆ, ಸ್ಟೇಟ್‌ಮೆಂಟ್, ಕಂತು, SR-40102. {MOBILE_EXAMPLE}"
+HINDI_PROMPT = f"बैंक ग्राहक कॉल। EMI, लोन, खाता, स्टेटमेंट, किस्त, NACH, KYC, SR-40102. {MOBILE_EXAMPLE}"
 # The prompt once the call is in a script language; the words that keep Whisper in that script while the call is still English
 STT_PROMPTS: dict[SpeechLanguage, str] = {SpeechLanguage.KANNADA: KANNADA_PROMPT, SpeechLanguage.HINDI: HINDI_PROMPT}
 # ("bank customer call" in that script, the domain words in that script); the English terms (EMI, NACH, KYC...) are said once
@@ -94,27 +100,33 @@ COUNTRY_CODE = "91"
 TRUNK_PREFIX = "0"
 MOBILE_FIRST_DIGITS = "6789"
 PAUSE = r"[,.]\s+"  # a comma or full stop and a space: a breath inside a number, or the gap between two numbers
+MONTH_NAMES = ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december")
+MONTHS = {name: i for i, name in enumerate(MONTH_NAMES, 1)} | {name[:3]: i for i, name in enumerate(MONTH_NAMES, 1)} | {"sept": 9}
 
 
-def _alt(words) -> str:
+def alt(words) -> str:
+    """A regex alternation of the words, longest first so 'nineteen' wins over 'nine'."""
     return "|".join(sorted(words, key=len, reverse=True))
 
 
-_TOKEN = r"(?:\d+|" + _alt(_DIGIT_WORDS) + r")\b"
-_PLAIN_TOKEN = r"(?:\d+|" + _alt(_PLAIN_DIGIT_WORDS) + r")"
+_TOKEN = r"(?:\d+|" + alt(_DIGIT_WORDS) + r")\b"
+_PLAIN_TOKEN = r"(?:\d+|" + alt(_PLAIN_DIGIT_WORDS) + r")"
 _SEPARATOR = r"[ \t-]+"
 _DIGIT_WORD_RUN = re.compile(r"\b" + _PLAIN_TOKEN + r"(?:" + _SEPARATOR + _PLAIN_TOKEN + r")+\b", re.I)
 _SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
 _REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
-_COUNT = r"(?:\d+|" + _alt(_COUNTS) + r")"
-_MULTIPLIED_DIGIT = r"(?:\d+|" + _alt(_MULTIPLIED_DIGIT_WORDS) + r")"
+_COUNT = r"(?:\d+|" + alt(_COUNTS) + r")"
+_MULTIPLIED_DIGIT = r"(?:\d+|" + alt(_MULTIPLIED_DIGIT_WORDS) + r")"
 _TIMES = re.compile(rf"\b({_COUNT})\s+times\s+({_MULTIPLIED_DIGIT})\b", re.I)  # '4 times 0'
-_MULTIPLIED = re.compile(rf"\b({_alt(_MULTIPLIERS)}){_SEPARATOR}({_MULTIPLIED_DIGIT})\b", re.I)  # 'double zero', 'triple-5', 'double o'
-_PLURAL = re.compile(rf"\b({_COUNT})\s+({_alt(_PLURALS)})\b", re.I)  # '4 zeros'
-# Digit groups separated by pauses ('98765, 0000, one'): joined when together they make one mobile, left alone otherwise
+_MULTIPLIED = re.compile(rf"\b({alt(_MULTIPLIERS)}){_SEPARATOR}({_MULTIPLIED_DIGIT})\b", re.I)  # 'double zero', 'triple-5', 'double o'
+_PLURAL = re.compile(rf"\b({_COUNT})\s+({alt(_PLURALS)})\b", re.I)  # '4 zeros'
+# Digit groups separated by pauses ('98765, 0000, one'): joined when together they make one mobile, left alone otherwise.
+# A group that starts a date ('98765 0006, 5 December 1995', '…, 5/12/1995') is never the number's tail: the date keeps its day.
+_DATE_AHEAD = rf"(?!\s+(?:of\s+)?(?:{alt(MONTHS)})\b|[/-]\d)"
 _SEGMENT = r"\+?" + _PLAIN_TOKEN + r"(?:" + _SEPARATOR + _PLAIN_TOKEN + r")*"
-_PAUSED_NUMBER = re.compile(r"(?<![\w-])" + _SEGMENT + r"(?:" + PAUSE + _SEGMENT + r")+(?!\w)", re.I)
+_PAUSED_NUMBER = re.compile(r"(?<![\w-])" + _SEGMENT + r"(?:" + PAUSE + _SEGMENT + r")+(?!\w)" + _DATE_AHEAD, re.I)
 _PAUSE_SPLIT = re.compile(r"(" + PAUSE + r")")
+_NOT_DIGIT = re.compile(r"\D")
 
 
 def without_prefix(d: str) -> str:
@@ -316,9 +328,16 @@ def build_stt(settings, call_language: CallLanguage | None = None) -> GroqSTTSer
                                                              language=Language(call_language.stt_language() or LANGUAGE)))
 
 
+def is_prompt_echo(text: str) -> bool:
+    """Whisper repeating the prompt's mobile example on noise: the example digits (as one run, however spaced) or its date
+    of birth appear in the text. No seeded customer has them, so nothing a real caller says is lost."""
+    digits = _NOT_DIGIT.sub("", normalise_spoken_digits(text))
+    return MOBILE_EXAMPLE_DIGITS in digits or MOBILE_EXAMPLE_DOB in text
+
+
 def is_phantom(text: str) -> bool:
     words = _PUNCT.sub("", text).strip().lower()
-    return not words or words in PHANTOMS
+    return not words or words in PHANTOMS or is_prompt_echo(text)
 
 
 def is_invented_segment(segment: dict) -> bool:

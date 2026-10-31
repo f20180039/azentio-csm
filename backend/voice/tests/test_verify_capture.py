@@ -5,10 +5,12 @@ import json
 from datetime import date
 
 import httpx
+from pipecat.frames.frames import TranscriptionFrame
 
 from app.api_client import SupportCallsApi
 from app.config import Settings
 from app.simulator_client import SimulatorClient
+from app.speech import MOBILE_EXAMPLE, MOBILE_EXAMPLE_DIGITS, MOBILE_EXAMPLE_DOB, keep_transcript
 from app.support_brain import SupportBrain
 from app.support_tools import CallSession
 from app.vocab import ToolError, VerifyField
@@ -153,6 +155,26 @@ def test_a_collapsed_repeat_is_asked_for_again_with_its_count():
     assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
     assert out["note"].endswith("The number heard had 8 digits.")
     assert sim.verify_bodies() == [] and brain.call.heard_mobile is None
+
+
+def test_a_prompt_echo_never_reaches_verification():
+    # Whisper repeating the prompt's example on noise is dropped at the speech stage (the pipeline records a no-speech turn),
+    # so nothing is heard, the model's copy of it may not fill anything, and no attempt is spent
+    llm = Scripted(tool_call("verify_customer", {"mobile": MOBILE_EXAMPLE_DIGITS, "date_of_birth": MOBILE_EXAMPLE_DOB}), text("Your number, please?"))
+    brain, sim = make(llm)
+    assert keep_transcript(TranscriptionFrame(MOBILE_EXAMPLE, "u", "t")) is None
+    asyncio.run(brain.no_speech("phantom"))
+    assert brain.call.heard_mobile is None and brain.call.heard_dob is None and brain.call.heard_digits is None
+    assert not brain.call.model_may_fill and sim.verify_bodies() == [] and brain.call.verify_failures == 0
+
+
+def test_a_leftover_number_does_not_let_the_model_guess_the_mobile():
+    # "9282, 766, 0006" is read (no mobile in it), so the model's own 10-digit guess is not sent and no attempt is burnt
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9282766000", "date_of_birth": "1985-11-03"}), text("Could you repeat the mobile number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("9282, 766, 0006, born 3rd November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert sim.verify_bodies() == [] and not brain.call.model_may_fill and brain.call.heard_mobile is None
 
 
 def test_first_mismatch_does_not_say_which_field():

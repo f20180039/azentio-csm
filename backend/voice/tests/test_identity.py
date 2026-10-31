@@ -71,6 +71,28 @@ def test_commas_do_not_merge_unrelated_numbers():
     assert extract_mobile(text) == SEED_MOBILE and "SR-40102" in text
 
 
+def test_a_date_after_a_short_number_keeps_its_day():
+    # a pause then "5 December 1995": the 5 is the day, never the short number's missing digit (fix round 1, item 1)
+    for said in ("98765 0006, 5 December 1995", "987650006, 5 December 1995",
+                 "nine eight seven six five zero zero zero six, five december nineteen ninety five"):
+        text = heard(said)
+        assert extract_mobile(text) is None and digit_run(text) == "987650006" and extract_dob(text, TODAY) == "1995-12-05", said
+    text = heard("98765 0002, 3 November 1985")
+    assert extract_mobile(text) is None and digit_run(text) == "987650002" and extract_dob(text, TODAY) == "1985-11-03"
+    text = heard("98765 0006, 5/12/1995")
+    assert extract_mobile(text) is None and digit_run(text) == "987650006" and extract_dob(text, TODAY) == "1995-12-05"
+    # a date said first stays a date and lends no digit; what follows is read on its own, and '<nine digits>, <one>' is the
+    # seed form "nine eight seven six five zero zero zero zero, N" (brief addendum), so it is one number
+    text = heard("1995-12-05, 98765 0006, 5")
+    assert extract_dob(text, TODAY) == "1995-12-05" and extract_mobile(text) == "9876500065"
+
+
+def test_leftover_digits_the_code_read_do_not_open_the_model():
+    assert not unexplained_numbers("9282, 766, 0006")  # read, just not a mobile: the model may not send its own guess
+    assert not unexplained_numbers("98765 0006, 5 December 1995")
+    assert unexplained_numbers("ನನ್ನ ಸಂಖ್ಯೆ ಒಂಬತ್ತು ಎಂಟು") and unexplained_numbers("1 Jan 90")
+
+
 def test_oh_outside_a_number_stays_a_word():
     text = heard("oh, okay, my number is nine eight seven six five double oh double oh two")
     assert "oh, okay" in text and extract_mobile(text) == SEED_MOBILE
@@ -119,6 +141,8 @@ def test_extract_dob_forms():
         assert extract_dob(said, TODAY) == "1985-11-03", said
     assert extract_dob("the ninth of March nineteen eighty-two", TODAY) == "1982-03-09"
     assert extract_dob("November third nineteen eighty five", TODAY) == "1985-11-03"  # month first, in words
+    assert extract_dob("five December nineteen ninety five", TODAY) == "1995-12-05"  # the day as a cardinal word
+    assert extract_dob("twenty five of December 1995", TODAY) == "1995-12-25"
     assert extract_dob("twelfth April two thousand", TODAY) == "2000-04-12"
     assert extract_dob("twelfth April two thousand and five", TODAY) == "2005-04-12"
     assert extract_dob("12th April 1990", TODAY) == "1990-04-12"
