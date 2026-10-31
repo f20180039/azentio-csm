@@ -1,63 +1,33 @@
-"""Ops and Admin endpoints for System of Record."""
+"""Ops endpoints: health, identity, packs, stats and audit-chain verification."""
 from fastapi import APIRouter, Depends
-from app.auth import User, get_current_user
-from app.store import store
+
+from app.auth import User, admin, get_current_user, staff
+from app.paths import ApiPath
+from app.services.container import Services, services
 
 router = APIRouter(tags=["Ops"])
 
 
-@router.get("/health")
+@router.get(ApiPath.HEALTH)
 def health():
     return {"status": "ok", "service": "api"}
 
 
-@router.get("/me")
+@router.get(ApiPath.ME)
 def me(user: User = Depends(get_current_user)):
-    return {
-        "username": user.username,
-        "roles": user.roles,
-    }
+    return {"username": user.username, "roles": sorted(user.roles)}
 
 
-@router.get("/packs")
-def packs(user: User = Depends(get_current_user)):
-    return [
-        {
-            "id": "demo",
-            "label": "Demo documents",
-            "extractionSchema": "demo",
-            "routing": {"autoClearBelow": 0.2, "escalateAtOrAbove": 0.8},
-            "rules": [
-                {
-                    "id": "CORE-DUPLICATE-DOC",
-                    "weight": 0.5,
-                    "rationale": "Same file already seen in another case",
-                },
-                {
-                    "id": "CORE-HIDDEN-TEXT",
-                    "weight": 0.6,
-                    "rationale": "Text a human cannot see is a manipulation signal",
-                },
-                {
-                    "id": "CORE-INJECTION",
-                    "weight": 0.8,
-                    "rationale": "Instructions aimed at the AI inside a document",
-                },
-            ],
-        }
-    ]
+@router.get(ApiPath.PACKS)
+def packs(_: User = Depends(staff), s: Services = Depends(services)):
+    return s.packs
 
 
-@router.get("/stats")
-def stats(user: User = Depends(get_current_user)):
-    return {
-        "cases": 12,
-        "accuracy": 0.94,
-        "pending": 3,
-        "resolved": 9,
-    }
+@router.get(ApiPath.STATS)
+def stats(includeSimulated: bool = False, _: User = Depends(staff), s: Services = Depends(services)):
+    return s.dashboard.stats(includeSimulated)
 
 
-@router.get("/audit/verify")
-def verify_audit(user: User = Depends(get_current_user)):
-    return store.verify_audit()
+@router.get(ApiPath.AUDIT_VERIFY)
+def verify_audit(_: User = Depends(admin), s: Services = Depends(services)):
+    return s.audit.verify_all()

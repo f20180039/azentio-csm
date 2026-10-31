@@ -98,7 +98,8 @@ def test_renewals_queue_and_packs():
 
     r_queue = client.get("/api/v1/renewals/queue", headers=auth)
     assert r_queue.status_code == 200
-    assert len(r_queue.json()["items"]) > 0
+    # The queue is a bare list: frontend/src/api/renewals.ts and eval/simulate.py read it that way.
+    assert len(r_queue.json()) > 0
 
     r_packs = client.get("/api/v1/packs", headers=auth)
     assert r_packs.status_code == 200
