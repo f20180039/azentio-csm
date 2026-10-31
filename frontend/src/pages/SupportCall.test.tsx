@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setCredentials } from '../api/client';
 import { SAMPLE_PII, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
-import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
+import type { PiiTokens, SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { SupportCall } from './SupportCall';
 
@@ -273,6 +273,50 @@ describe('personal data on the call screen', () => {
     expect(h.getCallPii).toHaveBeenCalledTimes(1);
     expect(localSet).not.toHaveBeenCalled();
     localSet.mockRestore();
+  });
+
+  it('drops a reveal that resolves after the admin has moved on to another call', async () => {
+    setCredentials({ username: 'admin', password: 'admin' });
+    const a = structuredClone(SAMPLE_VERIFIED_CALL);
+    const b: SupportCallRecord = { ...structuredClone(SAMPLE_VERIFIED_CALL), id: 'sample-call-other-customer' };
+    h.getCall.mockImplementation(async (id: string) => (id === b.id ? b : a));
+    let resolveA!: (tokens: PiiTokens) => void;
+    h.getCallPii.mockReturnValue(new Promise<PiiTokens>((r) => { resolveA = r; }));
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={[`/support/calls/${a.id}`]}>
+          <Routes>
+            <Route
+              path="/support/calls/:callId"
+              element={
+                <>
+                  <SupportCall />
+                  <Link to={`/support/calls/${b.id}`}>Open call B</Link>
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show personal data' }));
+    expect(h.getCallPii).toHaveBeenCalledWith(a.id);
+    expect(screen.getByRole('button', { name: 'Revealing…' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Open call B' }));
+    await screen.findByText(b.id);
+    expect(screen.getByRole('button', { name: 'Show personal data' })).not.toBeDisabled(); // B starts redacted, not "revealing"
+
+    resolveA(structuredClone(SAMPLE_PII[a.id]));
+    await waitFor(() => expect(h.getCall).toHaveBeenCalledWith(b.id));
+    await new Promise((r) => setTimeout(r, 0)); // let the late response settle
+    const log = within(screen.getByRole('log', { name: 'Conversation history' }));
+    expect(log.getAllByText('Mobile (redacted)').length).toBeGreaterThan(0);
+    expect(screen.queryByText(MOBILE)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show personal data' })).toHaveAttribute('aria-pressed', 'false');
+    expect(h.getCallPii).toHaveBeenCalledTimes(1);
   });
 
   it('reveals personal data inside tool arguments too', async () => {
