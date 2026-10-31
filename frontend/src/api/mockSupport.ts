@@ -4,6 +4,7 @@
  */
 import type {
   CallRating,
+  CustomerProfile,
   Insights,
   Lesson,
   OfferAnswer,
@@ -41,6 +42,22 @@ const PERSONAL_LOAN = {
 const VEHICLE_LOAN = {
   loan_id: 'VL-31003', product: 'Vehicle loan', product_type: 'vehicle', outstanding_principal: 412_900,
   next_instalment: { amount: 9_800, due_date: inDays(12) }, overdue: null, status: 'ACTIVE',
+};
+
+/** The sample customer the scripted calls verify, as the simulator's ops profile returns it. */
+export const SAMPLE_PROFILE: CustomerProfile = {
+  customer: { customer_ref: 'CUST-1002', first_name: 'Rahul', last_name: 'Iyer', mobile: '9876500002', dob: '1985-11-03' },
+  accounts: [{ account_id: 'ACC-20002', type: 'SAVINGS', masked_number: '••• ••• 4012', balance: 85_400, currency: 'INR' }],
+  loans: [
+    { ...PERSONAL_LOAN, product: 'Personal Loan' },
+    { ...VEHICLE_LOAN, product: 'Vehicle Loan' },
+  ],
+  applications: [],
+  transactions: [],
+  policies: [],
+  claims: [],
+  tickets: [{ ref: 'SR-40102', category: 'STATEMENT', status: 'IN_PROGRESS', summary: 'Account statement request for last 6 months' }],
+  complaints: [],
 };
 
 /** Verified repayment call with a mid-call correction and a ticket (sample customer CUST-1002). */
@@ -201,6 +218,7 @@ export const SAMPLE_RECORDS: Record<RecordKind, OpsRecord[]> = {
 const calls = new Map<string, SupportCall>();
 const progress = new Map<string, number>();
 const resolved = new Map<string, string>();
+const paused = new Set<string>();
 let lessons: Lesson[] = [];
 let seq = 0;
 let lessonSeq = SAMPLE_LESSONS.length;
@@ -398,12 +416,24 @@ export const mockSupport = {
     return { sdp: '', type: 'answer', pc_id: 'sample-pc', call_id: create(Channel.VOICE).id };
   },
 
+  async getCustomerProfile(customerRef: string): Promise<CustomerProfile> {
+    await delay();
+    if (customerRef !== SAMPLE_PROFILE.customer.customer_ref) throw new ApiError({ status: 404, title: 'No customer with that reference.' });
+    return structuredClone(SAMPLE_PROFILE);
+  },
+
   async listRecords(kind: RecordKind): Promise<OpsRecord[]> {
     await delay();
     return structuredClone(SAMPLE_RECORDS[kind]);
   },
 
-  /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s. */
+  async pauseCall(callId: string, on: boolean): Promise<void> {
+    await delay();
+    if (on) paused.add(callId);
+    else paused.delete(callId);
+  },
+
+  /** No WebRTC in mock mode: the scripted repayment call plays itself, one exchange every 2.5 s, except while paused. */
   async connectSupportVoice(callId: string | undefined, _audio: HTMLAudioElement | null, h: SupportVoiceHandlers): Promise<VoiceSession> {
     await delay(300);
     const call = callId ? find(callId) : create(Channel.VOICE);
@@ -413,13 +443,15 @@ export const mockSupport = {
         clearInterval(timer);
         return;
       }
-      advance(call, 'mic');
+      if (!paused.has(call.id)) advance(call, 'mic');
     }, 2500);
     return {
       disconnect: async () => {
         clearInterval(timer);
+        paused.delete(call.id);
         h.onDisconnected();
       },
+      setMicEnabled: () => undefined,
     };
   },
 };

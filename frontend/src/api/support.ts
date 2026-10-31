@@ -4,8 +4,8 @@ import { VOICE_BASE } from './renewals';
 import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
 import { CoreApiPath } from './paths/core';
-import { SimulatorPath } from './paths/simulator';
-import { turnAudioPath, VoicePath } from './paths/voice';
+import { opsCustomerPath, SimulatorPath } from './paths/simulator';
+import { supportPausePath, turnAudioPath, VoicePath } from './paths/voice';
 import {
   FeedbackVerdict,
   Intent,
@@ -114,6 +114,38 @@ export interface SupportCall {
   verified: boolean;
   turns: SupportTurn[];
   rating?: CallRating | null;
+}
+
+/** GET /v1/ops/customers/{ref} on the bank simulator: what the bank holds for one customer. */
+export interface CustomerProfile {
+  customer: { customer_ref: string; first_name: string; last_name: string; mobile: string; dob: string };
+  accounts: { account_id: string; type: string; masked_number: string; balance: number; currency: string }[];
+  loans: {
+    loan_id: string;
+    product: string;
+    outstanding_principal: number;
+    next_instalment: { amount: number; due_date: string } | null;
+    overdue: { amount: number; since: string } | null;
+    status: string;
+  }[];
+  applications: { ref: string; product: string; amount: number; stage_label: string; submitted_on: string }[];
+  transactions: { ref: string; date: string; description: string; amount: number; direction: string; status: string }[];
+  policies: { policy_no: string; product: string; status: string; premium: number; coverage_status: string }[];
+  claims: { claim_no: string; policy_no: string; status: string; amount_claimed: number }[];
+  tickets: { ref: string; category: string; status: string; summary: string }[];
+  complaints: { ref: string; category: string; status: string; description: string; escalated: boolean }[];
+}
+
+const VERIFY_TOOL = 'verify_customer';
+
+/** The customer the agent verified on this call (the latest successful verify_customer), or null before verification. */
+export function verifiedCustomerRef(turns: SupportTurn[]): string | null {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const result = turns[i].meta.retrieved?.[VERIFY_TOOL] as { verified?: boolean; customer?: { customer_ref?: string } } | undefined;
+    const ref = result?.customer?.customer_ref;
+    if (ref && result?.verified !== false) return ref;
+  }
+  return null;
 }
 
 export interface SupportCallSummary {
@@ -262,6 +294,17 @@ const liveSupport = {
     return (await res.json()) as SimAudioResult;
   },
 
+  /** While paused the agent ignores the caller's audio and does not hang up on silence. */
+  async pauseCall(callId: string, paused: boolean): Promise<void> {
+    await reach('voice service', VOICE_BASE, () =>
+      fetch(`${VOICE_BASE}${supportPausePath(callId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused }),
+      }),
+    );
+  },
+
   async supportOffer(body: OfferBody, fetchImpl: typeof fetch = fetch): Promise<OfferAnswer> {
     const res = await reach('voice service', VOICE_BASE, () =>
       fetchImpl(`${VOICE_BASE}${VoicePath.SUPPORT_OFFER}`, {
@@ -274,6 +317,15 @@ const liveSupport = {
   },
 
   /* ---------- bank simulator ---------- */
+
+  async getCustomerProfile(customerRef: string): Promise<CustomerProfile> {
+    const res = await reach('bank simulator', SIMULATOR_BASE, () =>
+      fetch(`${SIMULATOR_BASE}${opsCustomerPath(customerRef)}`, {
+        headers: { Accept: 'application/json', Authorization: 'Basic ' + btoa('ops:ops') },
+      }),
+    );
+    return (await res.json()) as CustomerProfile;
+  },
 
   async listRecords(kind: RecordKind): Promise<OpsRecord[]> {
     const res = await reach('bank simulator', SIMULATOR_BASE, () =>
@@ -375,7 +427,7 @@ async function liveConnectSupportVoice(
   } finally {
     window.fetch = nativeFetch;
   }
-  return { disconnect: () => client.disconnect() };
+  return { disconnect: () => client.disconnect(), setMicEnabled: (on) => client.enableMic(on) };
 }
 
 export type SupportApi = typeof liveSupport;
@@ -388,7 +440,9 @@ export const listCalls = (outcome?: SupportOutcome) => api.listCalls(outcome);
 export const endCall = (id: string, outcome: SupportOutcome) => api.endCall(id, outcome);
 export const simAudio = (files: File[], callId?: string) => api.simAudio(files, callId);
 export const supportOffer = (body: OfferBody) => api.supportOffer(body);
+export const pauseCall = (id: string, paused: boolean) => api.pauseCall(id, paused);
 export const listRecords = (kind: RecordKind) => api.listRecords(kind);
+export const getCustomerProfile = (customerRef: string) => api.getCustomerProfile(customerRef);
 export const rateCall = (id: string, score: number, comment: string | null) => api.rateCall(id, score, comment, RatingSource.PANEL);
 export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, correction: string | null) =>
   api.sendFeedback(id, seq, verdict, correction);

@@ -14,5 +14,7 @@ describe('live speech', () => {
     expect(speechStatus(true, { customer: false, agent: false })).toBe('Listening…');
     expect(speechStatus(true, { customer: true, agent: false })).toBe('You’re speaking');
     expect(speechStatus(true, { customer: false, agent: true })).toBe('Agent speaking');
+    expect(speechStatus(true, { customer: true, agent: false }, true)).toBe('Paused: the agent isn’t listening');
+    expect(speechStatus(false, { customer: false, agent: false }, true)).toBe('Microphone off');
   });
 });

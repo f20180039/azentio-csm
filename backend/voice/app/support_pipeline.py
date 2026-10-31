@@ -25,9 +25,9 @@ from .edge_tts_service import EdgeTTSService
 from .recordings import join_wavs
 from .speech import CallLanguage, build_stt, build_vad, keep_transcript
 from .support_brain import SupportBrain, SupportTurn
-from .support_prompt import GREETING
+from .support_prompt import GREETING, GREETING_KANNADA
 from .support_tools import CallSession
-from .vocab import HandoffMode, Outcome, SupportTool
+from .vocab import HandoffMode, Outcome, SpeechLanguage, SupportTool
 
 GOODBYE_GRACE_SECS = 4.0
 FALLBACK = "Sorry, I didn't catch that. Could you say it again?"
@@ -41,6 +41,17 @@ STILL_THERE = "Are you still there?"
 NOISY_BEFORE_ASKING = 2  # unusable, noise-only segments in a row before the agent asks the caller to repeat
 NOISY_ASK = "Sorry, there's some background noise. Could you say that again?"
 IDLE_GOODBYE = "I haven't heard anything, so I'll end the call now. Thank you for calling Azentio Demo Bank."
+# The agent's fixed lines in Kannada, spoken once the caller has switched the call to Kannada
+KANNADA_LINES = {
+    FALLBACK: "ಕ್ಷಮಿಸಿ, ನನಗೆ ಸರಿಯಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳುತ್ತೀರಾ?",
+    SYSTEM_DOWN: "ಕ್ಷಮಿಸಿ, ನಮ್ಮ ವ್ಯವಸ್ಥೆಯನ್ನು ತಲುಪಲು ತೊಂದರೆಯಾಗುತ್ತಿದೆ. ದಯವಿಟ್ಟು ಸ್ವಲ್ಪ ಕಾಯಿರಿ ಅಥವಾ ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    STILL_THERE: "ನೀವು ಇನ್ನೂ ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಾ?",
+    NOISY_ASK: "ಕ್ಷಮಿಸಿ, ಹಿನ್ನೆಲೆಯಲ್ಲಿ ಸ್ವಲ್ಪ ಶಬ್ದವಿದೆ. ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳುತ್ತೀರಾ?",
+    IDLE_GOODBYE: "ನನಗೆ ಏನೂ ಕೇಳಿಸಲಿಲ್ಲ, ಆದ್ದರಿಂದ ಈಗ ಕರೆಯನ್ನು ಮುಗಿಸುತ್ತಿದ್ದೇನೆ. ಅಜೆಂಟಿಯೊ ಡೆಮೊ ಬ್ಯಾಂಕ್‌ಗೆ ಕರೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
+}
+
+# Live support calls by call id, so the operator panel can pause one (POST /support/calls/{call_id}/pause)
+LIVE: dict[str, "SupportResponder"] = {}
 
 
 class IdleWatch:
@@ -116,6 +127,13 @@ class TurnGate:
     def is_current(self, generation: int) -> bool:
         return generation == self.generation and not self.speaking
 
+    def hold(self) -> None:
+        """Drop the turn being gathered and any reply being prepared, as if the caller had cut in."""
+        self.generation += 1
+        self.speaking = False
+        self._parts, self._audio = [], []
+        self._cancel_timer()
+
     def _arm(self) -> None:
         self._cancel_timer()
         self._timer = asyncio.create_task(self._fire())
@@ -156,20 +174,45 @@ class SupportResponder(FrameProcessor):
     """Answers each completed caller turn with one brain reply. The caller starting to speak cuts the agent off: audio
     already playing is interrupted, and a reply still being prepared is dropped instead of being read out later."""
 
-    def __init__(self, brain: SupportBrain, settings=None, **kwargs):
+    def __init__(self, brain: SupportBrain, settings=None, language: CallLanguage | None = None, **kwargs):
         super().__init__(**kwargs)
         self._brain = brain
         self._settings = settings
+        self._language = language
+        self.paused = False
         self._gate = TurnGate(self._answer)
         self._idle = IdleWatch(self._check_in, self._hang_up)
         self._noisy = 0
         self.abandoned = False
         self._transfers: set[asyncio.Task] = set()
 
+    def line(self, text: str) -> str:
+        """A fixed agent line in the call's current language."""
+        kannada = self._language is not None and self._language.current == SpeechLanguage.KANNADA
+        return KANNADA_LINES.get(text, text) if kannada else text
+
+    async def set_paused(self, paused: bool) -> None:
+        """Side talk during a demo: while paused the caller's audio is ignored, the agent stops mid-sentence, a reply still
+        being prepared is dropped and the silence check-in is off. Resuming starts the silence timer afresh."""
+        if paused == self.paused:
+            return
+        self.paused = paused
+        if paused:
+            self._idle.pause()
+            self._gate.hold()
+            await self.broadcast_interruption()
+        else:
+            self._noisy = 0
+            self._idle.caller_active()
+            self._idle.agent_done()
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+        if self.paused and (isinstance(frame, (VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame))
+                            or (isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM)):
+            return
         if isinstance(frame, BotStoppedSpeakingFrame):
-            if not self._gate.busy:
+            if not self._gate.busy and not self.paused:
                 self._idle.agent_done()
             await self.push_frame(frame, direction)
             return
@@ -197,16 +240,16 @@ class SupportResponder(FrameProcessor):
                 self._noisy += 1  # the caller made sound but nothing usable came through
                 if self._noisy == NOISY_BEFORE_ASKING and not self._gate.busy:
                     self._noisy = 0
-                    await self.push_frame(TTSSpeakFrame(NOISY_ASK))
+                    await self.push_frame(TTSSpeakFrame(self.line(NOISY_ASK)))
             return
         await self.push_frame(frame, direction)
 
     async def _check_in(self) -> None:
-        await self.push_frame(TTSSpeakFrame(STILL_THERE))
+        await self.push_frame(TTSSpeakFrame(self.line(STILL_THERE)))
 
     async def _hang_up(self) -> None:
         self.abandoned = True
-        await self.push_frame(TTSSpeakFrame(IDLE_GOODBYE))
+        await self.push_frame(TTSSpeakFrame(self.line(IDLE_GOODBYE)))
         await asyncio.sleep(GOODBYE_GRACE_SECS)
         await self.push_frame(EndWorkerFrame(reason="caller_silent"))
 
@@ -214,16 +257,16 @@ class SupportResponder(FrameProcessor):
         try:
             audio = join_wavs(self._gate.audio_by_generation.pop(generation, []))
             turn = await (self._brain.reply(text, audio=audio) if audio else self._brain.reply(text))
-            reply = turn.text or FALLBACK
+            reply = turn.text or self.line(FALLBACK)
         except Exception as e:  # the caller always hears something
             logger.warning(f"support reply failed: {e!r}")
-            reply, turn = SYSTEM_DOWN, None
+            reply, turn = self.line(SYSTEM_DOWN), None
         if turn is not None and self._settings is not None and wants_transfer(turn):
             # the escalation is already raised, so the transfer goes ahead even if this reply is never played
             task = asyncio.create_task(transfer_after_reply(self._settings, self._brain.call))
             self._transfers.add(task)
             task.add_done_callback(self._transfers.discard)
-        if not self._gate.is_current(generation):
+        if self.paused or not self._gate.is_current(generation):
             self._brain.mark_unheard()
             logger.debug("reply dropped: the caller spoke again before it was played")
             return
@@ -234,8 +277,10 @@ class SupportResponder(FrameProcessor):
 
 
 def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTransport, audio_sample_rate: int | None = None) -> PipelineWorker:
-    responder = SupportResponder(brain, settings)
     language = CallLanguage(settings.voice_languages)  # heard by speech-to-text, followed by the voice
+    responder = SupportResponder(brain, settings, language)
+    call_id = brain.call.call_id
+    LIVE[call_id] = responder
     task = PipelineWorker(
         Pipeline([transport.input(), VADProcessor(vad_analyzer=build_vad()), build_stt(settings, language), responder,
                   EdgeTTSService(voice=settings.tts_voice, call_language=language), transport.output()]),
@@ -245,7 +290,9 @@ def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTranspo
 
     @transport.event_handler("on_client_connected")
     async def on_connected(_transport, _client):
-        await task.queue_frames([TTSSpeakFrame(GREETING)])
+        # with Kannada on, a second line in the Kannada voice tells the caller they can switch
+        await task.queue_frames([TTSSpeakFrame(GREETING)] + ([TTSSpeakFrame(GREETING_KANNADA)] if language.detects
+                                                              and SpeechLanguage.KANNADA in language.enabled else []))
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(_transport, _client):
@@ -256,6 +303,8 @@ def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTranspo
     @task.event_handler("on_pipeline_finished")
     async def on_finished(_task, _frame):
         nonlocal finished
+        if LIVE.get(call_id) is responder:
+            LIVE.pop(call_id)
         if not finished:
             finished = True
             await brain.finish(Outcome.ABANDONED if responder.abandoned and not brain.call.refs else None)

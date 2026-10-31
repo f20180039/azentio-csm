@@ -105,7 +105,8 @@ export function SpeakingBubble({ who }: { who: 'customer' | 'agent' }) {
   );
 }
 
-export function speechStatus(live: boolean, s: { customer: boolean; agent: boolean }): string {
+export function speechStatus(live: boolean, s: { customer: boolean; agent: boolean }, paused = false): string {
+  if (live && paused) return 'Paused: the agent isn’t listening';
   if (!live) return 'Microphone off';
   return s.customer ? 'You’re speaking' : s.agent ? 'Agent speaking' : 'Listening…';
 }

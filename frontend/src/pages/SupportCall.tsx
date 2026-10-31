@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { CustomerCard } from '../components/CustomerCard';
 import { SpeakingBubble, speechStatus, useLiveSpeech } from '../components/LiveSpeech';
 import { ApiError } from '../api/errors';
 import {
   audioDataUrl,
   CHANNEL_LABEL,
   connectSupportVoice,
+  getCustomerProfile,
+  pauseCall,
+  verifiedCustomerRef,
   endCall,
   getCall,
   intentLabel,
@@ -15,6 +19,7 @@ import {
   suggestOutcome,
   SUPPORT_OUTCOMES,
   verificationOf,
+  type CustomerProfile,
   type SimTurn,
   type SupportCall as SupportCallRecord,
   type SupportOutcome,
@@ -560,6 +565,8 @@ export function SupportCall() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('mic');
   const [voice, setVoice] = useState<'off' | 'connecting' | 'on'>('off');
+  const [paused, setPaused] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [results, setResults] = useState<SimTurn[]>(() => (location.state as { results?: SimTurn[] } | null)?.results ?? []);
   const [ending, setEnding] = useState<'closed' | 'open' | 'busy'>('closed');
   const session = useRef<VoiceSession | null>(null);
@@ -608,19 +615,45 @@ export function SupportCall() {
     const s = session.current;
     session.current = null;
     setVoice('off');
+    setPaused(false);
     void s?.disconnect().catch(() => undefined);
   }, [ended]);
 
   const adopt = useCallback(
     (id: string, state?: { results: SimTurn[] }) => {
       setCreatedId(id);
-      if (!routeId) navigate(Route.supportCall(id), { replace: true, state });
+      // a mic call from a page already showing a call is a new call (the voice service never reattaches), so follow it
+      if (id !== routeId) navigate(Route.supportCall(id), { replace: !routeId, state });
     },
     [navigate, routeId],
   );
 
   const turns: SupportTurn[] = call?.turns.length ? call.turns : turnsFromSim(results);
-  const speech = useLiveSpeech(voice === 'on', audio, timelineRef);
+  const speech = useLiveSpeech(voice === 'on' && !paused, audio, timelineRef);
+
+  // the verified caller's bank profile; refetched as turns arrive, so records raised on this call show up
+  const customerRef = verifiedCustomerRef(turns);
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!customerRef) {
+      setProfile(null);
+      return;
+    }
+    let stale = false;
+    getCustomerProfile(customerRef)
+      .then((p) => {
+        if (stale) return;
+        setProfile(p);
+        setProfileError(null);
+      })
+      .catch((e: unknown) => {
+        if (!stale) setProfileError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [customerRef, turns.length]);
   const speaking = speech.customer ? 'customer' : speech.agent ? 'agent' : null;
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' });
@@ -640,10 +673,12 @@ export function SupportCall() {
     try {
       const s = await connectSupportVoice(callId ?? undefined, audio.current, {
         onCallId: (id) => {
-          if (!callId) adopt(id);
+          if (id !== callId) adopt(id);
         },
         onDisconnected: () => {
-          if (!unmounted.current) setVoice('off');
+          if (unmounted.current) return;
+          setVoice('off');
+          setPaused(false);
         },
         onError: (m) => toastRef.current.push('Voice connection problem', m, 'warn'),
       });
@@ -665,6 +700,26 @@ export function SupportCall() {
     session.current = null;
     await s?.disconnect().catch(() => undefined);
     setVoice('off');
+    setPaused(false);
+  }
+
+  /** Side talk during a demo: the mic is muted first, so nothing said while paused reaches the agent. */
+  async function togglePause() {
+    const s = session.current;
+    if (!s || !callId) return;
+    const next = !paused;
+    setPausing(true);
+    try {
+      if (next) s.setMicEnabled?.(false);
+      await pauseCall(callId, next);
+      if (!next) s.setMicEnabled?.(true);
+      setPaused(next);
+    } catch (e) {
+      s.setMicEnabled?.(!paused);
+      toast.error(e);
+    } finally {
+      setPausing(false);
+    }
   }
 
   async function finish(outcome: SupportOutcome) {
@@ -817,7 +872,7 @@ export function SupportCall() {
                     <p className="small muted">Talk to the agent through this browser. Its replies play through your speakers.</p>
                     <p className={`sc-mic-status${speaking ? ' active' : ''}`} role="status">
                       <span className="dot" aria-hidden="true" />
-                      {speechStatus(voice === 'on', speech)}
+                      {speechStatus(voice === 'on', speech, paused)}
                     </p>
                     <div className="row">
                       {voice === 'off' && (
@@ -831,9 +886,14 @@ export function SupportCall() {
                         </button>
                       )}
                       {voice === 'on' && (
-                        <button className="btn" onClick={() => void stopMic()}>
-                          Stop microphone
-                        </button>
+                        <>
+                          <button className="btn" onClick={() => void togglePause()} disabled={pausing || !callId} aria-pressed={paused}>
+                            {paused ? 'Resume' : 'Pause'}
+                          </button>
+                          <button className="btn" onClick={() => void stopMic()}>
+                            Stop
+                          </button>
+                        </>
                       )}
                     </div>
                     {!callId && voice === 'off' && <PhoneDial onCallId={(id) => adopt(id)} />}
@@ -854,6 +914,21 @@ export function SupportCall() {
           </section>
 
           {call && <RatingPanel callId={call.id} rating={call.rating ?? null} ended={ended} onSaved={() => void refresh()} />}
+
+          <section className="panel guard-panel" aria-labelledby="customer-title">
+            <h2 id="customer-title">Customer</h2>
+            {!customerRef ? (
+              <p className="small muted">Shows the caller's bank details once the agent has verified them.</p>
+            ) : profile?.customer.customer_ref === customerRef ? (
+              <CustomerCard profile={profile} />
+            ) : profileError ? (
+              <p className="small muted">
+                Verified as <span className="mono">{customerRef}</span>; details unavailable ({profileError}).
+              </p>
+            ) : (
+              <p className="small muted">Loading {customerRef}…</p>
+            )}
+          </section>
 
           <section className="panel guard-panel" aria-labelledby="facts-title">
             <h2 id="facts-title">Call details</h2>

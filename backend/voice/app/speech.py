@@ -95,9 +95,13 @@ def normalise_spoken_digits(text: str) -> str:
     return text
 
 
+KANNADA_DIGITS = str.maketrans("೦೧೨೩೪೫೬೭೮೯", "0123456789")
+
+
 def normalise_refs(text: str) -> str:
-    """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents."""
-    text = normalise_spoken_digits(text)
+    """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents.
+    Kannada numerals (೯೩೮…) become ASCII digits, so a mobile number said in Kannada reaches verification intact."""
+    text = normalise_spoken_digits(text.translate(KANNADA_DIGITS))
     text = _SPELLED_PREFIX.sub(lambda m: m.group(1).replace(" ", "").upper(), text)
 
     def fix(m: re.Match) -> str:

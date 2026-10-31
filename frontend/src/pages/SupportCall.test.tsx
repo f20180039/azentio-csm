@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
+import { SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
 import { SupportCall } from './SupportCall';
@@ -11,11 +11,14 @@ const h = vi.hoisted(() => ({
   simAudio: vi.fn(),
   connectSupportVoice: vi.fn(),
   endCall: vi.fn(),
+  pauseCall: vi.fn(),
+  getCustomerProfile: vi.fn(),
 }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
-  return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall };
+  return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall,
+    getCustomerProfile: h.getCustomerProfile };
 });
 
 function mount(path: string) {
@@ -34,6 +37,7 @@ function mount(path: string) {
 
 beforeEach(() => {
   Object.values(h).forEach((f) => f.mockReset());
+  h.getCustomerProfile.mockResolvedValue(structuredClone(SAMPLE_PROFILE));
 });
 
 describe('SupportCall', () => {
@@ -137,6 +141,82 @@ describe('SupportCall', () => {
 });
 
 describe('customer turn playback', () => {
+  it('pauses for side talk by muting the mic before telling the agent, then resumes and stops', async () => {
+    const live: SupportCallRecord = { ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null };
+    h.getCall.mockResolvedValue(live);
+    const order: string[] = [];
+    const session = {
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      setMicEnabled: vi.fn((on: boolean) => order.push(`mic:${on}`)),
+    };
+    h.connectSupportVoice.mockResolvedValue(session);
+    h.pauseCall.mockImplementation(async (_id: string, on: boolean) => {
+      order.push(`server:${on}`);
+    });
+    mount(`/support/calls/${live.id}`);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconnect microphone' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
+    await screen.findByRole('button', { name: 'Resume' });
+    expect(screen.getByText('Paused: the agent isn’t listening')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    await screen.findByRole('button', { name: 'Pause' });
+    expect(order).toEqual(['mic:false', 'server:true', 'server:false', 'mic:true']);
+    expect(h.pauseCall).toHaveBeenCalledWith(live.id, true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await screen.findByRole('button', { name: 'Reconnect microphone' });
+    expect(session.disconnect).toHaveBeenCalled();
+  });
+
+  it('follows the new call when the microphone starts one from a page showing another call', async () => {
+    const live: SupportCallRecord = { ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null };
+    const fresh: SupportCallRecord = { ...live, id: '99999999-9999-9999-9999-999999999999', turns: [] };
+    h.getCall.mockImplementation(async (id: string) => (id === fresh.id ? fresh : live));
+    h.connectSupportVoice.mockImplementation(async (_id: string, _a: unknown, handlers: { onCallId: (id: string) => void }) => {
+      handlers.onCallId(fresh.id);
+      return { disconnect: vi.fn().mockResolvedValue(undefined), setMicEnabled: vi.fn() };
+    });
+    mount(`/support/calls/${live.id}`);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconnect microphone' }));
+    await waitFor(() => expect(h.getCall).toHaveBeenCalledWith(fresh.id));
+    expect(screen.getByText(fresh.id)).toBeInTheDocument();
+  });
+
+  it('unmutes the mic again when the agent could not be paused', async () => {
+    const live: SupportCallRecord = { ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null };
+    h.getCall.mockResolvedValue(live);
+    const session = { disconnect: vi.fn().mockResolvedValue(undefined), setMicEnabled: vi.fn() };
+    h.connectSupportVoice.mockResolvedValue(session);
+    h.pauseCall.mockRejectedValue(new Error('voice service down'));
+    mount(`/support/calls/${live.id}`);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconnect microphone' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(session.setMicEnabled).toHaveBeenLastCalledWith(true));
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+  });
+
+  it('shows the verified caller\'s bank profile, and a hint before verification', async () => {
+    h.getCustomerProfile.mockResolvedValue(structuredClone(SAMPLE_PROFILE));
+    h.getCall.mockResolvedValue(structuredClone(SAMPLE_VERIFIED_CALL));
+    mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
+    const card = within(await screen.findByRole('region', { name: 'Customer' }));
+    expect(await card.findByText('Rahul Iyer')).toBeInTheDocument();
+    expect(card.getByText('98765 00002')).toBeInTheDocument();
+    expect(h.getCustomerProfile).toHaveBeenCalledWith('CUST-1002');
+  });
+
+  it('asks for verification first when the caller is not verified yet', async () => {
+    h.getCall.mockResolvedValue({ ...structuredClone(SAMPLE_ROUTED_CALL), endedAt: null, outcome: null });
+    mount(`/support/calls/${SAMPLE_ROUTED_CALL.id}`);
+    const card = within(await screen.findByRole('region', { name: 'Customer' }));
+    expect(card.getByText(/once the agent has verified them/)).toBeInTheDocument();
+    expect(h.getCustomerProfile).not.toHaveBeenCalled();
+  });
+
   it('builds the voice service URL for a recorded turn', async () => {
     const { turnAudioUrl } = await import('../api/support');
     expect(turnAudioUrl('11111111-1111-1111-1111-111111111111', 3)).toMatch(/\/support\/calls\/11111111-1111-1111-1111-111111111111\/turns\/3\/audio$/);
