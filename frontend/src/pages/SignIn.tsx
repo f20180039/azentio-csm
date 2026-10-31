@@ -1,13 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError } from '../api/errors';
 import { MOCK_MODE } from '../api/client';
+import { DEMO_USERS } from '../demoUsers';
 import { useSession } from '../session';
-
-const DEMO_USERS = [
-  { username: 'analyst', role: 'Analyst', initials: 'AN', can: 'Opens cases and uploads documents.' },
-  { username: 'reviewer', role: 'Reviewer', initials: 'RV', can: 'Everything an analyst can, plus deciding findings and cases.' },
-  { username: 'admin', role: 'Admin', initials: 'AD', can: 'Everything a reviewer can, plus checking the audit chain.' },
-];
 
 export function SignIn() {
   const { signIn } = useSession();
@@ -42,7 +37,7 @@ export function SignIn() {
         </div>
         <div className="signin-intro">
           <h1>Sign in</h1>
-          <p className="muted small">Pick a demo persona. Your role decides what you can change; reloading signs you out.</p>
+          <p className="muted small">Sign in with your username and password, or pick a team member below. Your role decides what you can change; reloading signs you out.</p>
         </div>
         {MOCK_MODE && (
           <p className="mock-note">
@@ -50,6 +45,28 @@ export function SignIn() {
             Mock mode: example data only, nothing reaches a server.
           </p>
         )}
+        {error && (
+          <div className="banner bad" role="alert">
+            {error}
+          </div>
+        )}
+        <form className="signin-form" onSubmit={submit}>
+          <div className="field">
+            <label htmlFor="signin-user">Username</label>
+            <input id="signin-user" type="text" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label htmlFor="signin-pass">Password</label>
+            <input id="signin-pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </div>
+          <button className="btn primary" type="submit" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+          <p className="small muted">Demo accounts use the username as the password.</p>
+        </form>
+        <div className="signin-divider" role="separator">
+          <span>or sign in as a team member</span>
+        </div>
         <ul className="personas" aria-label="Demo personas">
           {DEMO_USERS.map((u) => (
             <li key={u.username}>
@@ -57,7 +74,7 @@ export function SignIn() {
                 type="button"
                 className="persona"
                 disabled={busy}
-                aria-label={`Sign in as ${u.role}`}
+                aria-label={`Sign in as ${u.name}, ${u.role}`}
                 aria-describedby={`persona-${u.username}-can`}
                 onClick={() => {
                   setUsername(u.username);
@@ -69,13 +86,15 @@ export function SignIn() {
                   {u.initials}
                 </span>
                 <span className="persona-body">
-                  <strong>{u.role}</strong>
+                  <strong>
+                    {u.name} <span className="pill neutral persona-role">{u.role}</span>
+                  </strong>
                   <span className="small muted" id={`persona-${u.username}-can`}>
                     {u.can}
                   </span>
                 </span>
                 <span className="persona-go" aria-hidden="true">
-                  Sign in as {u.role}
+                  Sign in as {u.name}
                   <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 3l5 5-5 5" />
                   </svg>
@@ -84,28 +103,6 @@ export function SignIn() {
             </li>
           ))}
         </ul>
-        {error && (
-          <div className="banner bad" role="alert">
-            {error}
-          </div>
-        )}
-        <div className="signin-divider" role="separator">
-          <span>or use a username and password</span>
-        </div>
-        <form className="signin-form" onSubmit={submit}>
-          <div className="field">
-            <label htmlFor="signin-user">Username</label>
-            <input id="signin-user" type="text" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-          </div>
-          <div className="field">
-            <label htmlFor="signin-pass">Password</label>
-            <input id="signin-pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-          <button className="btn" type="submit" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-          <p className="small muted">Demo accounts use the username as the password.</p>
-        </form>
       </div>
     </div>
   );

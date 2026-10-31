@@ -12,6 +12,7 @@ import { Renewals } from './pages/Renewals';
 import { SignIn } from './pages/SignIn';
 import { SupportCall } from './pages/SupportCall';
 import { SupportDesk } from './pages/SupportDesk';
+import { displayName } from './demoUsers';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
 
@@ -87,7 +88,7 @@ function Shell() {
         <div className="topbar-right">
           <ThemeToggle />
           <span className="small">
-            <strong>{session.username}</strong> <span className="pill neutral">{humanise(primaryRole(session.roles))}</span>
+            <strong>{displayName(session.username)}</strong> <span className="pill neutral">{humanise(primaryRole(session.roles))}</span>
           </span>
           <button className="btn ghost sm" onClick={signOut}>
             Sign out

@@ -597,3 +597,4 @@ td.persona-cell > span { display: block; }
   .orb::before, .orb::after, .orb-core { transform: none !important; transition: none; animation: none !important; }
   .orb.on .orb-core { outline: 3px solid var(--orb-ring); outline-offset: 4px; }
 }
+.persona-role { margin-left: 6px; font: 600 var(--fs-xs) var(--font-body); vertical-align: 2px; }
