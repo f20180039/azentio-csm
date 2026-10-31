@@ -8,7 +8,7 @@ Design and contracts: [ARCHITECTURE.md](ARCHITECTURE.md). Per-service details: [
 
 ## What it does
 
-A customer phones the bank's service line and speaks naturally in English or Kannada. The front-desk agent:
+A customer phones the bank's service line and speaks naturally in English, Kannada or Hindi. The front-desk agent:
 - **Understands and classifies intents:** loan application status, repayment schedule/amount, account balances, service requests, product questions, complaints, insurance. Handles multi-intent requests in a single turn and asks clarifying questions when ambiguous.
 - **Enforces strict two-factor verification:** registered 10-digit mobile number and date of birth before disclosing any non-public record. Three failures lock verification across calls. Another customer's record is refused **at the banking simulator level**, preventing prompt injection bypasses.
 - **Speaks only grounded, retrieved data:** answers strictly from simulated core banking systems and an approved FAQ knowledge base. Every financial figure spoken originates directly from that turn's tool payload.
@@ -190,7 +190,7 @@ sequenceDiagram
   - **Resilient Fallback Chain:** Ordered cascade with automatic rate-limit (429) cooldowns, transient error handling, and provider-specific payload adaptation (e.g. Gemini `thought_signature` handling, Mistral ID normalization).
   - **Zero-Shot Intent Classifier:** Parallel JSON classifier detecting 10 distinct banking intents with instantaneous rule-based fallback.
   - **Single-Turn Enforcement (`_clean_reply`):** Aggressive defense against runaway multi-turn LLM roleplay hallucinations.
-  - **Multilingual Support:** Dynamic language rule activation (English vs. Kannada script + Kannada spoken number translation) when configured with `VOICE_LANGUAGES=en,kn`.
+  - **Multilingual Support:** Dynamic language rule activation (English vs. Kannada or Hindi script, plus spoken-number translation in each) when configured with `VOICE_LANGUAGES=en,kn,hi`; every Kannada or Hindi turn is also stored with its English (`text_en`).
 
 #### 2. Bank Simulator (`backend/simulator`, Port 8090)
 - **Zero-Trust Identity Verification Gate:**
@@ -322,6 +322,27 @@ Every synthetic customer, what to say to verify as them, the answers to expect a
 | Three wrong dates of birth | any mobile, wrong DOB × 3 | Locked (`LOCKED`); nothing personal shared. |
 | Kannada caller | Kannada spoken mobile and DOB (e.g. ಒಂಬತ್ತು ಎಂಟು ಏಳು...) | Answers in Kannada, converts numbers to digits, keeps amounts in ₹. |
 
+### Level 2 walk-through (one line per capability in `docs/brief/problem-05-level2.md`)
+
+Start from a reset simulator (`curl -X POST -u ops:ops http://localhost:8090/v1/ops/reset`, or restart it) so the seed tickets SR-40103 (REJECTED), SR-40104 (AWAITING_INFO) and SR-40105 (RESOLVED) are in their seed state. Keep the operator desk open at `/support` on a second screen: the Calls, Tickets, Complaints and Escalations tabs update within 5 s.
+
+| # | Capability | Say / do | Expect |
+|---|---|---|---|
+| 1 | Multi-turn context | As CUST-1002 (98765 00002 / 3 Nov 1985): "When is my next personal loan instalment?", then "And how much is it?", then "No, I meant my vehicle loan" | The second answer stays on the personal loan with no re-verification and no re-asking which loan; the correction moves to VL-31003 at ₹9,800. |
+| 2 | Service request through the API | "Send me my loan statement" | A ticket SR-… read back digit by digit. The Tickets tab shows it `Open`, department *Account Services*, progress "Received by the Account Services team." |
+| 3 | Request status tracking | As CUST-1004 (98765 00004 / 14 Feb 1978): "What's happening with my request SR-40104?" Then, on the Tickets tab, pick *Resolved* for SR-40104, type a note, click **Save**, and have the caller ask again | First answer: awaiting information from the customer, with the department and the seed progress note. Second answer: resolved, with the note just typed. `PATCH /v1/ops/tickets/SR-40104` is what the Save button sends. |
+| 4 | Complaint with the caller's words | Still CUST-1004: "My fifteen thousand transfer failed, reference TXN-88213" | Status read from the record, no guessed cause, then a complaint CMP-… (category `FAILED_TRANSACTION`). The Complaints tab shows the structured summary, the caller's own words in quotes and an "About TXN-88213" pill. |
+| 5 | Escalation on repeated authentication failure | Any mobile with a wrong date of birth three times | `LOCKED`, nothing personal shared, and the agent hands over on its own: an escalation ESC-… with category `AUTH_LOCKED` on the Escalations tab, linked to the call. (Three unclear turns in a row give the same hand-over with `REPEATED_MISUNDERSTANDING`.) |
+| 5a | Verification keeps what was heard correctly (needs the `fix/verification-capture` hotfix on `develop`) | Give only the mobile number first, e.g. "My number is 98765 00002" | The agent asks only for the date of birth, spends no attempt, and verifies once the date arrives. On a genuine mismatch it asks to confirm both the first time and names the wrong field after the second failed attempt. |
+| 6 | Transcript correction on the call screen | Signed in as `reviewer/reviewer`, open the call, click **Bad answer** on an agent turn, type the corrected text, **Save feedback** | The original turn text stays as recognised; the correction sits beside it with the reviewer's name, and the write is on the audit chain (`/api/v1/audit/verify` still passes). |
+| 7 | Operations dashboard | Look at the Calls, Tickets and Escalations tabs after the steps above | Ticket pills by status (amber for `Awaiting info`, red for `Rejected` SR-40103, green for `Resolved` SR-40105); a red "N failed" pill on any call where a bank API call failed (stop the simulator for one turn to force it); on the call screen each Retrieved card carries `OK`, `Failed` or `Declined` per tool call (a loan question before verification shows `Declined`). |
+
+**Hindi and Kannada calls.** With `VOICE_LANGUAGES=en,kn,hi` in `.env`, the greeting offers both languages and the agent follows the caller's script. Hindi (scenario 15): "मेरी अगली EMI कब है?", then "मेरा मोबाइल नंबर 98765 00002, जन्म तिथि 3 नवंबर 1985.", then "मेरी अगली EMI कितनी है, और कब भरनी है?". Kannada (scenario 13): "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", then the same details in Kannada. Expect the reply in the caller's language and voice, digits in ASCII, amounts in ₹; on the call screen every Kannada or Hindi turn carries a language chip with its English beneath ("English: When is my next EMI?"), and the "English first" switch swaps the order. The English is a separate translation call that lands a moment after the turn, so a turn may show its original first.
+
+**Known demo risk: model fallback.** The conversation chain falls back to smaller models when the Groq, Gemini or Mistral quota runs out (see the resilience chain above). Smaller models follow the tool rules less reliably, which is how the verification bug fixed by the hotfix in step 5a first showed. Before presenting, check `GET http://localhost:7861/v1/llm/status`: `active` should be the first link and every link `available: true`; a `cooldownUntil` on the first link means the demo is running on a fallback model.
+
+P1/P2 (transcript PII redaction with an admin reveal) are on hold by owner decision, parked on branch `feat/pii-redaction`, and are not part of this script.
+
 ---
 
 ## Run it
@@ -340,6 +361,16 @@ Every synthetic customer, what to say to verify as them, the answers to expect a
 - The SQLite files live in the named volumes `api-data` and `simulator-data`. `docker compose down -v` resets them.
 - A local Ollama on the host is reached as `http://host.docker.internal:11434/v1`.
 - To run beside natively started services, move the host ports: `API_PORT=18080 SIMULATOR_PORT=18090 VOICE_PORT=17861 WEB_PORT=15173 docker compose up --build`.
+
+**Kannada and Hindi.** Set `VOICE_LANGUAGES=en,kn,hi` in `.env` (default `en`; `en,kn` for Kannada only) and restart the voice service. Each Kannada or Hindi turn is translated to English in the background by `VOICE_TRANSLATE_MODEL` (default `openai/gpt-oss-20b` on Groq) and shown beside the original on the call screen. The Hindi scenarios 15 and 16 run through recorded audio like the Kannada ones (about 6 speech-to-text and 20 LLM requests; `render` has no `--only`, so it renders every scenario turn in the Hindi voice, which is free and cached):
+
+```bash
+cd backend/voice
+.venv/bin/python -m eval.audio.render --source scenarios --accents hi --conditions clean
+.venv/bin/python -m eval.run_scenarios --voice http://localhost:<port> --audio --accent hi --condition clean --only 15-hindi-repayment 16-hindi-statement
+```
+
+Their measured speech-to-text numbers are in `docs/stt-benchmark.md` § Hindi; the scenario run itself has not been done yet (paste its result there).
 
 **Phone calls (optional).** The agent can dial a Twilio-verified mobile instead of using the browser mic.
 - Set the `TWILIO_*` and `PUBLIC_BASE_URL` values in `.env` (see `.env.example`).
@@ -402,7 +433,8 @@ Rule 3 of Azentio.ai Build Labs asks for this. "Before the event" means built as
 - **Speech to text:** Groq `whisper-large-v3-turbo` with banking vocabulary prompt.
 - **Conversation & tool calls:** `VOICE_LLM_CHAIN` (Groq `gpt-oss-120b` $\rightarrow$ Gemini Flash $\rightarrow$ Groq `gpt-oss-20b` $\rightarrow$ Mistral Small $\rightarrow$ Local Ollama `llama3.2`).
 - **Intent classification:** Groq `gpt-oss-20b` (JSON mode) with keyword fallback.
-- **Speech synthesis:** Edge-TTS (`en-IN-NeerjaNeural`).
+- **Speech synthesis:** Edge-TTS (`en-IN-NeerjaNeural`; `kn-IN-SapnaNeural` for Kannada, `hi-IN-SwaraNeural` for Hindi).
+- **Turn translation (Kannada/Hindi to English for the record):** `VOICE_TRANSLATE_MODEL`, default Groq `gpt-oss-20b`.
 - **No Anthropic models are used at runtime.**
 
 **Data (rule 5):** Strictly synthetic data. Nothing originates from real customers or production systems.
