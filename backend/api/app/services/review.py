@@ -8,14 +8,15 @@ from typing import Any
 from app.audit import AuditLog
 from app.auth import User
 from app.clock import Clock
-from app.db import MAX_SCORE, MIN_SCORE, Database, loads
+from app.db import MAX_SCORE, MIN_SCORE, Database, dumps, loads
 from app.errors import ApiError
-from app.services.support import MAX_LIMIT, feedback_view, find_call, rating_view, ratings_by_call
+from app.services.support import MAX_LIMIT, feedback_view, find_call, rating_view, ratings_by_call, turn_view
 from app.vocab import (AuditAction, CallKind, EscalationTrigger, FeedbackVerdict, LessonStatus, RatingSource,
-                       ReviewReason, Role, SupportTool, TurnRole)
+                       ReviewReason, Role, SupportTool, TurnMetaKey, TurnRole)
 
 LOW_RATING_MAX = 2
 LESSON_MIN_CHARS, LESSON_MAX_CHARS = 10, 300
+TRANSCRIPT_MIN_CHARS, TRANSCRIPT_MAX_CHARS = 1, 2000
 LESSON_TARGET_STATUSES = frozenset({LessonStatus.ACTIVE, LessonStatus.RETIRED})
 RATING_SOURCE_ROLE = {RatingSource.VOICE: Role.VOICE, RatingSource.PANEL: Role.ANALYST}
 
@@ -97,6 +98,46 @@ class ReviewService:
             row = con.execute("SELECT * FROM turn_feedback WHERE call_id = ? AND seq = ? AND author = ?",
                               (call_id, seq, user.username)).fetchone()
         return feedback_view(row)
+
+    # --- caller transcript corrections (Level 2 §6): the recognised text stays; the correction sits in meta ----
+
+    @staticmethod
+    def _caller_turn(con: sqlite3.Connection, call_id: str, seq: int) -> tuple[list[dict], dict, dict]:
+        """The call's turns, the caller turn at `seq` and its meta dict (attached to the turn, ready to edit)."""
+        turns = loads(find_call(con, call_id)["transcript"], [])
+        if seq < 1 or seq > len(turns):
+            raise ApiError.not_found(f"Turn {seq} not found on call {call_id}")
+        t = turns[seq - 1]
+        if t.get("role") != TurnRole.CUSTOMER:
+            raise ApiError.bad_request("Transcript corrections apply to caller turns")
+        meta = t.get("meta") if isinstance(t.get("meta"), dict) else {}
+        t["meta"] = meta
+        return turns, t, meta
+
+    def correct_transcript(self, call_id: str, seq: int, text: Any, user: User) -> dict:
+        """Shallow-merges `transcript_correction` into the turn's meta; a later correction replaces the earlier one."""
+        if not isinstance(text, str) or not TRANSCRIPT_MIN_CHARS <= len(text.strip()) <= TRANSCRIPT_MAX_CHARS:
+            raise ApiError.bad_request(f"text must be {TRANSCRIPT_MIN_CHARS} to {TRANSCRIPT_MAX_CHARS} characters")
+        text = text.strip()
+        now = self.clock.instant()
+        with self.db.tx() as con:
+            turns, t, meta = self._caller_turn(con, call_id, seq)
+            meta[TurnMetaKey.TRANSCRIPT_CORRECTION] = {"text": text, "author": user.username, "at": now}
+            con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
+            self.audit.record(con, call_id, user.username, AuditAction.TRANSCRIPT_CORRECTED,
+                              {"seq": seq, "original": t.get("text"), "corrected": text})
+        return turn_view(t)
+
+    def clear_transcript_correction(self, call_id: str, seq: int, user: User) -> dict:
+        with self.db.tx() as con:
+            turns, t, meta = self._caller_turn(con, call_id, seq)
+            correction = meta.pop(TurnMetaKey.TRANSCRIPT_CORRECTION, None)
+            if not isinstance(correction, dict):
+                raise ApiError.not_found(f"Turn {seq} on call {call_id} has no transcript correction")
+            con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), call_id))
+            self.audit.record(con, call_id, user.username, AuditAction.TRANSCRIPT_CORRECTION_REMOVED,
+                              {"seq": seq, "original": t.get("text"), "corrected": correction.get("text")})
+        return turn_view(t)
 
     def _queue(self, con: sqlite3.Connection) -> list[dict]:
         """Every call with at least one review reason: unresolved first, then newest first."""

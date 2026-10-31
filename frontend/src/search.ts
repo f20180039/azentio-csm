@@ -35,10 +35,13 @@ export function matches(query: string, ...fields: SearchField[]): boolean {
   return terms.every((t) => haystack.some((h) => h.includes(t)));
 }
 
-/** A conversation turn matches on its words and their English (when translated), its intents by code and label, and its references. */
+/**
+ * A conversation turn matches on its words, a reviewer's corrected reading of them, their English (when translated),
+ * its intents by code and label, and its references.
+ */
 export function turnMatches(q: string, t: SupportTurn): boolean {
   const intents = t.meta.intents ?? [];
-  return matches(q, t.text, t.meta.text_en, intents, intents.map(intentLabel), t.meta.refs);
+  return matches(q, t.text, t.meta.transcript_correction?.text, t.meta.text_en, intents, intents.map(intentLabel), t.meta.refs);
 }
 
 /** Normalises text char by char, keeping where each normalised char came from, so hits map back to the original. */

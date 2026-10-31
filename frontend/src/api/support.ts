@@ -1,5 +1,5 @@
 import { ApiError, toApiError } from './errors';
-import { get, MOCK_MODE, patchJson, postJson } from './client';
+import { del, get, MOCK_MODE, patchJson, postJson, putJson } from './client';
 import { VOICE_BASE } from './renewals';
 import { describeVoiceError, type VoiceSession } from './voice';
 import { mockSupport } from './mockSupport';
@@ -42,6 +42,13 @@ export interface ToolTrace {
   outcome?: OpOutcome;
 }
 
+/** A reviewer's corrected reading of a caller turn (Level 2 §6); the turn's `text` stays the recognised words. */
+export interface TranscriptCorrection {
+  text: string;
+  author: string;
+  at: string;
+}
+
 export interface TurnMeta {
   intents?: string[];
   intent_source?: IntentSource;
@@ -57,7 +64,14 @@ export interface TurnMeta {
   text_en?: string;
   /** SpeechLanguage code of a translated turn (kn, hi). */
   language?: string;
+  /** Present once a reviewer has corrected a caller turn; absent (never null) otherwise. */
+  transcript_correction?: TranscriptCorrection;
   [key: string]: unknown;
+}
+
+/** What the caller is taken to have said: the reviewer's correction when there is one, else the recognised text. */
+export function transcriptText(t: Pick<SupportTurn, 'text' | 'meta'>): string {
+  return t.meta.transcript_correction?.text ?? t.text;
 }
 
 export interface CallRating {
@@ -316,6 +330,14 @@ const liveSupport = {
     return postJson(CoreApiPath.turnFeedback(id, seq), { verdict, correction });
   },
 
+  correctTranscript(id: string, seq: number, text: string): Promise<SupportTurn> {
+    return putJson(CoreApiPath.turnTranscript(id, seq), { text });
+  },
+
+  clearTranscriptCorrection(id: string, seq: number): Promise<SupportTurn> {
+    return del(CoreApiPath.turnTranscript(id, seq));
+  },
+
   async listReview(): Promise<ReviewItem[]> {
     const r = await get<{ items?: Parameters<typeof normaliseReview>[0][] }>(`${CoreApiPath.SUPPORT_REVIEW}?limit=50`);
     return (r?.items ?? []).map(normaliseReview);
@@ -517,6 +539,8 @@ export const updateTicket = (ref: string, status: TicketStatus, progress: string
 export const rateCall = (id: string, score: number, comment: string | null) => api.rateCall(id, score, comment, RatingSource.PANEL);
 export const sendFeedback = (id: string, seq: number, verdict: FeedbackVerdict, correction: string | null) =>
   api.sendFeedback(id, seq, verdict, correction);
+export const correctTranscript = (id: string, seq: number, text: string) => api.correctTranscript(id, seq, text);
+export const clearTranscriptCorrection = (id: string, seq: number) => api.clearTranscriptCorrection(id, seq);
 export const listReview = () => api.listReview();
 export const resolveReview = (id: string, note: string) => api.resolveReview(id, note);
 export const listLessons = (activeOnly?: boolean) => api.listLessons(activeOnly);

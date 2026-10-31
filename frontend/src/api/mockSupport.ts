@@ -321,6 +321,14 @@ function find(id: string): SupportCall {
   return c;
 }
 
+/** The caller turn at `seq`, as the core API gates transcript corrections: unknown is 404, an agent turn 400. */
+function callerTurn(id: string, seq: number): SupportTurn {
+  const turn = find(id).turns.find((t) => t.seq === seq);
+  if (!turn) throw new ApiError({ status: 404, title: 'Not found', detail: `No turn ${seq} on call ${id}` });
+  if (turn.role !== TurnRole.CUSTOMER) throw new ApiError({ status: 400, title: 'Not a caller turn', detail: 'Transcript corrections apply to caller turns' });
+  return turn;
+}
+
 function push(call: SupportCall, step: Step) {
   call.turns.push({ seq: call.turns.length + 1, role: step.role, text: step.text, at: new Date().toISOString(), meta: structuredClone(step.meta) });
   if (step.meta.verified) call.verified = true;
@@ -404,6 +412,23 @@ export const mockSupport = {
     const fb: TurnFeedback = { seq: turnSeq, verdict, correction, author, at: new Date().toISOString() };
     turn.feedback = [...(turn.feedback ?? []).filter((f) => f.author !== author), fb];
     return structuredClone(fb);
+  },
+
+  async correctTranscript(id: string, turnSeq: number, text: string): Promise<SupportTurn> {
+    await delay();
+    const turn = callerTurn(id, turnSeq);
+    const corrected = text.trim();
+    if (!corrected) throw new ApiError({ status: 400, title: 'Nothing to save', detail: 'The corrected transcript cannot be blank.' });
+    turn.meta.transcript_correction = { text: corrected, author: currentUsername() ?? 'reviewer', at: new Date().toISOString() };
+    return structuredClone(turn);
+  },
+
+  async clearTranscriptCorrection(id: string, turnSeq: number): Promise<SupportTurn> {
+    await delay();
+    const turn = callerTurn(id, turnSeq);
+    if (!turn.meta.transcript_correction) throw new ApiError({ status: 404, title: 'Not found', detail: `Turn ${turnSeq} has no transcript correction.` });
+    delete turn.meta.transcript_correction;
+    return structuredClone(turn);
   },
 
   async listReview(): Promise<ReviewItem[]> {

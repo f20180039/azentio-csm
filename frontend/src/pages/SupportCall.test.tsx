@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_ESCALATION_CALL, SAMPLE_PROFILE, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { SimAudioResult, SupportCall as SupportCallRecord } from '../api/support';
 import { ToastProvider } from '../components/Toasts';
+import { displayName } from '../demoUsers';
+import { SessionProvider } from '../session';
 import { RetrievedCard, SupportCall } from './SupportCall';
-import { OpOutcome } from '../vocab';
+import { OpOutcome, Role, TurnRole } from '../vocab';
 
 const h = vi.hoisted(() => ({
   getCall: vi.fn(),
@@ -14,24 +16,30 @@ const h = vi.hoisted(() => ({
   endCall: vi.fn(),
   pauseCall: vi.fn(),
   getCustomerProfile: vi.fn(),
+  correctTranscript: vi.fn(),
+  clearTranscriptCorrection: vi.fn(),
 }));
 
 vi.mock('../api/support', async (orig) => {
   const real = await orig<typeof import('../api/support')>();
   return { ...real, getCall: h.getCall, simAudio: h.simAudio, connectSupportVoice: h.connectSupportVoice, endCall: h.endCall, pauseCall: h.pauseCall,
-    getCustomerProfile: h.getCustomerProfile };
+    getCustomerProfile: h.getCustomerProfile, correctTranscript: h.correctTranscript, clearTranscriptCorrection: h.clearTranscriptCorrection };
 });
 
-function mount(path: string) {
+/** With `roles`, the page is signed in as that role (the first one names the user); without, there is no session. */
+function mount(path: string, roles?: Role[]) {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  const page = (
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/support/new" element={<SupportCall />} />
+        <Route path="/support/calls/:callId" element={<SupportCall />} />
+      </Routes>
+    </MemoryRouter>
+  );
   return render(
     <ToastProvider>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/support/new" element={<SupportCall />} />
-          <Route path="/support/calls/:callId" element={<SupportCall />} />
-        </Routes>
-      </MemoryRouter>
+      {roles ? <SessionProvider initial={{ username: roles[0].toLowerCase(), password: 'x', roles }}>{page}</SessionProvider> : page}
     </ToastProvider>,
   );
 }
@@ -329,5 +337,120 @@ describe('English beside Kannada and Hindi turns', () => {
     expect(turn).toHaveAttribute('data-search', 'hit');
     expect(within(turn).getByText('EMI', { selector: 'mark' })).toBeInTheDocument();
     expect(within(log).getByText(ESCALATION_ASK, { selector: '.sc-turn.customer > p' }).closest('li')).toHaveAttribute('data-search', 'dim');
+  });
+});
+
+describe('caller transcript corrections (Level 2 §6)', () => {
+  const HEARD = 'No, I meant my vehicle loan, not the personal loan.';
+  const CORRECTED = 'No, I meant my vehicle loan, not the personal loan, for account 2231.';
+
+  /** The verified call with its second caller turn corrected by a reviewer; `seq` is that turn's position. */
+  function corrected(): { call: SupportCallRecord; seq: number } {
+    const call = structuredClone(SAMPLE_VERIFIED_CALL);
+    const t = call.turns.find((x) => x.role === TurnRole.CUSTOMER && x.text === HEARD)!;
+    t.meta.transcript_correction = { text: CORRECTED, author: 'reviewer', at: '2026-10-31T06:00:00Z' };
+    return { call, seq: t.seq };
+  }
+
+  it('shows the corrected text as the turn and the recognised text beneath it as "Heard as"', async () => {
+    const { call } = corrected();
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}`);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const main = await within(log).findByText(CORRECTED);
+    expect(main).not.toHaveClass('muted');
+    const turn = main.closest('li')!;
+    const heard = within(turn).getByTestId('turn-heard');
+    expect(heard).toHaveTextContent(`Heard as: ${HEARD}`);
+    expect(heard).toHaveClass('muted');
+    expect(main.compareDocumentPosition(heard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(turn).getByText(/Corrected by/)).toHaveTextContent(`Corrected by ${displayName('reviewer')}`);
+    expect(screen.queryByRole('button', { name: 'Correct transcript' })).toBeNull();
+  });
+
+  it('keeps the English line and language chip of a translated caller turn under "Heard as"', async () => {
+    const call = structuredClone(SAMPLE_ESCALATION_CALL);
+    const KANNADA_ASK = 'ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ?';
+    const kn = call.turns.find((t) => t.text === KANNADA_ASK)!;
+    kn.meta.transcript_correction = { text: 'ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ ಬರುತ್ತದೆ?', author: 'reviewer', at: '2026-10-31T06:00:00Z' };
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}`);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText('ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ ಬರುತ್ತದೆ?')).closest('li')!;
+    const lines = turn.querySelectorAll('p');
+    expect(lines[0]).toHaveAttribute('lang', 'kn');
+    expect(lines[1]).toHaveAttribute('data-testid', 'turn-heard');
+    expect(lines[1]).toHaveTextContent(`Heard as: ${KANNADA_ASK}`);
+    expect(lines[2]).toHaveAttribute('data-testid', 'turn-english');
+    expect(lines[2]).toHaveTextContent('English: When is my next EMI?');
+    expect(within(turn).getByText('Kannada')).toHaveClass('pill');
+  });
+
+  it('lets a reviewer correct a caller turn, prefilled with its current text, and remove a correction', async () => {
+    const { call, seq } = corrected();
+    h.getCall.mockResolvedValue(call);
+    h.correctTranscript.mockResolvedValue({});
+    h.clearTranscriptCorrection.mockResolvedValue({});
+    mount(`/support/calls/${call.id}`, [Role.REVIEWER]);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(CORRECTED)).closest('li')!;
+    // Every caller turn gets the control; agent turns do not.
+    const agentTurn = within(log).getAllByText('Agent')[0].closest('li')!;
+    expect(within(agentTurn).queryByRole('button', { name: 'Correct transcript' })).toBeNull();
+
+    fireEvent.click(within(turn).getByRole('button', { name: 'Correct transcript' }));
+    const field = within(turn).getByLabelText('Corrected transcript') as HTMLInputElement;
+    expect(field.value).toBe(CORRECTED);
+    fireEvent.change(field, { target: { value: '  No, I meant my vehicle loan.  ' } });
+    fireEvent.click(within(turn).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(h.correctTranscript).toHaveBeenCalledWith(call.id, seq, 'No, I meant my vehicle loan.'));
+    await waitFor(() => expect(within(turn).queryByLabelText('Corrected transcript')).toBeNull());
+
+    fireEvent.click(within(turn).getByRole('button', { name: 'Remove correction' }));
+    await waitFor(() => expect(h.clearTranscriptCorrection).toHaveBeenCalledWith(call.id, seq));
+  });
+
+  it('prefills an uncorrected turn with the recognised text, Cancel closes the field, and a blank text cannot be saved', async () => {
+    const call = structuredClone(SAMPLE_VERIFIED_CALL);
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}`, [Role.ADMIN]);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(HEARD)).closest('li')!;
+    expect(within(turn).queryByRole('button', { name: 'Remove correction' })).toBeNull();
+    fireEvent.click(within(turn).getByRole('button', { name: 'Correct transcript' }));
+    const field = within(turn).getByLabelText('Corrected transcript') as HTMLInputElement;
+    expect(field.value).toBe(HEARD);
+    fireEvent.change(field, { target: { value: '   ' } });
+    expect(within(turn).getByRole('button', { name: 'Save' })).toBeDisabled();
+    fireEvent.click(within(turn).getByRole('button', { name: 'Cancel' }));
+    expect(within(turn).queryByLabelText('Corrected transcript')).toBeNull();
+    expect(h.correctTranscript).not.toHaveBeenCalled();
+  });
+
+  it('hides the control from an analyst but still shows the correction', async () => {
+    const { call } = corrected();
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}`, [Role.ANALYST]);
+
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(CORRECTED)).closest('li')!;
+    expect(within(turn).getByTestId('turn-heard')).toHaveTextContent(`Heard as: ${HEARD}`);
+    expect(screen.queryByRole('button', { name: 'Correct transcript' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove correction' })).toBeNull();
+  });
+
+  it('finds a turn by its corrected text when searching', async () => {
+    const { call } = corrected();
+    h.getCall.mockResolvedValue(call);
+    mount(`/support/calls/${call.id}?q=2231`);
+    const log = await screen.findByRole('log', { name: 'Conversation history' });
+    const turn = (await within(log).findByText(/for account/)).closest('li')!;
+    expect(turn).toHaveAttribute('data-search', 'hit');
+    expect(within(turn).getByText('2231', { selector: 'mark' })).toBeInTheDocument();
+    expect(within(log).getByText('Can you send me the repayment schedule for it?').closest('li')).toHaveAttribute('data-search', 'dim');
   });
 });
