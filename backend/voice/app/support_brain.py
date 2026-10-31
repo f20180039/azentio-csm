@@ -16,7 +16,7 @@ from .simulator_client import SimulatorClient
 from .speech import normalise_spoken_digits
 from .support_prompt import GREETING, support_prompt
 from .support_tools import SUPPORT_TOOL_SCHEMAS, CallSession, ComplaintCategory, Severity, run_support_tool
-from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SupportTool, ToolError, TurnRole
+from .vocab import EscalationTrigger, MetaKey, Outcome, RefPrefix, SpeechLanguage, SupportTool, ToolError, TurnRole
 
 MAX_TOOL_ROUNDS = 6
 LOOP_LIMIT_REPLY = "Let me get a colleague to help you with that."
@@ -130,9 +130,10 @@ def outcome_for(refs: list[str]) -> Outcome:
 
 class SupportBrain:
     def __init__(self, llm: ChatClient, sim: SimulatorClient, calls: SupportCallsApi | None, call: CallSession,
-                 classify: Classifier | None = None, lessons: list[str] | None = None):
+                 classify: Classifier | None = None, lessons: list[str] | None = None,
+                 languages: tuple[SpeechLanguage, ...] = (SpeechLanguage.ENGLISH,)):
         self._llm, self._sim, self._calls, self.call, self._classify = llm, sim, calls, call, classify
-        self._messages: list[dict] = [{"role": "system", "content": support_prompt(lessons)}, {"role": "assistant", "content": GREETING}]
+        self._messages: list[dict] = [{"role": "system", "content": support_prompt(lessons, languages)}, {"role": "assistant", "content": GREETING}]
         self.rating: int | None = None
         self._lock = asyncio.Lock()
         self._seq = 0

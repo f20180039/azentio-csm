@@ -163,9 +163,11 @@ def test_confidence_filter_keeps_measured_kannada_segments():
         assert is_invented_segment(seg), seg
 
 
-def test_support_prompt_has_the_language_rule():
-    prompt = support_prompt()
+def test_support_prompt_has_the_language_rule_only_when_kannada_is_on():
+    from app.vocab import SpeechLanguage
+    prompt = support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA))
     assert LANGUAGE_RULE in prompt and "English only" not in prompt
+    assert "Kannada" not in support_prompt() and "reply in English" in support_prompt()
     assert "Kannada" in LANGUAGE_RULE and "*_spoken" in LANGUAGE_RULE and "always in English" in LANGUAGE_RULE
 
 
