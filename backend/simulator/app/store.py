@@ -865,7 +865,7 @@ class BankStore:
         stop_words = {
             "what", "whats", "who", "when", "where", "how", "is", "are", "do",
             "does", "did", "i", "you", "a", "an", "the", "for", "to", "of",
-            "in", "my", "me", "can", "tell", "please"
+            "in", "my", "me", "can", "tell", "please", "get", "know", "want", "need"
         }
         words = re.findall(r"\w+", query.lower())
         content_words = [w for w in words if w not in stop_words]
