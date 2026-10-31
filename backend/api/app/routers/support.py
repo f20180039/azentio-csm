@@ -1,75 +1,63 @@
-"""Support Call and Turn recording endpoints."""
+"""Support call records (shared contract). Only the voice account writes; staff and voice read."""
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from uuid import UUID
 
-from app.auth import User, get_current_user
-from app.store import store
+from fastapi import APIRouter, Body, Depends
+from pydantic import BaseModel
 
-router = APIRouter(prefix="/support/calls", tags=["Support Calls"])
+from app.auth import User, staff_or_voice, voice
+from app.paths import ApiPath
+from app.services.container import Services, services
+from app.services.support import parse
+from app.vocab import Channel, Outcome, TurnRole
 
-
-class StartCallRequest(BaseModel):
-    channel: str = Field(default="VOICE")
-
-
-class AddTurnRequest(BaseModel):
-    role: str
-    text: str
-    at: str
-    meta: dict[str, Any] = Field(default_factory=dict)
+router = APIRouter(prefix=ApiPath.SUPPORT_CALLS, tags=["Support Calls"])
 
 
-class EndCallRequest(BaseModel):
-    outcome: str
+class StartRequest(BaseModel):
+    channel: str | None = None
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-def start_call(body: StartCallRequest, user: User = Depends(get_current_user)):
-    cid = store.start_support_call(body.channel)
-    return {"id": cid}
+class TurnRequest(BaseModel):
+    role: str | None = None
+    text: str | None = None
+    at: str | None = None
+    meta: Any = None
 
 
-@router.post("/{call_id}/turns", status_code=status.HTTP_201_CREATED)
-def add_turn(call_id: str, body: AddTurnRequest, user: User = Depends(get_current_user)):
-    seq = store.add_support_turn(call_id, body.role, body.text, body.at, body.meta)
-    return {"seq": seq}
+class EndRequest(BaseModel):
+    outcome: str | None = None
 
 
-@router.patch("/{call_id}/turns/{seq}/meta")
-def patch_turn_meta(
-    call_id: str,
-    seq: int,
-    meta: dict[str, Any],
-    user: User = Depends(get_current_user),
-):
-    ok = store.patch_support_meta(call_id, seq, meta)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Turn not found")
-    return {"ok": True}
+@router.post("", status_code=201)
+def start(body: StartRequest | None = None, user: User = Depends(voice), s: Services = Depends(services)):
+    return s.support.start(parse(Channel, "channel", body.channel if body else None), user.username)
 
 
-@router.post("/{call_id}/end")
-def end_call(call_id: str, body: EndCallRequest, user: User = Depends(get_current_user)):
-    ok = store.end_support_call(call_id, body.outcome)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Call not found")
-    return {"ok": True}
+@router.post(ApiPath.SUPPORT_TURNS, status_code=201)
+def add_turn(call_id: UUID, body: TurnRequest, _: User = Depends(voice), s: Services = Depends(services)):
+    role = parse(TurnRole, "role", body.role)
+    return s.support.add_turn(str(call_id), role, body.text, body.at, body.meta)
 
 
-@router.get("/{call_id}")
-def get_call(call_id: str, user: User = Depends(get_current_user)):
-    call = store.get_support_call(call_id)
-    if not call:
-        raise HTTPException(status_code=404, detail="Call not found")
-    return call
+@router.patch(ApiPath.SUPPORT_TURN_META)
+def patch_meta(call_id: UUID, seq: int, patch: Any = Body(None), _: User = Depends(voice),
+               s: Services = Depends(services)):
+    return s.support.patch_meta(str(call_id), seq, patch)
+
+
+@router.post(ApiPath.SUPPORT_END)
+def end(call_id: UUID, body: EndRequest | None = None, user: User = Depends(voice), s: Services = Depends(services)):
+    return s.support.end(str(call_id), parse(Outcome, "outcome", body.outcome if body else None), user.username)
+
+
+@router.get(ApiPath.SUPPORT_CALL)
+def get_call(call_id: UUID, _: User = Depends(staff_or_voice), s: Services = Depends(services)):
+    return s.support.get(str(call_id))
 
 
 @router.get("")
-def list_calls(
-    outcome: str | None = None,
-    limit: int = 50,
-    user: User = Depends(get_current_user),
-):
-    items = store.list_support_calls(outcome=outcome, limit=limit)
-    return {"items": items}
+def list_calls(outcome: str | None = None, limit: int = 50, _: User = Depends(staff_or_voice),
+               s: Services = Depends(services)):
+    parsed = parse(Outcome, "outcome", outcome) if outcome and outcome.strip() else None
+    return s.support.list(parsed, limit)
