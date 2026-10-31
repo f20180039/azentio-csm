@@ -36,6 +36,7 @@ class State:
         self.sim: SimulatorClient | None = None
         self.support_calls: SupportCallsApi | None = None
         self.stt_transport: httpx.AsyncBaseTransport | None = None
+        self._lessons: tuple[float, list[str]] | None = None
         self.webrtc = None
         self.live_calls: dict[str, str | None] = {}
         self.phone_pending: dict[str, tuple[str, float]] = {}
@@ -77,6 +78,16 @@ class State:
             return await classify(text, history, api_key=s.groq_api_key, model=getattr(s, "intent_model", "openai/gpt-oss-20b"))
         return run
 
+    async def lessons(self) -> list[str]:
+        """Supervisor-approved lessons for the support prompt, cached for a minute; none if the API is unreachable."""
+        now = time.monotonic()
+        if self._lessons is None or now - self._lessons[0] > LESSONS_TTL_SECS:
+            try:
+                self._lessons = (now, await self.get_support_calls().active_lessons())
+            except ApiUnavailable:
+                self._lessons = (now, self._lessons[1] if self._lessons else [])
+        return self._lessons[1]
+
     async def new_support_brain(self, channel: Channel, call_id: str | None = None) -> SupportBrain:
         """Starts a support call in Spring (or continues a known one) and opens its brain."""
         if call_id and call_id in self.support:
@@ -86,7 +97,7 @@ class State:
         except ApiUnavailable as e:
             raise HTTPException(502, "call records API unavailable") from e
         brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(),
-                             CallSession(call_id, helpline=self.settings().helpline_number), self.classifier())
+                             CallSession(call_id, helpline=self.settings().helpline_number), self.classifier(), await self.lessons())
         await brain.open()
         self.support[call_id] = brain
         return brain
@@ -254,6 +265,7 @@ async def support_text_turn(body: SupportTextTurnIn) -> dict:
     return turn_json(await support_reply(brain, body.text.strip()))
 
 
+LESSONS_TTL_SECS = 60
 MAX_SIM_FILES = 20
 MAX_SIM_BYTES = 10 * 1024 * 1024
 
