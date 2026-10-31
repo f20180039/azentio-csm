@@ -76,7 +76,7 @@ Tests (`SupportControllerTest`):
 - Customer-turn intents are back-filled when the classifier finishes.
 - Test: a text call through a fake LLM and mocked simulator posts the turns with that meta.
 
-- [~] (Anshuman, feat/A6-speech-tuning) **A6: Speech front end tuned from the benchmark** (needs: `spikes/stt-bench/report.md`)
+- [x] **A6: Speech front end tuned from the benchmark** (needs: `spikes/stt-bench/report.md`)
 
 **Files:** create `backend/voice/app/speech.py`; modify `pipeline.py` and `config.py`.
 - VAD params, pre-roll, the STT model, `prompt` and `language`, FLAC 16 kHz upload, and the invented-transcript filter, with the exact values from the report. Smart Turn and denoise only if the report supports them.
