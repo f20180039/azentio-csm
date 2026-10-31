@@ -1,6 +1,6 @@
 # CSM Voice Agent Level 2 Gaps, Hindi, English Transcripts and PII Redaction: Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Teammates' agents: start at `AGENTS.md`.** Tasks L1–L2 touch `backend/simulator` (Chirag's service): get Chirag's OK or hand them to him.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Teammates' agents: start at `AGENTS.md`.** Tasks L1–L2 touch `backend/simulator` (Chirag's service); Chirag agreed Anshuman does them.
 
 **Goal:** Close the gaps between the current build and problem #05 Level 2, add Hindi as a third caller language beside English and Kannada, and keep personal data out of stored transcripts while letting an authorised person recover it.
 
@@ -436,8 +436,8 @@ The Level 2 gaps (audit of 31 Oct against `docs/brief/problem-05-level2.md`):
 | Task | Needs | Owner |
 |---|---|---|
 | L0 | none | Anshuman |
-| L1 | L0 | Chirag (simulator) |
-| L2 | L0 | Chirag (simulator) |
+| L1 | L0 | Anshuman (simulator; Chirag OK'd) |
+| L2 | L0 | Anshuman (simulator; Chirag OK'd) |
 | L3 | L1, L2 | Anshuman |
 | L4 | L3 | Anshuman |
 | L5 | none | Anshuman |
