@@ -7,6 +7,10 @@ export const VoicePath = {
   TEXT_TURN: '/v1/text-turn',
   PHONE_ALLOWED: '/v1/phone/allowed',
   PHONE_CALL: '/v1/phone-call',
+  SUPPORT_PHONE_CALL: '/support/phone-call',
   EVAL_LATEST: '/v1/eval/latest',
   LLM_STATUS: '/v1/llm/status',
 } as const;
+
+/** What the caller said on one turn (recorded by the voice service), for playback beside the transcript. */
+export const turnAudioPath = (callId: string, seq: number) => `/support/calls/${encodeURIComponent(callId)}/turns/${seq}/audio`;

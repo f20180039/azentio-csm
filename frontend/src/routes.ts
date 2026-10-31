@@ -1,6 +1,7 @@
 const Path = {
   SUPPORT: '/support',
   SUPPORT_NEW: '/support/new',
+  SUPPORT_INSIGHTS: '/support/insights',
   SUPPORT_CALL: '/support/calls/:callId',
   DASHBOARD: '/dashboard',
   QUEUE: '/queue',

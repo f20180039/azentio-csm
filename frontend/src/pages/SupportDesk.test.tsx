@@ -92,6 +92,17 @@ describe('SupportDesk', () => {
     expect(screen.getByText(`1 of ${before - 1}`)).toBeInTheDocument();
   });
 
+  it('shows a phone call as Phone and finds it by that channel', async () => {
+    h.listCalls.mockResolvedValue([summary(SAMPLE_VERIFIED_CALL), { ...summary(SAMPLE_ROUTED_CALL), channel: 'PHONE' }]);
+    mount();
+    const callsTable = () => screen.getAllByRole('table')[0];
+    expect(await within(callsTable()).findByText('Phone')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search calls' }), { target: { value: 'ticket created' } });
+    await waitFor(() => expect(within(callsTable()).queryByText('Phone')).not.toBeInTheDocument());
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search calls' }), { target: { value: 'phone' } });
+    expect(await within(callsTable()).findByText('Phone')).toBeInTheDocument();
+  });
+
   it('shows an error with Retry when the simulator is down', async () => {
     h.listRecords.mockRejectedValueOnce(new Error('Cannot reach the bank simulator'));
     mount();

@@ -6,7 +6,7 @@ from uuid import UUID
 from pathlib import Path
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel
@@ -117,7 +117,8 @@ state = State()
 EVAL_LATEST = Path(__file__).resolve().parents[1] / "eval" / "out" / "latest.json"
 app = FastAPI(title="Renewal Desk voice")
 TUNNEL_HEADERS = (b"cf-connecting-ip", b"cf-ray", b"x-forwarded-for", b"forwarded")
-PUBLIC_PATHS = (Route.TWILIO_WS, Route.TWILIO_TWIML, Route.HEALTH)
+PUBLIC_PATHS = (Route.TWILIO_WS, Route.TWILIO_TWIML, Route.HEALTH,
+                Route.TWILIO_SUPPORT_INCOMING, Route.TWILIO_SUPPORT_TWIML, Route.TWILIO_SUPPORT_WS)
 
 
 class LocalOnly:
@@ -230,9 +231,9 @@ def turn_json(turn: SupportTurn) -> dict:
             "tool_trace": [{"name": t.name, "args": t.args, "result": t.result} for t in turn.tool_calls]}
 
 
-async def support_reply(brain: SupportBrain, text: str) -> SupportTurn:
+async def support_reply(brain: SupportBrain, text: str, audio: bytes | None = None, audio_suffix: str = ".wav") -> SupportTurn:
     try:
-        return await brain.reply(text)
+        return await brain.reply(text, audio=audio, audio_suffix=audio_suffix)
     except LLMUnavailable as e:
         raise HTTPException(429 if e.daily else 502, "LLM_DAILY_LIMIT" if e.daily else "language model unavailable") from e
     except httpx.HTTPError as e:
@@ -319,7 +320,7 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
             turns.append({**row, "reason": heard.reason, "intents": [], "verified": brain.call.verified, "locked": brain.call.locked, "tool_trace": [], "retrieved": {},
                           "reply_text": None, "reply_audio_b64": None, "latency_ms": round((time.monotonic() - started) * 1000)})
             continue
-        turn = await support_reply(brain, heard.text)
+        turn = await support_reply(brain, heard.text, audio=data, audio_suffix=Path(f.filename or "").suffix or ".wav")
         audio = await spoken_reply(turn.text) if speak and turn.text else None
         turns.append({**row, **turn_json(turn), "reply_audio_b64": audio, "latency_ms": round((time.monotonic() - started) * 1000)})
         if turn.ended:
@@ -328,6 +329,18 @@ async def sim_audio(files: list[UploadFile] = File(...), call_id: str | None = F
     if outcome:
         state.support.pop(brain.call.call_id, None)
     return {"call_id": brain.call.call_id, "turns": turns, "ended": brain.ended, "outcome": outcome}
+
+
+@app.get(Route.TURN_AUDIO)
+async def turn_audio(call_id: str, seq: int):
+    """What the caller said on that turn, for playback beside the transcript (local only, like the other support routes)."""
+    from fastapi.responses import FileResponse
+
+    from . import recordings
+    path = recordings.find(call_id, seq)
+    if path is None:
+        raise HTTPException(404, "no audio for that turn")
+    return FileResponse(path, media_type=recordings.MEDIA_TYPES.get(path.suffix, "application/octet-stream"))
 
 
 @app.post(Route.SUPPORT_END)
@@ -466,34 +479,17 @@ async def ice_candidate(body: SmallWebRTCPatchRequest) -> dict:
     return {"status": "success"}
 
 
-class PhoneCallIn(BaseModel):
-    callId: UUID
+class PhoneNumberIn(BaseModel):
     to: str | None = None
     numberId: str | None = None
 
 
-def _pending_sid(call_id: str) -> str | None:
-    entry = state.phone_pending.get(call_id)
-    if entry is None:
-        return None
-    if time.monotonic() - entry[1] > phone.PENDING_TTL_SECS:
-        state.phone_pending.pop(call_id, None)
-        return None
-    return entry[0]
+class PhoneCallIn(PhoneNumberIn):
+    callId: UUID
 
 
-@app.get("/v1/phone/allowed")
-async def phone_allowed() -> dict:
-    s = state.settings()
-    if not phone.configured(s):
-        return {"configured": False, "numbers": []}
-    return {"configured": True, "numbers": [{"id": str(i), "masked": phone.mask(n)} for i, n in enumerate(s.twilio_allowed_to)]}
-
-
-@app.post("/v1/phone-call")
-async def phone_call(body: PhoneCallIn) -> dict:
-    s = state.settings()
-    call_id = str(body.callId)
+def _allowed_number(body: PhoneNumberIn, s: Settings) -> str:
+    """The allow-listed number to dial, by id from /v1/phone/allowed or spelled out; refuses anything else."""
     allowed = s.twilio_allowed_to
     if body.numberId is not None and not (body.numberId.isascii() and body.numberId.isdecimal()):
         raise HTTPException(400, "numberId must be a number id from /v1/phone/allowed")
@@ -508,11 +504,35 @@ async def phone_call(body: PhoneCallIn) -> dict:
         raise HTTPException(403, "NUMBER_NOT_ALLOWED")
     if not phone.configured(s):
         raise HTTPException(503, "PHONE_NOT_CONFIGURED")
+    return to
+
+
+def _pending_sid(call_id: str) -> str | None:
+    entry = state.phone_pending.get(call_id)
+    if entry is None:
+        return None
+    if time.monotonic() - entry[1] > phone.PENDING_TTL_SECS:
+        state.phone_pending.pop(call_id, None)
+        return None
+    return entry[0]
+
+
+@app.get(Route.PHONE_ALLOWED)
+async def phone_allowed() -> dict:
+    s = state.settings()
+    if not phone.configured(s):
+        return {"configured": False, "numbers": []}
+    return {"configured": True, "numbers": [{"id": str(i), "masked": phone.mask(n)} for i, n in enumerate(s.twilio_allowed_to)]}
+
+
+@app.post(Route.PHONE_CALL)
+async def phone_call(body: PhoneCallIn) -> dict:
+    s = state.settings()
+    call_id = str(body.callId)
+    to = _allowed_number(body, s)
     if call_id in state.live_calls or _pending_sid(call_id) is not None:
         raise HTTPException(409, "CALL_IN_PROGRESS")
-    if any(_pending_sid(c) is not None for c in list(state.phone_pending)) or any(
-        str(v).startswith("twilio:") for v in state.live_calls.values()
-    ):
+    if _phone_busy():
         raise HTTPException(409, "PHONE_BUSY")
     state.phone_pending[call_id] = ("", time.monotonic())
     try:
@@ -545,7 +565,7 @@ async def phone_call(body: PhoneCallIn) -> dict:
 @app.post(Route.TWILIO_TWIML)
 async def twilio_twiml(callId: UUID) -> Response:
     call_id = str(callId)
-    if not _pending_sid(call_id):
+    if not _pending_sid(call_id) or call_id in state.support:
         raise HTTPException(404, "unknown call")
     return Response(phone.twiml(state.settings().public_base_url, call_id), media_type="application/xml")
 
@@ -553,25 +573,15 @@ async def twilio_twiml(callId: UUID) -> Response:
 @app.websocket(Route.TWILIO_WS)
 async def twilio_stream(websocket: WebSocket) -> None:
     from pipecat.pipeline.runner import PipelineRunner
-    from pipecat.serializers.twilio import TwilioFrameSerializer
-    from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 
     from .pipeline import build_pipeline
 
     await websocket.accept()
-    try:
-        start = None
-        async with asyncio.timeout(10):
-            while start is None:
-                msg = json.loads(await websocket.receive_text())
-                if msg.get("event") == "start":
-                    start = phone.parse_start(msg)
-    except Exception as e:
-        logger.warning(f"twilio stream refused: {type(e).__name__}")
-        await websocket.close(code=1008)
+    start = await _read_start(websocket)
+    if start is None:
         return
     call_id = start.call_id
-    if call_id in state.live_calls or _pending_sid(call_id) != start.call_sid:
+    if call_id in state.live_calls or call_id in state.support or _pending_sid(call_id) != start.call_sid:
         logger.warning(f"twilio stream refused for call {call_id}: not dialled by us or already live")
         await websocket.close(code=1008)
         return
@@ -579,21 +589,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
     state.live_calls[call_id] = f"twilio:{start.call_sid}"
     try:
         s = state.settings()
-        transport = FastAPIWebsocketTransport(
-            websocket=websocket,
-            params=FastAPIWebsocketParams(
-                audio_in_enabled=True,
-                audio_out_enabled=True,
-                add_wav_header=False,
-                allowed_origins=[],
-                serializer=TwilioFrameSerializer(
-                    stream_sid=start.stream_sid,
-                    call_sid=start.call_sid,
-                    account_sid=s.twilio_account_sid,
-                    auth_token=s.twilio_auth_token,
-                ),
-            ),
-        )
+        transport = _twilio_transport(websocket, start)
         try:
             task = await build_pipeline(s, call_id, transport, chain=state.get_chain(), audio_sample_rate=8000, call_sid=start.call_sid)
         except Exception as e:
@@ -603,6 +599,135 @@ async def twilio_stream(websocket: WebSocket) -> None:
         await PipelineRunner(handle_sigint=False).run(task)
     finally:
         state.live_calls.pop(call_id, None)
+
+
+def _phone_busy() -> bool:
+    return any(_pending_sid(c) is not None for c in list(state.phone_pending)) or any(
+        str(v).startswith("twilio:") for v in state.live_calls.values())
+
+
+async def _twilio_form(request: Request) -> dict[str, str]:
+    """The webhook's POST params, after checking Twilio signed them for this exact public URL."""
+    s = state.settings()
+    if not phone.inbound_configured(s):
+        raise HTTPException(403, "PHONE_NOT_CONFIGURED")
+    params = {k: str(v) for k, v in (await request.form()).items()}
+    url = s.public_base_url + request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    if not phone.signature_valid(s.twilio_auth_token, url, params, request.headers.get("X-Twilio-Signature")):
+        logger.warning(f"twilio webhook refused: bad signature on {request.url.path}")
+        raise HTTPException(403, "BAD_SIGNATURE")
+    return params
+
+
+@app.post(Route.TWILIO_SUPPORT_INCOMING)
+async def twilio_support_incoming(request: Request) -> Response:
+    """Twilio's Voice webhook for the number: a caller rings the desk, a PHONE support call starts and its audio streams in."""
+    params = await _twilio_form(request)
+    call_sid = params.get("CallSid")
+    if not call_sid:
+        raise HTTPException(400, "CallSid is required")
+    brain = await state.new_support_brain(Channel.PHONE)
+    call_id = brain.call.call_id
+    brain.call.caller_ref = params.get("From") or None
+    state.phone_pending[call_id] = (call_sid, time.monotonic())
+    logger.info(f"support phone call {call_id} from {phone.mask(params.get('From') or '')} as {call_sid}")
+    return Response(phone.twiml(state.settings().public_base_url, call_id, Route.TWILIO_SUPPORT_WS), media_type="application/xml")
+
+
+@app.post(Route.SUPPORT_PHONE_CALL)
+async def support_phone_call(body: PhoneNumberIn) -> dict:
+    """The panel's "call me": the desk rings an allowed number and the answered call streams to the support agent."""
+    s = state.settings()
+    to = _allowed_number(body, s)
+    if _phone_busy():
+        raise HTTPException(409, "PHONE_BUSY")
+    if not await phone.tunnel_up(s.public_base_url, transport=state.tunnel_transport):
+        logger.warning("support phone call not placed: PUBLIC_BASE_URL/health did not answer")
+        raise HTTPException(503, "TUNNEL_DOWN")
+    brain = await state.new_support_brain(Channel.PHONE)
+    call_id = brain.call.call_id
+    brain.call.caller_ref = to
+    state.phone_pending[call_id] = ("", time.monotonic())
+    try:
+        sid = await phone.dial(s, call_id, to, transport=state.twilio_transport, twiml_path=Route.TWILIO_SUPPORT_TWIML)
+    except phone.DialError as e:
+        state.phone_pending.pop(call_id, None)
+        state.support.pop(call_id, None)
+        await brain.finish(Outcome.ABANDONED)
+        detail = phone.mask_numbers(str(e))
+        logger.warning(f"support phone call {call_id} not placed: {detail}")
+        raise HTTPException(502, detail) from None
+    state.phone_pending[call_id] = (sid, time.monotonic())
+    logger.info(f"support phone call {call_id} dialled as {sid} to {phone.mask(to)}")
+    return {"call_id": call_id, "status": "dialling"}
+
+
+@app.post(Route.TWILIO_SUPPORT_TWIML)
+async def twilio_support_twiml(callId: UUID) -> Response:
+    call_id = str(callId)
+    if not _pending_sid(call_id) or call_id not in state.support:
+        raise HTTPException(404, "unknown call")
+    return Response(phone.twiml(state.settings().public_base_url, call_id, Route.TWILIO_SUPPORT_WS), media_type="application/xml")
+
+
+def _twilio_transport(websocket: WebSocket, start: phone.StreamStart):
+    from pipecat.serializers.twilio import TwilioFrameSerializer
+    from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+
+    s = state.settings()
+    return FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            allowed_origins=[],
+            serializer=TwilioFrameSerializer(stream_sid=start.stream_sid, call_sid=start.call_sid,
+                                             account_sid=s.twilio_account_sid, auth_token=s.twilio_auth_token),
+        ),
+    )
+
+
+async def _read_start(websocket: WebSocket) -> phone.StreamStart | None:
+    try:
+        async with asyncio.timeout(10):
+            while True:
+                msg = json.loads(await websocket.receive_text())
+                if msg.get("event") == "start":
+                    return phone.parse_start(msg)
+    except Exception as e:
+        logger.warning(f"twilio stream refused: {type(e).__name__}")
+        await websocket.close(code=1008)
+        return None
+
+
+@app.websocket(Route.TWILIO_SUPPORT_WS)
+async def twilio_support_stream(websocket: WebSocket) -> None:
+    from pipecat.pipeline.runner import PipelineRunner
+
+    from . import support_pipeline
+
+    await websocket.accept()
+    start = await _read_start(websocket)
+    if start is None:
+        return
+    call_id = start.call_id
+    brain = state.support.get(call_id)
+    if brain is None or call_id in state.live_calls or _pending_sid(call_id) != start.call_sid:
+        logger.warning(f"support stream refused for call {call_id}: not answered or dialled by us, or already live")
+        await websocket.close(code=1008)
+        return
+    state.phone_pending.pop(call_id, None)
+    state.live_calls[call_id] = f"twilio:{start.call_sid}"
+    s = state.settings()
+    brain.call.phone_call_sid = start.call_sid
+    brain.call.transfer_to = s.human_agent_number or None
+    try:
+        task = support_pipeline.build_support_pipeline(s, brain, _twilio_transport(websocket, start), audio_sample_rate=8000)
+        await PipelineRunner(handle_sigint=False).run(task)
+    finally:
+        state.live_calls.pop(call_id, None)
+        state.support.pop(call_id, None)
 
 
 @app.on_event("shutdown")

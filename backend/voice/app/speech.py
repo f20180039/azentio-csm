@@ -1,5 +1,6 @@
 """The speech front end shared by live calls and recorded-audio simulation: voice detection settings, the speech-to-text
 service, and the filter that drops transcripts the model invents from noise. Values are tuned from spikes/stt-bench."""
+import os
 import re
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -9,9 +10,9 @@ from pipecat.services.groq.stt import GroqSTTService
 
 # Live voice detection (docs/stt-benchmark.md): stopping at 0.4 s instead of 0.2 s splits ~30% fewer sentences in two,
 # so fewer speech-to-text requests and fewer half-sentence turns, for 0.2 s more end-of-turn wait.
-VAD_CONFIDENCE = 0.7
-VAD_MIN_VOLUME = 0.6
-VAD_START_SECS = 0.2
+VAD_CONFIDENCE = float(os.environ.get("VOICE_VAD_CONFIDENCE", "0.7"))
+VAD_MIN_VOLUME = float(os.environ.get("VOICE_VAD_MIN_VOLUME", "0.6"))
+VAD_START_SECS = float(os.environ.get("VOICE_VAD_START_SECS", "0.3"))  # 0.3 s of speech before a segment opens: clicks and knocks don't
 VAD_STOP_SECS = 0.4
 # Recorded-audio trimming
 MIN_SPEECH_SECS = 0.25      # shorter bursts (a cough, a door) start no segment
@@ -23,7 +24,7 @@ LANGUAGE = "en"
 NO_SPEECH_PROB_MAX = 0.5
 AVG_LOGPROB_MIN = -0.7
 # The benchmark's prompt format (WER 4.6% → 3.7%, noisy 7.3% → 5.1%), with this bank's reference prefixes
-DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003, HP-77001."
+DOMAIN_PROMPT = "Bank customer call. EMI, NACH, KYC, instalment, statement, SR-40102, CMP-50011, PL-31002, VL-31003."
 
 # Whisper's well-known inventions on silence and noise. Not "okay" or "bye": callers say those.
 PHANTOMS = {"thank you", "thanks for watching", "thank you for watching", "you", "thank you so much", "please subscribe"}
@@ -32,13 +33,60 @@ _PUNCT = re.compile(r"[^\w\s]")
 REF_PREFIXES = ("SR", "CMP", "RQ", "ESC", "PL", "VL", "HL", "LA", "HP", "MP", "CLM", "TXN")
 _DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "to": "2", "too": "2", "three": "3", "four": "4", "for": "4",
                 "five": "5", "six": "6", "seven": "7", "eight": "8", "ate": "8", "nine": "9"}
+_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+           "double": 2, "triple": 3, "quadruple": 4}
+_PLURALS = {"zeros": "0", "zeroes": "0", "ones": "1", "twos": "2", "threes": "3", "fours": "4",
+            "fives": "5", "sixes": "6", "sevens": "7", "eights": "8", "nines": "9"}
+
 _TOKEN = r"(?:\d+|" + "|".join(sorted(_DIGIT_WORDS, key=len, reverse=True)) + r")\b"
 _SPELLED_PREFIX = re.compile(r"\b(" + "|".join(" ?".join(p) for p in REF_PREFIXES) + r")\b(?=[\s.-]*" + _TOKEN + ")", re.I)
 _REF = re.compile(r"\b(" + "|".join(REF_PREFIXES) + r")[\s.-]*(" + _TOKEN + r"(?:[\s.-]+" + _TOKEN + r"){0,7})", re.I)
 
 
+def _to_digit(s: str) -> str:
+    s = s.lower()
+    return _DIGIT_WORDS.get(s, s if s.isdigit() else "")
+
+
+def _to_count(s: str) -> int:
+    s = s.lower()
+    return int(s) if s.isdigit() else _COUNTS.get(s, 1)
+
+
+def normalise_spoken_digits(text: str) -> str:
+    """Expands spoken digit multipliers like '4 times 0' -> '0000', 'triple zero' -> '000', 'double 5' -> '55'."""
+    if not text:
+        return text
+
+    def repl_times(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _to_digit(m.group(2))
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    def repl_mult(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _to_digit(m.group(2))
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    def repl_plural(m: re.Match) -> str:
+        count = _to_count(m.group(1))
+        d = _PLURALS.get(m.group(2).lower(), "")
+        return (d * count) if d and 1 <= count <= 10 else m.group(0)
+
+    p_count = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine)"
+    p_digit = r"(?:\d+|zero|oh|one|two|three|four|five|six|seven|eight|nine)"
+    p_mult = r"(?:double|triple|quadruple)"
+    p_plural = r"(?:zeroes|zeros|ones|twos|threes|fours|fives|sixes|sevens|eights|nines)"
+
+    text = re.sub(rf"\b({p_count})\s+times\s+({p_digit})\b", repl_times, text, flags=re.I)
+    text = re.sub(rf"\b({p_mult})\s+({p_digit})\b", repl_mult, text, flags=re.I)
+    text = re.sub(rf"\b({p_count})\s+({p_plural})\b", repl_plural, text, flags=re.I)
+    return text
+
+
 def normalise_refs(text: str) -> str:
     """'S R four zero one zero two' and 'SR for 8213' → 'SR-40102' and 'SR-48213', so ticket and loan references survive accents."""
+    text = normalise_spoken_digits(text)
     text = _SPELLED_PREFIX.sub(lambda m: m.group(1).replace(" ", "").upper(), text)
 
     def fix(m: re.Match) -> str:
@@ -52,8 +100,19 @@ def build_vad() -> SileroVADAnalyzer:
                                               start_secs=VAD_START_SECS, stop_secs=VAD_STOP_SECS))
 
 
+class RecordingGroqSTT(GroqSTTService):
+    """Groq Whisper that attaches each segment's WAV to its transcript, so the turn's audio can be played back."""
+
+    async def run_stt(self, audio: bytes):
+        async for frame in super().run_stt(audio):
+            if isinstance(frame, TranscriptionFrame):
+                frame.audio_wav = audio
+            yield frame
+
+
 def build_stt(settings) -> GroqSTTService:
-    return GroqSTTService(api_key=settings.groq_api_key,
+    # verbose_json gives per-segment confidence, so keep_transcript can drop what the model made up from noise
+    return RecordingGroqSTT(api_key=settings.groq_api_key, include_prob_metrics=True,
                           settings=GroqSTTService.Settings(model=settings.stt_model, prompt=DOMAIN_PROMPT))
 
 
@@ -68,6 +127,21 @@ def is_invented_segment(segment: dict) -> bool:
             or is_phantom(segment.get("text", "")))
 
 
+def _segments(result) -> list[dict]:
+    segs = getattr(result, "segments", None) if result is not None else None
+    if segs is None and isinstance(result, dict):
+        segs = result.get("segments")
+    out = []
+    for s in segs or []:
+        out.append(s if isinstance(s, dict) else {k: getattr(s, k, None) for k in ("text", "no_speech_prob", "avg_logprob")})
+    return out
+
+
 def keep_transcript(frame: TranscriptionFrame) -> str | None:
-    text = (frame.text or "").strip()
+    """The caller's words with noise removed: segments Whisper rates as unlikely speech, and phantom phrases, are dropped."""
+    segments = _segments(getattr(frame, "result", None))
+    if segments:
+        text = " ".join((s.get("text") or "").strip() for s in segments if not is_invented_segment(s)).strip()
+    else:
+        text = (frame.text or "").strip()
     return None if is_phantom(text) else normalise_refs(text)

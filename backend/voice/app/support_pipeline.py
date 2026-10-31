@@ -20,11 +20,14 @@ from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.transports.base_transport import BaseTransport
 
+from . import phone
 from .edge_tts_service import EdgeTTSService
+from .recordings import join_wavs
 from .speech import build_stt, build_vad, keep_transcript
-from .support_brain import SupportBrain
+from .support_brain import SupportBrain, SupportTurn
 from .support_prompt import GREETING
-from .vocab import Outcome
+from .support_tools import CallSession
+from .vocab import HandoffMode, Outcome, SupportTool
 
 GOODBYE_GRACE_SECS = 4.0
 FALLBACK = "Sorry, I didn't catch that. Could you say it again?"
@@ -35,6 +38,8 @@ SETTLE_SECS = float(os.environ.get("VOICE_TURN_SETTLE_SECS", "1.5"))  # quiet ti
 IDLE_PROMPT_SECS = float(os.environ.get("VOICE_IDLE_PROMPT_SECS", "5"))  # silence after the agent speaks before it checks in
 IDLE_HANGUP_SECS = float(os.environ.get("VOICE_IDLE_HANGUP_SECS", "3"))  # further silence after the check-in before it hangs up
 STILL_THERE = "Are you still there?"
+NOISY_BEFORE_ASKING = 2  # unusable, noise-only segments in a row before the agent asks the caller to repeat
+NOISY_ASK = "Sorry, there's some background noise. Could you say that again?"
 IDLE_GOODBYE = "I haven't heard anything, so I'll end the call now. Thank you for calling Azentio Demo Bank."
 
 
@@ -82,6 +87,8 @@ class TurnGate:
         self.generation = 0
         self.speaking = False
         self._parts: list[str] = []
+        self._audio: list[bytes] = []
+        self.audio_by_generation: dict[int, list[bytes]] = {}
         self._timer: asyncio.Task | None = None
         self._replies: set[asyncio.Task] = set()
 
@@ -100,8 +107,10 @@ class TurnGate:
         if self._parts:
             self._arm()
 
-    def transcript(self, text: str) -> None:
+    def transcript(self, text: str, audio: bytes | None = None) -> None:
         self._parts.append(text)
+        if audio:
+            self._audio.append(audio)
         self._arm()
 
     def is_current(self, generation: int) -> bool:
@@ -120,22 +129,42 @@ class TurnGate:
         if self.speaking or not self._parts:
             return
         text, self._parts = " ".join(self._parts), []
+        if self._audio:
+            self.audio_by_generation[self.generation], self._audio = self._audio, []
         # the reply runs on its own: a caller who speaks again cancels the timer, never a reply half-way through a tool call
         task = asyncio.create_task(self._answer(text, self.generation))
         self._replies.add(task)
         task.add_done_callback(self._replies.discard)
 
 
+def wants_transfer(turn: SupportTurn) -> bool:
+    return any(t.name == SupportTool.ESCALATE_TO_HUMAN and isinstance(t.result, dict)
+               and (t.result.get("handoff") or {}).get("mode") == HandoffMode.TRANSFER for t in turn.tool_calls)
+
+
+async def transfer_after_reply(settings, call: CallSession, delay: float = phone.HANDOFF_TRANSFER_DELAY_SECS,
+                               transport=None) -> None:
+    """Phone hand-off: let the agent finish saying it is connecting them, then dial the live call through to a person."""
+    await asyncio.sleep(delay)
+    try:
+        await phone.transfer(settings, call.phone_call_sid, call.transfer_to, transport=transport)
+    except phone.DialError as e:
+        logger.warning(f"transfer to a person failed: {e}")
+
+
 class SupportResponder(FrameProcessor):
     """Answers each completed caller turn with one brain reply. The caller starting to speak cuts the agent off: audio
     already playing is interrupted, and a reply still being prepared is dropped instead of being read out later."""
 
-    def __init__(self, brain: SupportBrain, **kwargs):
+    def __init__(self, brain: SupportBrain, settings=None, **kwargs):
         super().__init__(**kwargs)
         self._brain = brain
+        self._settings = settings
         self._gate = TurnGate(self._answer)
         self._idle = IdleWatch(self._check_in, self._hang_up)
+        self._noisy = 0
         self.abandoned = False
+        self._transfers: set[asyncio.Task] = set()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -161,8 +190,14 @@ class SupportResponder(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and direction == FrameDirection.DOWNSTREAM:
             text = keep_transcript(frame)
             if text:
+                self._noisy = 0
                 self._idle.caller_active()
-                self._gate.transcript(text)
+                self._gate.transcript(text, getattr(frame, "audio_wav", None))
+            else:
+                self._noisy += 1  # the caller made sound but nothing usable came through
+                if self._noisy == NOISY_BEFORE_ASKING and not self._gate.busy:
+                    self._noisy = 0
+                    await self.push_frame(TTSSpeakFrame(NOISY_ASK))
             return
         await self.push_frame(frame, direction)
 
@@ -177,11 +212,17 @@ class SupportResponder(FrameProcessor):
 
     async def _answer(self, text: str, generation: int) -> None:
         try:
-            turn = await self._brain.reply(text)
+            audio = join_wavs(self._gate.audio_by_generation.pop(generation, []))
+            turn = await (self._brain.reply(text, audio=audio) if audio else self._brain.reply(text))
             reply = turn.text or FALLBACK
         except Exception as e:  # the caller always hears something
             logger.warning(f"support reply failed: {e!r}")
             reply, turn = SYSTEM_DOWN, None
+        if turn is not None and self._settings is not None and wants_transfer(turn):
+            # the escalation is already raised, so the transfer goes ahead even if this reply is never played
+            task = asyncio.create_task(transfer_after_reply(self._settings, self._brain.call))
+            self._transfers.add(task)
+            task.add_done_callback(self._transfers.discard)
         if not self._gate.is_current(generation):
             self._brain.mark_unheard()
             logger.debug("reply dropped: the caller spoke again before it was played")
@@ -193,7 +234,7 @@ class SupportResponder(FrameProcessor):
 
 
 def build_support_pipeline(settings, brain: SupportBrain, transport: BaseTransport, audio_sample_rate: int | None = None) -> PipelineWorker:
-    responder = SupportResponder(brain)
+    responder = SupportResponder(brain, settings)
     task = PipelineWorker(
         Pipeline([transport.input(), VADProcessor(vad_analyzer=build_vad()), build_stt(settings), responder,
                   EdgeTTSService(voice=settings.tts_voice), transport.output()]),

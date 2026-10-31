@@ -14,7 +14,7 @@ export const SupportOutcome = {
 } as const;
 export type SupportOutcome = ValueOf<typeof SupportOutcome>;
 
-export const SupportChannel = { VOICE: 'VOICE', SIM_AUDIO: 'SIM_AUDIO', TEXT: 'TEXT' } as const;
+export const SupportChannel = { VOICE: 'VOICE', SIM_AUDIO: 'SIM_AUDIO', TEXT: 'TEXT', PHONE: 'PHONE' } as const;
 export type SupportChannel = ValueOf<typeof SupportChannel>;
 
 export const TurnRole = { CUSTOMER: 'customer', AGENT: 'agent' } as const;
@@ -59,6 +59,27 @@ export type Verification = ValueOf<typeof Verification>;
 /** Bank simulator /ops/records?kind= */
 export const RecordKind = { TICKET: 'ticket', COMPLAINT: 'complaint', ROUTED: 'routed', ESCALATION: 'escalation' } as const;
 export type RecordKind = ValueOf<typeof RecordKind>;
+
+/** POST /support/calls/{id}/rating source. */
+export const RatingSource = { VOICE: 'VOICE', PANEL: 'PANEL' } as const;
+export type RatingSource = ValueOf<typeof RatingSource>;
+
+export const FeedbackVerdict = { GOOD: 'GOOD', BAD: 'BAD' } as const;
+export type FeedbackVerdict = ValueOf<typeof FeedbackVerdict>;
+
+/** GET /support/review item reasons. */
+export const ReviewReason = { LOW_RATING: 'LOW_RATING', DISSATISFIED: 'DISSATISFIED', BAD_FEEDBACK: 'BAD_FEEDBACK' } as const;
+export type ReviewReason = ValueOf<typeof ReviewReason>;
+
+export const LessonStatus = { PROPOSED: 'PROPOSED', ACTIVE: 'ACTIVE', RETIRED: 'RETIRED' } as const;
+export type LessonStatus = ValueOf<typeof LessonStatus>;
+
+/** POST /support/lessons text length bounds. */
+export const LessonLength = { MIN: 10, MAX: 300 } as const;
+
+/** Prefixes of the references the agent creates in the bank simulator. */
+export const RefPrefix = { TICKET: 'SR-', COMPLAINT: 'CMP-', ROUTED: 'RQ-', ESCALATION: 'ESC-' } as const;
+export type RefPrefix = ValueOf<typeof RefPrefix>;
 
 /* ---------- renewal desk ---------- */
 

@@ -176,3 +176,67 @@ def test_approved_lessons_join_the_instructions_within_limits():
     p = support_prompt(lessons)
     assert p.count("\n- Lesson number") <= MAX_LESSONS and "Lesson number 0" in p and "Lesson number 14" not in p
     assert "ask once" in support_prompt() and "record_rating" in support_prompt()
+
+
+def test_a_verified_caller_is_not_asked_again_once_the_verify_turn_leaves_the_window():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}),
+                   *[text(f"Reply {n}.") for n in range(10)])
+    brain, _, _ = make(llm)
+    for n in range(9):
+        asyncio.run(brain.reply(f"Question {n}"))
+    seen = llm.seen
+    system = seen[-1][0]["content"]
+    assert "verify_customer" not in json.dumps(seen[-1][1:])  # the verification itself is out of the window
+    assert "already verified" in system and "CUST-1002" in system
+    assert "already verified" not in seen[0][0]["content"]
+
+
+def test_a_tool_call_written_as_text_is_run_and_never_spoken():
+    from app.support_brain import recover_text_tool_call
+    assert recover_text_tool_call("Your EMI is due on 5 November.") is None
+    assert recover_text_tool_call('{"name": "book_flight", "parameters": {}}') is None
+    broken = '{"name":"get_loans","parameters\\":{\\"product_type\\n":\\"personal\\"}}'  # as llama3.2 wrote it in the eval
+    assert recover_text_tool_call(broken)["function"]["name"] == "get_loans"
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Verified."),
+                   text('{"name": "get_loans", "parameters": {"product_type": "vehicle"}}'), text("Nine thousand eight hundred rupees."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("My number is 98765 00002, born third November 85."))
+    turn = asyncio.run(brain.reply("When is my vehicle loan EMI?"))
+    assert turn.text == "Nine thousand eight hundred rupees." and tools_called(sim)[-1] == ("/v1/lms/loans", {"type": "vehicle"})
+
+
+def test_an_unauthorised_payment_gets_a_complaint_and_escalation_even_if_the_model_only_offers_options():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "9876500002", "date_of_birth": "1985-11-03"}), text("Verified."),
+                   text("I can look into it, file a complaint, or connect you. Which would you like?"),
+                   text("I've raised complaint C M P five zero two zero zero and a colleague will call you back."),
+                   text("Your complaint is already registered and a colleague will call you back."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("My number is 98765 00002, born third November 85."))
+    turn = asyncio.run(brain.reply("I did not authorise that card payment. Please help and get a person."))
+    complaint = next(json.loads(r.content) for r in sim.requests if r.url.path == "/v1/csm/complaints")
+    assert complaint["category"] == "UNAUTHORISED_TRANSACTION" and complaint["severity"] == "HIGH"
+    assert {"CMP-50200", "ESC-70200"} <= set(turn.refs) and turn.text.startswith("I've raised complaint")
+    again = asyncio.run(brain.reply("Again, I never made that payment."))  # nothing raised twice
+    assert again.refs.count("CMP-50200") == 1 and sum(r.url.path == "/v1/csm/complaints" for r in sim.requests) == 1
+
+
+def test_no_backstop_before_verification_or_for_ordinary_questions():
+    llm = Scripted(text("Please tell me your mobile number and date of birth first."), text("Your EMI is due soon."))
+    brain, sim, _ = make(llm)
+    asyncio.run(brain.reply("I didn't make this payment."))
+    assert not any(r.url.path.startswith("/v1/csm") for r in sim.requests)
+
+
+def test_clean_reply_removes_runaway_simulations_and_reasoning():
+    from app.support_brain import _clean_reply
+    hallucinated = (
+        'I’m sorry, but that mobile number doesn’t look like a 10‑digit number. '
+        'Could you please repeat the full 10‑digit mobile number registered with us, and confirm your date of birth?'
+        'Sure, could you tell me the mobile number you have registered with the bank and your date of birth, please?'
+        'User gave "Yes, 98765-7700. 4 times 0, 1. 1990, April 12th". That is unclear. Need correct 10-digit. Ask again.'
+        'User hasn\'t responded yet.....................................'
+    )
+    cleaned = _clean_reply(hallucinated)
+    assert "User gave" not in cleaned
+    assert "User hasn't" not in cleaned
+    assert cleaned.startswith("I’m sorry, but that mobile number")

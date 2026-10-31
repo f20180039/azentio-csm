@@ -12,6 +12,7 @@ import { Renewals } from './pages/Renewals';
 import { SignIn } from './pages/SignIn';
 import { SupportCall } from './pages/SupportCall';
 import { SupportDesk } from './pages/SupportDesk';
+import { SupportInsights } from './pages/SupportInsights';
 import { displayName } from './demoUsers';
 import { primaryRole, SessionProvider, useSession } from './session';
 import { humanise } from './format';
@@ -78,7 +79,8 @@ function Shell() {
           {MOCK_MODE && <span className="pill warn">Mock data</span>}
         </div>
         <nav className="nav" aria-label="Main">
-          <NavLink to={Route.SUPPORT}>Support desk</NavLink>
+          <NavLink to={Route.SUPPORT} end>Support desk</NavLink>
+          <NavLink to={Route.SUPPORT_INSIGHTS}>Insights</NavLink>
           <NavLink to={Route.DASHBOARD}>Dashboard</NavLink>
           <NavLink to={Route.QUEUE}>Queue</NavLink>
           <NavLink to={Route.RENEWALS}>Renewals</NavLink>
@@ -110,6 +112,7 @@ export function App() {
             <RouterRoute element={<Shell />}>
               <RouterRoute index element={<Navigate to={Route.SUPPORT} replace />} />
               <RouterRoute path={Route.SUPPORT} element={<SupportDesk />} />
+              <RouterRoute path={Route.SUPPORT_INSIGHTS} element={<SupportInsights />} />
               <RouterRoute path={Route.SUPPORT_NEW} element={<SupportCall />} />
               <RouterRoute path={Route.SUPPORT_CALL} element={<SupportCall />} />
               <RouterRoute path={Route.DASHBOARD} element={<Dashboard />} />

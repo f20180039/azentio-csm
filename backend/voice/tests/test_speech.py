@@ -1,7 +1,27 @@
 from pipecat.frames.frames import TranscriptionFrame
 
 from app.config import Settings
-from app.speech import DOMAIN_PROMPT, build_stt, build_vad, is_invented_segment, is_phantom, keep_transcript, normalise_refs
+from app.speech import (
+    DOMAIN_PROMPT,
+    build_stt,
+    build_vad,
+    is_invented_segment,
+    is_phantom,
+    keep_transcript,
+    normalise_refs,
+    normalise_spoken_digits,
+)
+
+
+def test_spoken_digit_multipliers_are_expanded():
+    assert normalise_spoken_digits("98765 4 times 0 1") == "98765 0000 1"
+    assert normalise_spoken_digits("four times zero") == "0000"
+    assert normalise_spoken_digits("triple zero") == "000"
+    assert normalise_spoken_digits("double 5") == "55"
+    assert normalise_spoken_digits("4 zeroes") == "0000"
+    assert normalise_spoken_digits("Yes, 98765-7700. 4 times 0, 1. 1990, April 12th is my date of birth.") == (
+        "Yes, 98765-7700. 0000, 1. 1990, April 12th is my date of birth."
+    )
 
 
 def test_references_survive_accented_transcription():
@@ -29,6 +49,24 @@ def test_logprob_carries_the_filter_on_turbo():
 
 def test_live_services_use_the_benchmarked_settings():
     params = build_vad().params
-    assert (params.confidence, params.min_volume, params.start_secs, params.stop_secs) == (0.7, 0.6, 0.2, 0.4)
+    assert (params.confidence, params.min_volume, params.start_secs, params.stop_secs) == (0.7, 0.6, 0.3, 0.4)
     stt = build_stt(Settings(groq_api_key="k"))
     assert stt._settings.prompt == DOMAIN_PROMPT and str(stt._settings.language).endswith("en")
+
+
+def test_live_transcripts_drop_segments_the_model_made_up_from_noise():
+    from types import SimpleNamespace
+    result = SimpleNamespace(segments=[
+        SimpleNamespace(text=" When is my next EMI?", no_speech_prob=0.0, avg_logprob=-0.3),
+        SimpleNamespace(text=" so the ok la mar vin", no_speech_prob=0.0, avg_logprob=-1.4),  # chatter from the room
+    ])
+    frame = TranscriptionFrame("When is my next EMI? so the ok la mar vin", "u", "t", result=result)
+    assert keep_transcript(frame) == "When is my next EMI?"
+    only_noise = TranscriptionFrame("so the ok", "u", "t", result=SimpleNamespace(segments=[
+        SimpleNamespace(text="so the ok", no_speech_prob=0.7, avg_logprob=-1.1)]))
+    assert keep_transcript(only_noise) is None
+
+
+def test_live_speech_to_text_asks_for_confidence_scores():
+    stt = build_stt(Settings(groq_api_key="k"))
+    assert stt._include_prob_metrics is True

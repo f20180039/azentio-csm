@@ -1,5 +1,8 @@
-"""Outbound phone calls: Twilio dials the customer and streams the call audio to /ws/twilio."""
+"""Twilio phone calls: outbound dials and inbound support calls, both streaming the call audio to a websocket."""
 
+import base64
+import hashlib
+import hmac
 import re
 from dataclasses import dataclass
 from uuid import UUID
@@ -8,10 +11,12 @@ from xml.sax.saxutils import escape, quoteattr
 import httpx
 
 from .config import Settings
+from .vocab import Route
 
 TWILIO_API = "https://api.twilio.com"
 PENDING_TTL_SECS = 120.0
 TUNNEL_CHECK_SECS = 2.0
+HANDOFF_TRANSFER_DELAY_SECS = 6.0  # time for the agent to say it is connecting them
 _NUMBER = re.compile(r"\+\d{8,15}")
 
 
@@ -28,6 +33,21 @@ class StreamStart:
 
 def configured(s: Settings) -> bool:
     return bool(s.twilio_account_sid and s.twilio_auth_token and s.twilio_from and s.public_base_url and s.twilio_allowed_to)
+
+
+def inbound_configured(s: Settings) -> bool:
+    """Enough to answer calls to the Twilio number: picking up needs no allow-list or caller id."""
+    return bool(s.twilio_account_sid and s.twilio_auth_token and s.public_base_url)
+
+
+def signature(auth_token: str, url: str, params: dict[str, str]) -> str:
+    """Twilio's X-Twilio-Signature: HMAC-SHA1 over the full URL followed by every POST param, sorted by name."""
+    payload = url + "".join(k + params[k] for k in sorted(params))
+    return base64.b64encode(hmac.new(auth_token.encode(), payload.encode(), hashlib.sha1).digest()).decode()
+
+
+def signature_valid(auth_token: str, url: str, params: dict[str, str], given: str | None) -> bool:
+    return bool(auth_token and given) and hmac.compare_digest(signature(auth_token, url, params), given)
 
 
 def mask(number: str) -> str:
@@ -50,11 +70,11 @@ async def tunnel_up(public_base_url: str, transport: httpx.AsyncBaseTransport | 
         return False
 
 
-def twiml(public_base_url: str, call_id: str) -> str:
+def twiml(public_base_url: str, call_id: str, stream_path: str = Route.TWILIO_WS) -> str:
     base = public_base_url.rstrip("/")
     ws = "wss://" + base.removeprefix("https://") if base.startswith("https://") else "ws://" + base.removeprefix("http://")
     return (
-        f"<Response><Connect><Stream url={quoteattr(ws + '/ws/twilio')}>"
+        f"<Response><Connect><Stream url={quoteattr(ws + stream_path)}>"
         f"<Parameter name=\"callId\" value={quoteattr(call_id)}/>"
         "</Stream></Connect></Response>"
     )
@@ -70,7 +90,8 @@ def parse_start(msg: dict) -> StreamStart:
     return StreamStart(str(stream_sid), str(call_sid), str(UUID(str((start.get("customParameters") or {}).get("callId")))))
 
 
-async def dial(s: Settings, call_id: str, to: str, transport: httpx.AsyncBaseTransport | None = None) -> str:
+async def dial(s: Settings, call_id: str, to: str, transport: httpx.AsyncBaseTransport | None = None,
+               twiml_path: str = Route.TWILIO_TWIML) -> str:
     async with httpx.AsyncClient(
         base_url=TWILIO_API, auth=(s.twilio_account_sid, s.twilio_auth_token), timeout=15.0, transport=transport
     ) as client:
@@ -78,7 +99,7 @@ async def dial(s: Settings, call_id: str, to: str, transport: httpx.AsyncBaseTra
             r = await client.post(
                 f"/2010-04-01/Accounts/{s.twilio_account_sid}/Calls.json",
                 data={"To": to, "From": s.twilio_from,
-                      "Url": f"{s.public_base_url.rstrip('/')}/twilio/twiml?callId={call_id}"},
+                      "Url": f"{s.public_base_url.rstrip('/')}{twiml_path}?callId={call_id}"},
             )
         except httpx.HTTPError as e:
             raise DialError(f"Twilio unreachable: {type(e).__name__}") from None
