@@ -7,7 +7,8 @@ const h = vi.hoisted(() => ({
   placed: [] as [string, string][],
 }));
 
-vi.mock('../api/phone', () => ({
+vi.mock('../api/phone', async (orig) => ({
+  ...(await orig<typeof import('../api/phone')>()),
   getPhoneAllowed: vi.fn(async () => h.allowed),
   placePhoneCall: vi.fn(async (callId: string, numberId: string) => {
     h.placed.push([callId, numberId]);

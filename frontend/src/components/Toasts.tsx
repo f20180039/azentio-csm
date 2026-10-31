@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/errors';
 
 type Tone = 'ok' | 'warn' | 'bad';
@@ -34,8 +34,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [push],
   );
 
+  // one stable object: a toast appearing or leaving re-renders the provider, and consumers' effects keyed on `toast` must not restart
+  const value = useMemo<ToastCtx>(() => ({ push, error }), [push, error]);
+
   return (
-    <Ctx.Provider value={{ push, error }}>
+    <Ctx.Provider value={value}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
