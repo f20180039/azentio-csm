@@ -68,3 +68,12 @@ def test_prompt_never_says_a_customer_id_and_names_the_caller_only_after_verific
         assert ("After verification you may address the caller by their first name, or Mr./Ms. and their last name; "
                 "before verification use no name") in p
         assert "references like SR-40200 are fine" in p  # service references the caller needs are still spoken
+
+
+def test_prompt_forbids_date_formats_and_handover_for_missing_details():
+    # E1 (call 475b0ac5): Kannada replies asked for the date of birth "(YYYY-MM-DD)" / "(year-month-day)", and one missing
+    # detail became a SENSITIVE hand-over
+    for p in (support_prompt(), support_prompt(languages=(SpeechLanguage.ENGLISH, SpeechLanguage.KANNADA, SpeechLanguage.HINDI))):
+        assert "Never mention a date format to the caller (no YYYY-MM-DD, no year-month-day, in any language); just ask for their date of birth." in p
+        assert "Never hand the caller to a person because a detail is missing or was misheard; ask again and read back what you heard." in p
+        assert "never mention a date format to the caller, just ask" not in p  # the old, language-blind wording is gone

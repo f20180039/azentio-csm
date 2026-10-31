@@ -14,7 +14,7 @@ describe('CustomerCard', () => {
     const id = screen.getByText('CUST-1002');
     expect(id).toHaveClass('muted');
     expect(name.compareDocumentPosition(id) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText('98765 00002')).toBeInTheDocument();
+    expect(screen.getByText('97314 62580')).toBeInTheDocument();
     expect(screen.getByText('3 Nov 1985')).toBeInTheDocument();
     expect(screen.getByText('ACC-20002')).toBeInTheDocument();
     expect(screen.getByText('PL-31002')).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe('CustomerCard', () => {
     unmount();
 
     const empty: CustomerProfile = {
-      customer: { customer_ref: 'CUST-1009', first_name: 'Demo', last_name: 'Caller', mobile: '9380939280', dob: '1990-01-01' },
+      customer: { customer_ref: 'CUST-1009', first_name: 'Karthik', last_name: 'Menon', mobile: '9380939280', dob: '1990-01-01' },
       accounts: [], loans: [], applications: [], transactions: [], policies: [], claims: [], tickets: [], complaints: [],
     };
     render(<CustomerCard profile={empty} />);
@@ -55,7 +55,7 @@ describe('CustomerCard', () => {
   });
 
   it('formats mobiles and dates, leaving anything unexpected as is', () => {
-    expect(formatMobile('9876500002')).toBe('98765 00002');
+    expect(formatMobile('9731462580')).toBe('97314 62580');
     expect(formatMobile('+91 98765')).toBe('+91 98765');
     expect(formatDay('1990-04-12')).toBe('12 Apr 1990');
     expect(formatDay('soon')).toBe('soon');

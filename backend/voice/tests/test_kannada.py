@@ -197,6 +197,6 @@ def test_renderer_and_harness_accept_kannada(tmp_path):
     scenarios = {s["id"]: s for s in load()}
     for sid in ("13-kannada-repayment", "14-kannada-statement"):
         sc = scenarios[sid]
-        assert sc["customer"] == {"mobile": "9876500002", "dob": "1985-11-03"}
+        assert sc["customer"] == {"mobile": "9731462580", "dob": "1985-11-03"}
         assert is_mostly_kannada(sc["turns"][0]["say"])
     assert scenarios["14-kannada-statement"]["turns"][-1]["expect"]["creates"] == {"ticket": "STATEMENT"}

@@ -239,7 +239,7 @@ describe('customer turn playback', () => {
     mount(`/support/calls/${SAMPLE_VERIFIED_CALL.id}`);
     const card = within(await screen.findByRole('region', { name: 'Customer' }));
     expect(await card.findByText('Rahul Iyer')).toBeInTheDocument();
-    expect(card.getByText('98765 00002')).toBeInTheDocument();
+    expect(card.getByText('97314 62580')).toBeInTheDocument();
     expect(h.getCustomerProfile).toHaveBeenCalledWith('CUST-1002');
   });
 
@@ -503,8 +503,8 @@ describe('caller transcript corrections (Level 2 §6)', () => {
 
   it('saving a correction tells the live agent after the record, and says it will use a corrected number', async () => {
     h.applyLiveCorrection.mockResolvedValue({ applied: true, heard: { mobile: true, dob: false } });
-    const { call, seq } = await saveCorrection('My number is 98765 00002');
-    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 98765 00002'));
+    const { call, seq } = await saveCorrection('My number is 97314 62580');
+    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 97314 62580'));
     expect(h.correctTranscript.mock.invocationCallOrder[0]).toBeLessThan(h.applyLiveCorrection.mock.invocationCallOrder[0]);
     expect(await screen.findByText('The agent will use the corrected number')).toBeInTheDocument();
     expect(screen.getByText('Transcript corrected')).toBeInTheDocument();
@@ -518,8 +518,8 @@ describe('caller transcript corrections (Level 2 §6)', () => {
 
   it('is silent when the call is no longer live (404), and keeps the record', async () => {
     h.applyLiveCorrection.mockRejectedValue(new ApiError({ status: 404, title: 'The voice service refused the request', detail: 'no live call' }));
-    const { call, seq } = await saveCorrection('My number is 98765 00002');
-    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 98765 00002'));
+    const { call, seq } = await saveCorrection('My number is 97314 62580');
+    await waitFor(() => expect(h.applyLiveCorrection).toHaveBeenCalledWith(call.id, seq, 'My number is 97314 62580'));
     expect(await screen.findByText('Transcript corrected')).toBeInTheDocument();
     expect(screen.queryByText(/could not be updated/)).toBeNull();
     expect(screen.queryByText(/refused the request/)).toBeNull();
@@ -527,7 +527,7 @@ describe('caller transcript corrections (Level 2 §6)', () => {
 
   it('notes, without blocking, when the live agent could not be updated for another reason', async () => {
     h.applyLiveCorrection.mockRejectedValue(new ApiError({ status: 0, title: 'Cannot reach the voice service' }));
-    await saveCorrection('My number is 98765 00002');
+    await saveCorrection('My number is 97314 62580');
     expect(await screen.findByText('Saved to the record; the live agent could not be updated.')).toBeInTheDocument();
     expect(screen.getByText('Transcript corrected')).toBeInTheDocument();
   });

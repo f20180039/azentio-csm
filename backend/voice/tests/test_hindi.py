@@ -182,7 +182,7 @@ def test_renderer_and_harness_accept_hindi(tmp_path):
     scenarios = {s["id"]: s for s in load()}
     for sid in ("15-hindi-repayment", "16-hindi-statement"):
         sc = scenarios[sid]
-        assert sc["customer"] == {"mobile": "9876500002", "dob": "1985-11-03"}
+        assert sc["customer"] == {"mobile": "9731462580", "dob": "1985-11-03"}
         assert all(is_mostly_hindi(t["say"]) for t in sc["turns"])
         assert sc["turns"][1]["expect"] == {"intents": ["IDENTITY"], "verified": True}
     assert scenarios["15-hindi-repayment"]["turns"][-1]["expect"]["tools_any"] == ["get_loans", "get_schedule"]

@@ -122,9 +122,41 @@ def test_a_short_mobile_is_asked_for_again_alone():
     out = verify_result(asyncio.run(brain.reply("98765 0002, born 3 November 1985")))
     assert out["error"] == ToolError.MISSING_DETAILS
     assert out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
-    assert out["note"] == "Ask only for the registered 10-digit mobile number; the date of birth is already noted. The number heard had 9 digits."
+    assert out["note"] == ("Tell the caller you heard only 9 digits (98765 0002) and ask them to say the full 10-digit mobile number again, slowly. "
+                           "Keep the date of birth.")
     assert sim.verify_bodies() == [] and brain.call.verify_failures == 0
     assert brain.call.heard_dob == "1985-11-03" and brain.call.heard_mobile is None
+
+
+def test_short_mobile_note_reads_back_the_digits():
+    """Call 475b0ac5, turn 4: the transcript carried nine digits and a date this code could not read; the model's date is
+    accepted, its nine-digit mobile is not, and the note tells the agent to read the heard digits back."""
+    llm = Scripted(tool_call("verify_customer", {"mobile": "987650006", "date_of_birth": "1995-12-05"}),
+                   text("I heard only 9 digits, 98765 0006. Could you say the full number again, slowly?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("987650006. Date of birth 1995-1205.")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE] and out["have"] == [VerifyField.DOB]
+    assert "only 9 digits" in out["note"] and "98765 0006" in out["note"] and "Keep the date of birth" in out["note"]
+    assert "YYYY" not in out["note"] and "format" not in out["note"]
+    assert sim.verify_bodies() == [] and brain.call.verify_failures == 0
+
+
+def test_a_long_mobile_note_reads_back_the_digits_without_saying_only():
+    # eleven digits with no 10-digit window that starts like an Indian mobile: a long attempt, not a stray digit joined to a good number
+    llm = Scripted(tool_call("verify_customer", {"mobile": "55555000022", "date_of_birth": "1985-11-03"}), text("Could you repeat the number?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("55555 000022, born 3 November 1985")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE]
+    assert "heard 11 digits (55555 000022)" in out["note"] and "only" not in out["note"] and "Keep the date of birth" in out["note"]
+
+
+def test_a_short_mobile_with_no_date_reads_back_and_asks_for_the_date():
+    llm = Scripted(tool_call("verify_customer", {"mobile": "987650002"}), text("I heard only 9 digits; the full number and your date of birth, please?"))
+    brain, sim = make(llm)
+    out = verify_result(asyncio.run(brain.reply("98765 0002")))
+    assert out["error"] == ToolError.MISSING_DETAILS and out["missing"] == [VerifyField.MOBILE, VerifyField.DOB]
+    assert "only 9 digits (98765 0002)" in out["note"] and "ask for their date of birth" in out["note"]
+    assert "Keep the date of birth" not in out["note"] and "format" not in out["note"]
 
 
 def test_first_mismatch_does_not_say_which_field():

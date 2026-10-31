@@ -59,7 +59,7 @@ const VEHICLE_LOAN = {
 
 /** The sample customer the scripted calls verify, as the simulator's ops profile returns it. */
 export const SAMPLE_PROFILE: CustomerProfile = {
-  customer: { customer_ref: 'CUST-1002', first_name: 'Rahul', last_name: 'Iyer', mobile: '9876500002', dob: '1985-11-03' },
+  customer: { customer_ref: 'CUST-1002', first_name: 'Rahul', last_name: 'Iyer', mobile: '9731462580', dob: '1985-11-03' },
   accounts: [{ account_id: 'ACC-20002', type: 'SAVINGS', masked_number: '••• ••• 4012', balance: 85_400, currency: 'INR' }],
   loans: [
     { ...PERSONAL_LOAN, product: 'Personal Loan' },
@@ -82,7 +82,7 @@ export const SAMPLE_PROFILE: CustomerProfile = {
 export const REPAYMENT_SCRIPT: Step[] = [
   { role: 'customer', text: 'Hi, when is my next EMI due?', meta: { intents: ['REPAYMENT'], intent_source: 'llm', verified: false, verify_failures: 0, locked: false, no_speech: false } },
   { role: 'agent', text: 'I can help with that. Before I share loan details, please tell me your registered mobile number and date of birth.', meta: { tool_trace: [], retrieved: {}, refs: [] } },
-  { role: 'customer', text: 'It is 98765 00002, and I was born on the third of November 1985.', meta: { intents: ['REPAYMENT'], intent_source: 'rules', verified: true, verify_failures: 0, locked: false, no_speech: false } },
+  { role: 'customer', text: 'It is 97314 62580, and I was born on the third of November 1985.', meta: { intents: ['REPAYMENT'], intent_source: 'rules', verified: true, verify_failures: 0, locked: false, no_speech: false } },
   {
     role: 'agent',
     text: `Thank you, Rahul, you are verified. Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,

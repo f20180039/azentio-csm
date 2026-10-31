@@ -65,11 +65,11 @@ A line may carry several labels, separated by `|`.
 ```yaml
 id: 07-multiple-requests
 title: Repayment, then a statement, then an existing complaint
-customer: {mobile: "9876500002", dob: "1985-11-03"}   # omit for unverified scenarios
+customer: {mobile: "9731462580", dob: "1985-11-03"}   # omit for unverified scenarios
 turns:
   - say: "Hi, I want to know when my next EMI is due."
     expect: {intents: [REPAYMENT]}          # before verification the agent should ask for identity
-  - say: "My number is 98765 00002 and date of birth third November eighty-five."
+  - say: "My number is 97314 62580 and date of birth third November eighty-five."
     expect: {intents: [IDENTITY], verified: true}
   - say: "Okay so when is the EMI?"
     expect:
@@ -166,7 +166,7 @@ outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0, never_say: ["app
 **Files:** `backend/voice/eval/scenarios/13-kannada-repayment.yaml`, `14-kannada-statement.yaml`, and the voice map in `backend/voice/eval/audio/render.py` (add `"kn": "kn-IN-SapnaNeural"`; coordinate with Chirag, who may add it too).
 
 - [x] Step 1: Two scenarios in the existing schema:
-  - Rahul (9876500002 / 1985-11-03) asks "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", expecting `REPAYMENT`, verification, and the ₹12,450 or vehicle ₹9,800 amounts as digits or spoken;
+  - Rahul (9731462580 / 1985-11-03) asks "ನನ್ನ ಮುಂದಿನ EMI ಯಾವಾಗ?", expecting `REPAYMENT`, verification, and the ₹12,450 or vehicle ₹9,800 amounts as digits or spoken;
   - a Kannada statement request ("ನನಗೆ ನನ್ನ ಲೋನ್ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ಬೇಕು"), expecting a `STATEMENT` ticket.
 - [x] Step 2: Render with `--accents kn`. Check that the files play and are 16 kHz mono.
 - [x] Step 3: Commit: `test(eval): Kannada scenarios`.
