@@ -345,6 +345,17 @@ P1/P2 (transcript PII redaction with an admin reveal) are on hold by owner decis
 
 ---
 
+
+### Share the demo from one laptop (free, data persists)
+
+Everything runs on one laptop; the API and simulator keep their SQLite files on its disk, so calls, tickets and complaints survive restarts. Teammates open one public URL.
+
+1. Start the simulator (8090), the core API (8080) and the voice service (7861) as usual.
+2. Start the panel in share mode, which serves the API and simulator through the panel's own origin: `cd frontend && npm run dev:share`
+3. Open a public URL for it: `cloudflared tunnel --url http://localhost:5173` and share the `https://…trycloudflare.com` address it prints.
+
+Teammates can use the desk, call transcripts, records and reviews through that URL. Voice features (mic calls, typed calls, Pause, live transcript correction) run against `localhost:7861`, so use them on the laptop itself. Anyone with the URL can sign in with the demo logins, so stop the tunnel after the demo.
+
 ## Run it
 
 **Without Docker (recommended for the demo):** `scripts/dev-up.sh` creates any missing virtualenvs and `node_modules`, then starts all four services and waits for their health checks. `scripts/dev-down.sh` stops them. To run one service by hand:
