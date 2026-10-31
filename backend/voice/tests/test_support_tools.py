@@ -125,3 +125,30 @@ def test_bad_category_and_unreachable_simulator_do_not_raise():
 def test_schemas_cover_every_tool():
     names = {t["function"]["name"] for t in SUPPORT_TOOL_SCHEMAS}
     assert {"verify_customer", "search_faq", "route_unsupported", "escalate_to_human", "create_service_request", "end_call"} <= names
+
+
+def test_a_first_request_for_a_person_is_answered_with_a_question_not_a_handover():
+    sim, client, call = setup()
+    out = run(client, call, "escalate_to_human", {"trigger": "CUSTOMER_REQUEST", "reason": "wants a person", "summary": "asked for a human"})
+    assert out["error"] == "ASK_FIRST" and "ask what they need" in out["note"]
+    assert not [r for r in sim.requests if r.url.path.endswith("/escalations")]  # nothing raised yet
+    second = run(client, call, "escalate_to_human", {"trigger": "CUSTOMER_REQUEST", "reason": "asked again", "summary": "insists on a person"})
+    assert second.get("error") != "ASK_FIRST"
+
+
+def test_sensitive_dissatisfied_and_unresolved_hand_over_at_once():
+    for trigger in ("SENSITIVE", "DISSATISFIED", "UNRESOLVED"):
+        sim, client, call = setup()
+        run(client, call, "escalate_to_human", {"trigger": trigger, "reason": "r", "summary": "s"})
+        assert [r for r in sim.requests if r.url.path.endswith("/escalations")], trigger
+
+
+def test_handover_mode_follows_the_channel():
+    sim, client, call = setup()
+    sim_escalation = lambda r: httpx.Response(201, json={"ref": "ESC-70200"})  # noqa: E731
+    client = SimulatorClient(Settings(), transport=httpx.MockTransport(sim_escalation))
+    browser = CallSession(CALL, helpline="1800 210 4455")
+    out = run(client, browser, "escalate_to_human", {"trigger": "SENSITIVE", "reason": "fraud", "summary": "unauthorised debit"})
+    assert out["handoff"] == {"mode": "CALLBACK", "helpline": "1800 210 4455"} and browser.refs == ["ESC-70200"]
+    phone = CallSession(CALL, phone_call_sid="CA123")
+    assert run(client, phone, "escalate_to_human", {"trigger": "DISSATISFIED", "reason": "unhappy", "summary": "s"})["handoff"] == {"mode": "TRANSFER"}

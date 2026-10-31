@@ -43,6 +43,20 @@ class ToolError(StrEnum):
     BAD_ARGUMENTS = "BAD_ARGUMENTS"
     UNKNOWN_TOOL = "UNKNOWN_TOOL"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    ASK_FIRST = "ASK_FIRST"
+
+
+class EscalationTrigger(StrEnum):
+    """Why the agent hands a caller to a person. A bare request for a person is not enough on its own."""
+    CUSTOMER_REQUEST = "CUSTOMER_REQUEST"  # the caller asked for a person (honoured on the second ask)
+    DISSATISFIED = "DISSATISFIED"          # the caller is unhappy with the help so far
+    UNRESOLVED = "UNRESOLVED"              # the agent could not answer or do what was needed
+    SENSITIVE = "SENSITIVE"                # fraud, unauthorised transactions, distress: at once
+
+
+class HandoffMode(StrEnum):
+    TRANSFER = "TRANSFER"  # phone: the live call is dialled through to a person
+    CALLBACK = "CALLBACK"  # browser: a person calls back; the helpline number is given
 
 
 class Outcome(StrEnum):

@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 from uuid import UUID
-from xml.sax.saxutils import quoteattr
+from xml.sax.saxutils import escape, quoteattr
 
 import httpx
 
@@ -89,3 +89,24 @@ async def dial(s: Settings, call_id: str, to: str, transport: httpx.AsyncBaseTra
     if r.status_code >= 300 or not body.get("sid"):
         raise DialError(f"Twilio {r.status_code} {body.get('code', '')}: {body.get('message', 'no call created')}".strip())
     return str(body["sid"])
+
+
+TRANSFER_SAY = "Connecting you to a colleague now. Please stay on the line."
+
+
+def transfer_twiml(to: str) -> str:
+    return f"<Response><Say>{escape(TRANSFER_SAY)}</Say><Dial>{escape(to)}</Dial></Response>"
+
+
+async def transfer(s: Settings, call_sid: str, to: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    """Hands a live phone call to a person: Twilio replaces the call's instructions with a dial to `to`, which also ends
+    the media stream, so the agent's pipeline closes on its own."""
+    async with httpx.AsyncClient(
+        base_url=TWILIO_API, auth=(s.twilio_account_sid, s.twilio_auth_token), timeout=15.0, transport=transport
+    ) as client:
+        try:
+            r = await client.post(f"/2010-04-01/Accounts/{s.twilio_account_sid}/Calls/{call_sid}.json", data={"Twiml": transfer_twiml(to)})
+        except httpx.HTTPError as e:
+            raise DialError(f"Twilio unreachable: {type(e).__name__}") from None
+    if r.status_code >= 300:
+        raise DialError(f"Twilio {r.status_code}: transfer to {mask(to)} refused")

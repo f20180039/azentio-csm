@@ -85,7 +85,8 @@ class State:
             call_id = call_id or await self.get_support_calls().start(channel)
         except ApiUnavailable as e:
             raise HTTPException(502, "call records API unavailable") from e
-        brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(), CallSession(call_id), self.classifier())
+        brain = SupportBrain(self.get_llm(), self.get_sim(), self.get_support_calls(),
+                             CallSession(call_id, helpline=self.settings().helpline_number), self.classifier())
         await brain.open()
         self.support[call_id] = brain
         return brain
@@ -582,7 +583,7 @@ async def twilio_stream(websocket: WebSocket) -> None:
             ),
         )
         try:
-            task = await build_pipeline(s, call_id, transport, chain=state.get_chain(), audio_sample_rate=8000)
+            task = await build_pipeline(s, call_id, transport, chain=state.get_chain(), audio_sample_rate=8000, call_sid=start.call_sid)
         except Exception as e:
             logger.warning(f"phone call {call_id} not started: {e!r}")
             await websocket.close(code=1011)

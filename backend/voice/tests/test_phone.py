@@ -355,7 +355,7 @@ def ws_rejects(c: TestClient, msg) -> int:
 def fake_runtime(monkeypatch):
     built = []
 
-    async def fake_build(settings, call_id, transport, chain=None, audio_sample_rate=None):
+    async def fake_build(settings, call_id, transport, chain=None, audio_sample_rate=None, call_sid=None):
         built.append((call_id, transport, audio_sample_rate))
         assert main.state.live_calls.get(call_id) == "twilio:CA1"
         return object()
@@ -491,3 +491,38 @@ def test_the_twilio_stream_still_works_through_the_tunnel(client, fake_runtime, 
         ws.send_json({"event": "connected"})
         ws.send_json(start_msg())
     assert [b[0] for b in fake_runtime] == [CALL]
+
+
+def test_transfer_redirects_the_live_call_to_a_person():
+    import asyncio
+
+    import httpx
+
+    from app import phone
+    from app.config import Settings
+
+    seen = []
+
+    def handler(r: httpx.Request) -> httpx.Response:
+        seen.append(r)
+        return httpx.Response(200, json={"sid": "CA123"})
+
+    s = Settings(twilio_account_sid="AC1", twilio_auth_token="t")
+    asyncio.run(phone.transfer(s, "CA123", "+919800000000", transport=httpx.MockTransport(handler)))
+    assert seen[0].url.path == "/2010-04-01/Accounts/AC1/Calls/CA123.json"
+    body = seen[0].content.decode()
+    assert "Dial" in body and "%2B919800000000" in body and "colleague" in body
+
+
+def test_transfer_failure_raises_a_dial_error():
+    import asyncio
+
+    import httpx
+    import pytest
+
+    from app import phone
+    from app.config import Settings
+
+    with pytest.raises(phone.DialError):
+        asyncio.run(phone.transfer(Settings(twilio_account_sid="AC1", twilio_auth_token="t"), "CA1", "+919800000000",
+                                   transport=httpx.MockTransport(lambda r: httpx.Response(404, json={}))))

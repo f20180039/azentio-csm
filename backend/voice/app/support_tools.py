@@ -6,7 +6,7 @@ from enum import StrEnum
 from .api_client import ApiUnavailable
 from .simulator_client import SimulatorClient
 from .spoken import spoken_inr
-from .vocab import SupportTool, ToolError
+from .vocab import EscalationTrigger, HandoffMode, SupportTool, ToolError
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
@@ -42,6 +42,9 @@ class CallSession:
     verify_failures: int = 0
     locked: bool = False
     refs: list[str] = field(default_factory=list)
+    human_requests: int = 0
+    phone_call_sid: str | None = None  # set on phone calls, so an escalation can transfer the live call
+    helpline: str = ""
 
     @property
     def verified(self) -> bool:
@@ -86,8 +89,12 @@ SUPPORT_TOOL_SCHEMAS: list[dict] = [
     _tool(SupportTool.ROUTE_UNSUPPORTED, "Log a question the desk cannot answer or may not do, so the right team follows up. Use after politely declining.",
           {"query_text": {"type": "string", "description": "The caller's request in their words"}, "reason": {"type": "string"}},
           ["query_text", "reason"]),
-    _tool(SupportTool.ESCALATE_TO_HUMAN, "Hand the call to a human representative: fraud, unauthorised transactions, distress, repeated failure, or on request.",
-          {"reason": {"type": "string"}, "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["reason", "summary"]),
+    _tool(SupportTool.ESCALATE_TO_HUMAN,
+          "Hand the caller to a human representative. Use trigger SENSITIVE at once for fraud, unauthorised transactions or distress; "
+          "DISSATISFIED when the caller is unhappy with the help; UNRESOLVED when you could not answer or do what they need; "
+          "CUSTOMER_REQUEST when they ask for a person (first ask what they need and try to help: the first such request is refused).",
+          {"trigger": _enum(EscalationTrigger, "Why a person is needed"), "reason": {"type": "string"},
+           "summary": {"type": "string", "description": "What the caller needs, for the human"}}, ["trigger", "reason", "summary"]),
     _tool(SupportTool.END_CALL, "End the call after saying goodbye."),
 ]
 
@@ -172,7 +179,21 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             customer_ref = (call.customer or {}).get("customer_ref")
             return await client.routed(args["query_text"], args["reason"], call.call_id, customer_ref)
         case SupportTool.ESCALATE_TO_HUMAN:
-            return await client.escalation(s, args["reason"], args.get("summary") or args["reason"], call.call_id)
+            trigger = EscalationTrigger(args.get("trigger") or EscalationTrigger.CUSTOMER_REQUEST)
+            if trigger == EscalationTrigger.CUSTOMER_REQUEST:
+                call.human_requests += 1
+                if call.human_requests == 1:
+                    return {"error": ToolError.ASK_FIRST,
+                            "note": "Not yet. Tell them you can help with most things, ask what they need, and try. "
+                                    "If they ask for a person again, or you cannot help, call escalate_to_human again."}
+            out = await client.escalation(s, f"{trigger}: {args['reason']}", args.get("summary") or args["reason"], call.call_id)
+            if "error" in out:
+                return out
+            if call.phone_call_sid:
+                return {**out, "handoff": {"mode": HandoffMode.TRANSFER},
+                        "note": "Tell them you are connecting them to a colleague now, then stop talking."}
+            return {**out, "handoff": {"mode": HandoffMode.CALLBACK, "helpline": call.helpline},
+                    "note": "Tell them a colleague will call back, read the reference, and give the helpline number."}
         case SupportTool.END_CALL:
             return {"ended": True}
         case _:

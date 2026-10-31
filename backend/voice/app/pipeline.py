@@ -26,6 +26,7 @@ from pipecat.services.groq.stt import GroqSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.base_transport import BaseTransport
 
+from . import phone
 from .api_client import ApiUnavailable, RenewalsApi
 from .config import Settings
 from .edge_tts_service import EdgeTTSService
@@ -37,6 +38,7 @@ GOODBYE = "Thank you for your time. Goodbye."
 LLM_FALLBACK = "Sorry, give me a moment."
 LLM_FALLBACK_INTERVAL_SECS = 10.0
 LLM_GIVE_UP_AFTER = 3
+HANDOFF_TRANSFER_DELAY_SECS = 6.0  # time for the agent to say it is connecting them
 LLM_GIVE_UP = "I'll ask a colleague to call you back shortly."
 
 
@@ -95,6 +97,7 @@ async def build_pipeline(
     api: RenewalsApi | None = None,
     chain: ChainState | None = None,
     audio_sample_rate: int | None = None,
+    call_sid: str | None = None,
 ) -> PipelineWorker:
     chain = chain or ChainState(settings.llm_chain)
     api = api or RenewalsApi(settings)
@@ -124,10 +127,20 @@ async def build_pipeline(
             result = {"error": "API_UNAVAILABLE", "mustHandoff": True}
         if params.function_name != "end_call":
             await params.result_callback(result)
+            if params.function_name == "handoff_to_human" and "error" not in result and call_sid and settings.human_agent_number:
+                asyncio.create_task(_transfer_after_reply())
             return
         await params.result_callback(result, properties=FunctionCallResultProperties(run_llm=False))
         await llm.active_llm.push_frame(TTSSpeakFrame(GOODBYE))
         await llm.active_llm.push_frame(EndWorkerFrame(reason="end_call"))
+
+    async def _transfer_after_reply() -> None:
+        """Phone hand-off: let the agent finish its sentence, then dial the call through to a person."""
+        await asyncio.sleep(HANDOFF_TRANSFER_DELAY_SECS)
+        try:
+            await phone.transfer(settings, call_sid, settings.human_agent_number)
+        except phone.DialError as e:
+            logger.warning(f"transfer to a person failed: {e}")
 
     for tool in TOOL_SCHEMAS:
         llm.register_function(tool["function"]["name"], handle_tool)
