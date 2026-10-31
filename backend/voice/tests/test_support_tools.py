@@ -196,3 +196,11 @@ def test_get_loans_accepts_null_for_its_optional_filters():  # Groq rejects a to
     sim, client, call = setup()
     verify(client, call)
     assert len(run(client, call, "get_loans", {"product_type": None, "loan_id": None})["items"]) == 2
+
+
+def test_asking_for_a_person_after_an_escalation_gets_the_same_reference_not_ask_first():
+    sim, client, call = setup()
+    first = run(client, call, "escalate_to_human", {"trigger": "SENSITIVE", "reason": "fraud", "summary": "unauthorised payment"})
+    again = run(client, call, "escalate_to_human", {"trigger": "CUSTOMER_REQUEST", "reason": "wants a person", "summary": "s"})
+    assert first["ref"] == again["ref"] == "ESC-70200" and again["escalated"] is True and "error" not in again
+    assert call.refs == ["ESC-70200"] and sum(r.url.path == "/v1/csm/escalations" for r in sim.requests) == 1

@@ -7,7 +7,7 @@ from enum import StrEnum
 from .api_client import ApiUnavailable
 from .simulator_client import SimulatorClient
 from .spoken import spoken_inr
-from .vocab import EscalationTrigger, HandoffMode, SupportTool, ToolError
+from .vocab import EscalationTrigger, HandoffMode, RefPrefix, SupportTool, ToolError
 
 AMOUNT_KEYS = {"amount", "balance", "outstanding_principal", "premium", "sum_insured", "amount_claimed", "amount_approved"}
 
@@ -134,7 +134,7 @@ async def run_support_tool(client: SimulatorClient, call: CallSession, name: str
     if result.get("error") == ToolError.NOT_VERIFIED:
         call.session = None
     ref = result.get("ref")
-    if isinstance(ref, str) and name in REF_RAISING:
+    if isinstance(ref, str) and name in REF_RAISING and ref not in call.refs:
         call.refs.append(ref)
     return with_spoken(result)
 
@@ -195,6 +195,9 @@ async def _dispatch(client: SimulatorClient, call: CallSession, name: str, args:
             return await client.routed(args["query_text"], args["reason"], call.call_id, customer_ref)
         case SupportTool.ESCALATE_TO_HUMAN:
             trigger = EscalationTrigger(args.get("trigger") or EscalationTrigger.CUSTOMER_REQUEST)
+            if earlier := next((r for r in call.refs if r.startswith(RefPrefix.ESCALATION)), None):
+                return {"escalated": True, "ref": earlier, "already_escalated": True,
+                        "note": "This call is already with a person: give the same reference and say a colleague will be in touch."}
             if trigger == EscalationTrigger.CUSTOMER_REQUEST:
                 call.human_requests += 1
                 if call.human_requests == 1:
