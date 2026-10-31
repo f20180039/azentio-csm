@@ -14,6 +14,7 @@ import {
   getCall,
   intentLabel,
   intentTone,
+  languageLabel,
   OP_OUTCOME_LABEL,
   OP_OUTCOME_TONE,
   OUTCOME_LABEL,
@@ -36,8 +37,8 @@ import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
 import { Route } from '../routes';
-import { Highlight, matches } from '../search';
-import { TurnRole, Verification } from '../vocab';
+import { Highlight, turnMatches } from '../search';
+import { SpeechLanguage, TurnRole, Verification } from '../vocab';
 import { RatingPanel, TurnFeedbackBlock } from './CallFeedback';
 import { CallStatusPill } from './SupportDesk';
 
@@ -197,14 +198,44 @@ function RefPills({ refs, query = '' }: { refs: string[]; query?: string }) {
   );
 }
 
-function turnMatches(q: string, t: SupportTurn): boolean {
-  const intents = t.meta.intents ?? [];
-  return matches(q, t.text, intents, intents.map(intentLabel), t.meta.refs);
+/** The language chip of a translated (Kannada or Hindi) turn; nothing for an English one. */
+function LanguageChip({ meta }: { meta: SupportTurn['meta'] }) {
+  const label = meta.text_en ? languageLabel(meta.language) : '';
+  if (!label) return null;
+  return <span className="pill dim sc-lang">{label}</span>;
+}
+
+/**
+ * A turn's words. A translated turn shows two lines: the original (the record) and its English; "English first" swaps
+ * which one is prominent. The secondary line is small, muted and labelled with its language.
+ */
+function TurnText({ t, query, englishFirst }: { t: SupportTurn; query: string; englishFirst: boolean }) {
+  const m = t.meta;
+  if (!m.text_en) {
+    return (
+      <p lang={m.language}>
+        <Highlight text={t.text} query={query} />
+      </p>
+    );
+  }
+  const original = { text: t.text, lang: m.language, label: languageLabel(m.language) || 'Original', testId: 'turn-original' };
+  const english = { text: m.text_en, lang: SpeechLanguage.ENGLISH, label: languageLabel(SpeechLanguage.ENGLISH), testId: 'turn-english' };
+  const [first, second] = englishFirst ? [english, original] : [original, english];
+  return (
+    <>
+      <p lang={first.lang} data-testid={first.testId}>
+        <Highlight text={first.text} query={query} />
+      </p>
+      <p lang={second.lang} data-testid={second.testId} className="small muted sc-turn-alt">
+        <span className="sc-turn-alt-label">{second.label}:</span> <Highlight text={second.text} query={query} />
+      </p>
+    </>
+  );
 }
 
 type TurnMark = 'hit' | 'dim' | undefined;
 
-function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTurn; audio?: string | null; query?: string; mark?: TurnMark; callId?: string | null; onChanged?: () => void }) {
+function Turn({ t, audio, query = '', mark, callId, onChanged, englishFirst = false }: { t: SupportTurn; audio?: string | null; query?: string; mark?: TurnMark; callId?: string | null; onChanged?: () => void; englishFirst?: boolean }) {
   const m = t.meta;
   const markClass = mark ? ` is-${mark}` : '';
   if (t.role === TurnRole.CUSTOMER) {
@@ -212,17 +243,12 @@ function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTur
       <li className={`sc-turn customer${markClass}`} data-search={mark}>
         <div className="sc-turn-head">
           <span className="who">Customer</span>
+          <LanguageChip meta={m} />
           <time className="small muted" dateTime={t.at}>
             {formatDateTime(t.at)}
           </time>
         </div>
-        {m.no_speech ? (
-          <p className="muted sc-nospeech">No speech detected</p>
-        ) : (
-          <p>
-            <Highlight text={t.text} query={query} />
-          </p>
-        )}
+        {m.no_speech ? <p className="muted sc-nospeech">No speech detected</p> : <TurnText t={t} query={query} englishFirst={englishFirst} />}
         {m.audio && callId && (
           <audio controls preload="none" src={turnAudioUrl(callId, t.seq)} aria-label="What the customer said" className="sc-audio" />
         )}
@@ -244,13 +270,12 @@ function Turn({ t, audio, query = '', mark, callId, onChanged }: { t: SupportTur
     <li className={`sc-turn agent${markClass}`} data-search={mark}>
       <div className="sc-turn-head">
         <span className="who">Agent</span>
+        <LanguageChip meta={m} />
         <time className="small muted" dateTime={t.at}>
           {formatDateTime(t.at)}
         </time>
       </div>
-      <p>
-        <Highlight text={t.text} query={query} />
-      </p>
+      <TurnText t={t} query={query} englishFirst={englishFirst} />
       <RefPills refs={m.refs ?? []} query={query} />
       {audio && <audio controls src={audioDataUrl(audio)} aria-label="Agent reply audio" className="sc-audio" />}
       <RetrievedCard trace={m.tool_trace ?? []} retrieved={m.retrieved ?? {}} refs={m.refs ?? []} />
@@ -664,6 +689,9 @@ export function SupportCall() {
 
   const [query, setQuery] = useUrlQuery();
   const searching = query.trim() !== '';
+  /** "English first" for Kannada and Hindi turns; this page's state only, offered once a turn carries an English translation. */
+  const [englishFirst, setEnglishFirst] = useState(false);
+  const translated = turns.some((t) => t.meta.text_en);
   const hits = useMemo(() => new Set(searching ? turns.filter((t) => turnMatches(query, t)) : []), [turns, query, searching]);
   useEffect(() => {
     if (searching) timelineRef.current?.querySelector('[data-search="hit"]')?.scrollIntoView?.({ block: 'nearest' });
@@ -822,6 +850,12 @@ export function SupportCall() {
                 shown={hits.size}
                 total={turns.length}
               />
+              {translated && (
+                <label className="sc-english-first small">
+                  <input type="checkbox" role="switch" checked={englishFirst} onChange={(e) => setEnglishFirst(e.target.checked)} />
+                  English first
+                </label>
+              )}
             </div>
           )}
           {searching && turns.length > 0 && hits.size === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
@@ -835,6 +869,7 @@ export function SupportCall() {
                 mark={searching ? (hits.has(t) ? 'hit' : 'dim') : undefined}
                 callId={call?.turns.length ? call.id : null}
                 onChanged={() => void refresh()}
+                englishFirst={englishFirst}
               />
             ))}
             {speaking && <SpeakingBubble who={speaking} />}

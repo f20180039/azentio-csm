@@ -17,6 +17,7 @@ import {
   RecordKind,
   RefPrefix,
   ReviewReason,
+  SpeechLanguage,
   SupportChannel,
   SupportOutcome,
   TicketStatus,
@@ -24,7 +25,7 @@ import {
   Verification,
 } from '../vocab';
 
-export { FeedbackVerdict, LessonStatus, OpOutcome, RatingSource, RecordKind, ReviewReason, SupportChannel, SupportOutcome, TicketStatus, Verification };
+export { FeedbackVerdict, LessonStatus, OpOutcome, RatingSource, RecordKind, ReviewReason, SpeechLanguage, SupportChannel, SupportOutcome, TicketStatus, Verification };
 
 export const SIMULATOR_BASE: string =
   (import.meta.env.VITE_SIMULATOR_BASE as string | undefined) ?? 'http://localhost:8090/v1';
@@ -52,6 +53,10 @@ export interface TurnMeta {
   tool_trace?: ToolTrace[];
   retrieved?: Record<string, unknown>;
   refs?: string[];
+  /** English translation of a Kannada or Hindi turn, for display; the turn's text stays the record. Patched in a few seconds after the turn. */
+  text_en?: string;
+  /** SpeechLanguage code of a translated turn (kn, hi). */
+  language?: string;
   [key: string]: unknown;
 }
 
@@ -576,6 +581,17 @@ export const OUTCOME_TONE: Record<SupportOutcome, string> = {
   [SupportOutcome.ESCALATED]: 'bad',
   [SupportOutcome.ABANDONED]: 'dim',
 };
+
+export const LANGUAGE_LABEL: Record<SpeechLanguage, string> = {
+  [SpeechLanguage.ENGLISH]: 'English',
+  [SpeechLanguage.KANNADA]: 'Kannada',
+  [SpeechLanguage.HINDI]: 'Hindi',
+};
+
+/** The language name for a turn's meta.language; an unknown code is shown as itself. */
+export function languageLabel(code: string | undefined): string {
+  return (code && LANGUAGE_LABEL[code as SpeechLanguage]) || code || '';
+}
 
 export const CHANNEL_LABEL: Record<SupportChannel, string> = {
   [SupportChannel.VOICE]: 'Microphone',

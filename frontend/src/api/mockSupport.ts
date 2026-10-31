@@ -32,6 +32,7 @@ import {
   RatingSource,
   RecordKind as RecordKindValue,
   ReviewReason,
+  SpeechLanguage,
   SupportChannel as Channel,
   SupportOutcome as Outcome,
   TicketStatus,
@@ -157,6 +158,26 @@ const ESCALATION_SCRIPT: Step[] = [
         escalate_to_human: { ref: 'ESC-70200', related_refs: ['CMP-50200', 'TXN-90011'] },
       },
       refs: ['CMP-50200', 'ESC-70200'],
+    },
+  },
+  // The caller switches to Kannada; the voice service keeps the Kannada as the record and adds the English (text_en) for the panel.
+  {
+    role: 'customer',
+    text: 'ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ?',
+    meta: {
+      intents: ['REPAYMENT'], intent_source: 'llm', verified: true, verify_failures: 0, locked: false, no_speech: false,
+      text_en: 'When is my next EMI?', language: SpeechLanguage.KANNADA,
+    },
+  },
+  {
+    role: 'agent',
+    text: `ನಿಮ್ಮ ವೈಯಕ್ತಿಕ ಸಾಲದ ಮುಂದಿನ ಕಂತು ₹12,450, ${PERSONAL_LOAN.next_instalment.due_date} ರಂದು ಪಾವತಿಸಬೇಕು.`,
+    meta: {
+      tool_trace: [{ name: 'get_loans', args: { type: 'personal' }, result_summary: '1 loan: PL-31002' }],
+      retrieved: { get_loans: { items: [PERSONAL_LOAN] } },
+      refs: [],
+      text_en: `Your next personal loan instalment is ₹12,450, due on ${PERSONAL_LOAN.next_instalment.due_date}.`,
+      language: SpeechLanguage.KANNADA,
     },
   },
 ];

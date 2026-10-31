@@ -1,6 +1,8 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { Highlight, hitRanges, matches, normalise } from './search';
+import { languageLabel, type SupportTurn, type TurnMeta } from './api/support';
+import { Highlight, hitRanges, matches, normalise, turnMatches } from './search';
+import { SpeechLanguage, TurnRole } from './vocab';
 
 describe('matches', () => {
   it('matches everything on an empty or blank query', () => {
@@ -33,6 +35,34 @@ describe('matches', () => {
     expect(matches('42', 42)).toBe(true);
     expect(matches('loan', null, undefined, ['REPAYMENT', ['LOAN_APPLICATION']])).toBe(true);
     expect(matches('loan', null, [], undefined)).toBe(false);
+  });
+});
+
+describe('languageLabel', () => {
+  it('names the caller languages and shows an unknown or missing code as it is', () => {
+    expect(languageLabel(SpeechLanguage.HINDI)).toBe('Hindi');
+    expect(languageLabel(SpeechLanguage.KANNADA)).toBe('Kannada');
+    expect(languageLabel('ta')).toBe('ta');
+    expect(languageLabel(undefined)).toBe('');
+  });
+});
+
+describe('turnMatches', () => {
+  const turn = (text: string, meta: TurnMeta): SupportTurn => ({ seq: 1, role: TurnRole.CUSTOMER, text, at: '2026-10-31T10:00:00Z', meta });
+
+  it('searches the English of a translated turn as well as its original words', () => {
+    const kn = turn('ನನ್ನ ಮುಂದಿನ ಇಎಂಐ ಯಾವಾಗ?', { intents: ['REPAYMENT'], text_en: 'When is my next EMI?', language: SpeechLanguage.KANNADA });
+    expect(turnMatches('EMI', kn)).toBe(true);
+    expect(turnMatches('ಇಎಂಐ', kn)).toBe(true);
+    expect(turnMatches('gold', kn)).toBe(false);
+  });
+
+  it('matches intents by code and label, and references, as before', () => {
+    const t = turn('Can you send me the schedule?', { intents: ['SERVICE_REQUEST'], refs: ['SR-40200'] });
+    expect(turnMatches('service request', t)).toBe(true);
+    expect(turnMatches('SERVICE_REQUEST', t)).toBe(true);
+    expect(turnMatches('sr-40200', t)).toBe(true);
+    expect(turnMatches('emi', t)).toBe(false);
   });
 });
 
