@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_RECORDS, SAMPLE_ROUTED_CALL, SAMPLE_VERIFIED_CALL } from '../api/mockSupport';
 import type { OpsRecord, RecordKind, SupportCallSummary } from '../api/support';
-import { OpOutcome, TicketStatus } from '../vocab';
+import { OpOutcome, RecordKind as Kind, TicketStatus } from '../vocab';
 import { SupportDesk } from './SupportDesk';
 
 const h = vi.hoisted(() => ({ listCalls: vi.fn(), listRecords: vi.fn(), updateTicket: vi.fn() }));
@@ -129,7 +129,7 @@ describe('SupportDesk', () => {
       { ...SAMPLE_RECORDS.ticket[0], status: TicketStatus.REJECTED, department: 'Loan Servicing', progress: 'Schedule cannot be issued for a closed loan.' },
       { ...SAMPLE_RECORDS.ticket[1], status: TicketStatus.AWAITING_INFO, department: 'Account Services', progress: 'Waiting for the account number.' },
     ];
-    h.listRecords.mockImplementation(async (kind: RecordKind) => (kind === 'ticket' ? tickets : SAMPLE_RECORDS[kind]));
+    h.listRecords.mockImplementation(async (kind: RecordKind) => (kind === Kind.TICKET ? tickets : SAMPLE_RECORDS[kind]));
     mount();
     const panel = () => screen.getByRole('tabpanel');
     await within(panel()).findAllByText('Rejected');
@@ -141,22 +141,72 @@ describe('SupportDesk', () => {
     expect(within(panel()).getByText('Waiting for the account number.')).toBeInTheDocument();
   });
 
-  it('moves a ticket to a new status with a progress note and refreshes the row', async () => {
-    h.updateTicket.mockImplementation(async (ref: string, status: TicketStatus, progress: string | null) => ({
-      ...SAMPLE_RECORDS.ticket[0], ref, status, progress,
-    }));
+  it('stages a status and a progress note, saves only on Save, and refreshes the row', async () => {
+    const saved: OpsRecord[] = [];
+    h.updateTicket.mockImplementation(async (ref: string, status: TicketStatus, progress: string | null) => {
+      const updated = { ...SAMPLE_RECORDS.ticket[0], ref, status, progress };
+      saved.push(updated);
+      return updated;
+    });
+    h.listRecords.mockImplementation(async (kind: RecordKind) =>
+      kind === Kind.TICKET ? SAMPLE_RECORDS.ticket.map((t) => saved.find((u) => u.ref === t.ref) ?? t) : SAMPLE_RECORDS[kind],
+    );
     mount();
     const panel = () => screen.getByRole('tabpanel');
     expect(await within(panel()).findByText('SR-40200')).toBeInTheDocument();
-    fireEvent.change(within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' }), { target: { value: 'Need the loan account number.' } });
+    const save = () => within(panel()).getByRole('button', { name: 'Save SR-40200' });
+    expect(save()).toBeDisabled();
+
     fireEvent.click(within(panel()).getByRole('button', { name: 'Status of SR-40200' }));
     fireEvent.click(screen.getByRole('option', { name: 'Awaiting info' }));
+    expect(h.updateTicket).not.toHaveBeenCalled();
+    expect(statusPill(panel(), 'Open')).toBeInTheDocument();
+    expect(save()).toBeEnabled();
+
+    fireEvent.change(within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' }), { target: { value: 'Need the loan account number.' } });
+    expect(h.updateTicket).not.toHaveBeenCalled();
+    fireEvent.click(save());
     await waitFor(() => expect(h.updateTicket).toHaveBeenCalledWith('SR-40200', TicketStatus.AWAITING_INFO, 'Need the loan account number.'));
+    expect(h.updateTicket).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(statusPill(panel(), 'Awaiting info')).toHaveClass('warn'));
     const row = statusPill(panel(), 'Awaiting info').closest('tr')!;
     expect(within(row).getByText('SR-40200')).toBeInTheDocument();
     expect(within(row).getByText('Need the loan account number.')).toBeInTheDocument();
     expect(within(panel()).getByRole('button', { name: 'Status of SR-40200' })).toHaveTextContent('Awaiting info');
+    expect(within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' })).toHaveValue('');
+    await waitFor(() => expect(h.listRecords.mock.calls.filter((c) => c[0] === Kind.TICKET).length).toBeGreaterThan(1));
+  });
+
+  it('saves a note alone with Enter, keeping the current status', async () => {
+    h.updateTicket.mockImplementation(async (ref: string, status: TicketStatus, progress: string | null) => ({ ...SAMPLE_RECORDS.ticket[0], ref, status, progress }));
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    expect(await within(panel()).findByText('SR-40200')).toBeInTheDocument();
+    const note = within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' });
+    fireEvent.keyDown(note, { key: 'Enter' });
+    expect(h.updateTicket).not.toHaveBeenCalled();
+    fireEvent.change(note, { target: { value: 'Posted to the customer today.' } });
+    fireEvent.keyDown(note, { key: 'Enter' });
+    await waitFor(() => expect(h.updateTicket).toHaveBeenCalledWith('SR-40200', TicketStatus.OPEN, 'Posted to the customer today.'));
+  });
+
+  it('keeps the row and the typed note when the simulator refuses the update', async () => {
+    h.updateTicket.mockRejectedValue(new Error('The bank simulator refused the request'));
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    expect(await within(panel()).findByText('SR-40200')).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Status of SR-40200' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Rejected' }));
+    fireEvent.change(within(panel()).getByRole('textbox', { name: 'Progress note for SR-40200' }), { target: { value: 'Loan is closed.' } });
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Save SR-40200' }));
+    const alert = await within(panel()).findByRole('alert');
+    expect(alert).toHaveTextContent('The bank simulator refused the request');
+    expect(h.updateTicket).toHaveBeenCalledWith('SR-40200', TicketStatus.REJECTED, 'Loan is closed.');
+    const row = alert.closest('tr')!;
+    expect(statusPill(row, 'Open')).toBeInTheDocument();
+    expect(within(row).queryByText('Loan is closed.')).not.toBeInTheDocument();
+    expect(within(row).getByRole('textbox', { name: 'Progress note for SR-40200' })).toHaveValue('Loan is closed.');
+    expect(within(row).getByRole('button', { name: 'Save SR-40200' })).toBeEnabled();
   });
 
   it('shows what an escalation concerns as ref pills and a complaint in the caller\'s own words', async () => {

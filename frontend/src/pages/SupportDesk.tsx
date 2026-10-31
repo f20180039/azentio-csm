@@ -78,19 +78,28 @@ function isTicketStatus(s: string | null): s is TicketStatus {
   return (TICKET_STATUSES as string[]).includes(s ?? '');
 }
 
-/** Moves a service request to a new status, with the note the caller then hears about its progress. */
+/**
+ * Moves a service request to a new status, with the note the caller then hears about its progress.
+ * The status and note are staged and sent only on Save (or Enter in the note), so a stray keypress on the
+ * status button never moves a ticket on its own.
+ */
 function TicketControls({ r, onUpdated }: { r: OpsRecord; onUpdated: (updated: OpsRecord) => void }) {
+  const [staged, setStaged] = useState<TicketStatus | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const status = isTicketStatus(r.status) ? r.status : TicketStatus.OPEN;
+  const current = isTicketStatus(r.status) ? r.status : TicketStatus.OPEN;
+  const status = staged ?? current;
+  const changed = staged !== null || note.trim() !== '';
 
-  async function move(to: TicketStatus) {
+  async function save() {
+    if (!changed || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const updated = await updateTicket(r.ref, to, note.trim() || null);
+      const updated = await updateTicket(r.ref, status, note.trim() || null);
       onUpdated(updated);
+      setStaged(null);
       setNote('');
     } catch (e) {
       setError(errorText(e));
@@ -100,22 +109,31 @@ function TicketControls({ r, onUpdated }: { r: OpsRecord; onUpdated: (updated: O
   }
 
   return (
-    <div className="sd-ticket-controls">
-      <Select aria-label={`Status of ${r.ref}`} value={status} options={TICKET_STATUS_OPTIONS} onChange={(v) => void move(v as TicketStatus)} disabled={busy} />
+    <div className="sd-ticket-controls" aria-busy={busy}>
+      <Select
+        aria-label={`Status of ${r.ref}`}
+        value={status}
+        options={TICKET_STATUS_OPTIONS}
+        onChange={(v) => setStaged(v === current ? null : (v as TicketStatus))}
+        disabled={busy}
+      />
       <input
         type="text"
         aria-label={`Progress note for ${r.ref}`}
         placeholder="Progress note the caller will hear"
         value={note}
-        disabled={busy}
+        readOnly={busy}
         onChange={(e) => setNote(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && note.trim()) {
+          if (e.key === 'Enter') {
             e.preventDefault();
-            void move(status);
+            void save();
           }
         }}
       />
+      <button type="button" className="btn" aria-label={`Save ${r.ref}`} disabled={!changed || busy} onClick={() => void save()}>
+        {busy ? 'Saving…' : 'Save'}
+      </button>
       {error && (
         <span className="small bad-text" role="alert">
           {error}
@@ -368,15 +386,22 @@ function RecordsPanel() {
   const shown = useMemo(() => rows?.filter((r) => recordMatches(query, r)) ?? null, [rows, query]);
   const countFor = (k: RecordKind) => byKind[k]?.filter((r) => recordMatches(query, r)).length;
 
-  /** The simulator answers with the ticket's own fields; the row keeps what the list knew (call, customer, time) until the next refresh. */
-  const replaceRecord = useCallback((updated: OpsRecord) => {
-    setByKind((m) => ({
-      ...m,
-      [updated.kind]: (m[updated.kind] ?? []).map((r) =>
-        r.ref === updated.ref ? { ...r, status: updated.status, progress: updated.progress ?? r.progress, department: updated.department ?? r.department } : r,
-      ),
-    }));
-  }, []);
+  /**
+   * The simulator answers with the ticket's own fields: the row shows them at once, keeping what the list knew
+   * (call, customer, time), then the kind reloads so a poll that started before the change cannot put stale data back.
+   */
+  const replaceRecord = useCallback(
+    (updated: OpsRecord) => {
+      setByKind((m) => ({
+        ...m,
+        [updated.kind]: (m[updated.kind] ?? []).map((r) =>
+          r.ref === updated.ref ? { ...r, status: updated.status, progress: updated.progress ?? r.progress, department: updated.department ?? r.department } : r,
+        ),
+      }));
+      void loadKind(updated.kind);
+    },
+    [loadKind],
+  );
 
   const tab = RECORD_TABS.find((t) => t.kind === kind)!;
   const editable = kind === RecordKind.TICKET;
