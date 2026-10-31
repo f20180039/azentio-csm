@@ -71,3 +71,8 @@ def test_faq_empty_query():
     resp = client.get("/v1/faq/search", params={"q": "   "})
     assert resp.status_code == 200
     assert resp.json()["items"] == []
+
+
+def test_loan_statement_question_finds_the_statement_answer_not_application_status(client):
+    items = client.get("/v1/faq/search", params={"q": "how do I get my loan statement"}).json()["items"]
+    assert items and "statement" in items[0]["question"].lower()
