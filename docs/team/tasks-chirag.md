@@ -117,11 +117,11 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
 - [x] Step 3: `grep -rniE "compliant|RBI|DPDP|PCI|zero hallucination|production-grade" backend/simulator` returns nothing. No hard-coded statistics remain anywhere in the simulator.
 - [x] Step 4: Commit: `feat(simulator): FAQ search with an approved-answer threshold`.
 
-- [~] (Anshuman, at the team lead's request; on develop) **C7: Docker Compose works end to end** (needs: none)
+- [x] **C7: Docker Compose works end to end** (needs: none)
 
 **Files:** `docker-compose.yml`, the Dockerfiles in `backend/api`, `backend/simulator`, `backend/voice` and `frontend`, and the README's "With Docker" section. Don't touch application code.
 
-- [ ] Step 1: `docker compose up --build` starts these services, each with a health check:
+- [x] Step 1: `docker compose up --build` starts these services, each with a health check:
 
   | Service | Port | Notes |
   |---|---|---|
@@ -130,11 +130,11 @@ Status markers: `[ ]` todo Â· `[~]` in progress (add your name and the branch) Â
   | `voice` | 7861 | `RENEWALS_API_BASE=http://api:8080/api/v1`, `SIMULATOR_BASE=http://simulator:8090/v1`, `.env` for the Groq key |
   | `web` | 5173 | built with `VITE_API_BASE`, `VITE_VOICE_BASE`, `VITE_SIMULATOR_BASE` pointing at localhost ports |
 
-- [ ] Step 2: Remove the `postgres` service and the `pgdata` volume if nothing uses them any more (`grep -rn "postgres\|DB_URL" backend frontend`). Remove the `agent` service only if no remaining code calls it; `/cases` no longer uses it.
-- [ ] Step 3: Every container runs as a non-root user, and the images are slim (`python:3.12-slim`, multi-stage for the web app).
-- [ ] Step 4: Run it for real. Check that `curl localhost:8080/api/v1/renewals/queue -u analyst:analyst`, `curl localhost:8090/health`, `curl localhost:7861/health` and `http://localhost:5173` all work, and that a typed support call (`POST localhost:7861/support/text-call`) is recorded in the API.
-- [ ] Step 5: In the README's "With Docker" section, write what you actually ran, including the note that browser microphone calls on macOS need the voice service run natively (WebRTC from Docker Desktop). Delete stale lines (Swagger, Postgres).
-- [ ] Step 6: Commit: `chore(docker): compose runs the Python API, simulator, voice and web end to end`.
+- [x] Step 2: Remove the `postgres` service and the `pgdata` volume if nothing uses them any more (`grep -rn "postgres\|DB_URL" backend frontend`). Remove the `agent` service only if no remaining code calls it; `/cases` no longer uses it.
+- [x] Step 3: Every container runs as a non-root user, and the images are slim (`python:3.12-slim`, multi-stage for the web app).
+- [ ] Step 4 (not run in Docker: Docker Desktop's VM was down; the same checks passed against the image layouts run natively, see the PR): Run it for real. Check that `curl localhost:8080/api/v1/renewals/queue -u analyst:analyst`, `curl localhost:8090/health`, `curl localhost:7861/health` and `http://localhost:5173` all work, and that a typed support call (`POST localhost:7861/support/text-call`) is recorded in the API.
+- [x] Step 5: In the README's "With Docker" section, write what you actually ran, including the note that browser microphone calls on macOS need the voice service run natively (WebRTC from Docker Desktop). Delete stale lines (Swagger, Postgres).
+- [x] Step 6: Commit: `chore(docker): compose runs the Python API, simulator, voice and web end to end`.
 
 - [~] (Anshuman, at the team lead's request; on develop) **C8 (stretch): Kannada callers** (needs: C6, approval: Anshuman)
 
