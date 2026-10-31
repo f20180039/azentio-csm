@@ -5,6 +5,7 @@ import { endCall, getCall, textCall, textTurn } from '../api/renewals';
 import type { CallOutcome, CallView, CaseDetail, TranscriptTurn } from '../api/types';
 import { getPhoneAllowed, placePhoneCall, type PhoneAllowed } from '../api/phone';
 import { connectVoice, type VoiceSession } from '../api/voice';
+import { Select } from '../components/Select';
 import { useToast } from '../components/Toasts';
 import { formatCallback, formatInr } from '../format';
 import { useSession } from '../session';
@@ -308,18 +309,13 @@ export function Call() {
               )}
               {voice === 'off' && !phoneBusy && (
                 <>
-                  <select
+                  <Select
                     aria-label="Phone number"
                     value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    onChange={setPhoneNumber}
                     disabled={!phoneAllowed.configured || phone !== 'off'}
-                  >
-                    {phoneAllowed.numbers.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.masked}
-                      </option>
-                    ))}
-                  </select>
+                    options={phoneAllowed.numbers.map((n) => ({ value: n.id, label: n.masked }))}
+                  />
                   <button
                     className="btn"
                     onClick={callPhone}

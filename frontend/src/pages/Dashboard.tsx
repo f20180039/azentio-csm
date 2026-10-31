@@ -8,7 +8,7 @@ import type { CallOutcome } from '../api/types';
 import { BarChart } from '../components/charts/BarChart';
 import { Sparkline } from '../components/charts/Sparkline';
 import { useToast } from '../components/Toasts';
-import { formatAge, formatDateTime, formatInr, humanise } from '../format';
+import { formatAge, formatDateTime, formatInr, humanise, personaLabel } from '../format';
 
 const POLL_MS = 3000;
 
@@ -30,16 +30,33 @@ function ago(iso: string): string {
   return s < 5 ? 'just now' : `${formatAge(iso)} ago`;
 }
 
-function Kpi({ label, value, sub, children }: { label: string; value: string; sub?: string; children?: React.ReactNode }) {
+function Kpi({ label, value, of, sub, children }: { label: string; value: string; of?: number; sub?: string; children?: React.ReactNode }) {
   return (
     <div className="kpi panel">
       <span className="label">{label}</span>
       <div className="kpi-main">
-        <span className="kpi-value num">{value}</span>
+        <span className="kpi-value num">
+          {value}
+          {of != null && <span className="kpi-of"> of {of}</span>}
+        </span>
         {children}
       </div>
       {sub && <span className="small muted">{sub}</span>}
     </div>
+  );
+}
+
+/** Every count in a table gets the same chip box, so a plain 0 and a red 2 share one right edge and baseline. */
+function Count({ n, bad }: { n: number | null | undefined; bad?: boolean }) {
+  if (n == null) return <span className="count dim">—</span>;
+  return <span className={`count${n > 0 && bad ? ' bad' : n === 0 ? ' zero' : ''}`}>{n}</span>;
+}
+
+function Met({ met, of }: { met: number; of: number }) {
+  return (
+    <span className={`met${of > 0 && met === of ? ' all' : met < of ? ' short' : ''}`}>
+      <strong>{met}</strong> <span className="met-of">of {of}</span>
+    </span>
   );
 }
 
@@ -117,44 +134,57 @@ function SimulatedTest() {
           )}
           <div className="kpis">
             <Kpi label="Conversations" value={String(t.conversations)} sub={`${t.completed} completed · ${t.errors} error${t.errors === 1 ? '' : 's'}`} />
-            <Kpi label="Expectation met" value={`${t.expected_met} of ${t.completed}`} sub={`${t.renewals} renewed`} />
-            <Kpi label="Handoffs where expected" value={`${t.handoffs_where_expected} of ${t.handoffs_expected}`} sub={`${t.blocked_requests} requests blocked`} />
+            <Kpi label="Expectation met" value={String(t.expected_met)} of={t.completed} sub={`${t.renewals} renewed`} />
+            <Kpi label="Handoffs where expected" value={String(t.handoffs_where_expected)} of={t.handoffs_expected} sub={`${t.blocked_requests} requests blocked`} />
             <Kpi label="Rule breaks" value={String(t.rule_breaks)} sub="Target 0" />
             <Kpi label="Leaks before verification" value={String(t.leaks)} sub={`Target 0 · median ${t.median_turns ?? '—'} turns`} />
             <Kpi label="Spoken discount claims" value={String(t.spoken_discount_claims ?? '—')} sub="Target 0" />
           </div>
-          <table>
+          <table className="num-table">
             <thead>
               <tr>
                 <th>Persona</th>
-                <th>Expected</th>
-                <th>Met</th>
+                <th className="r">Met</th>
                 <th>Outcomes</th>
-                <th>Blocked</th>
-                <th>Rule breaks</th>
-                <th>Leaks</th>
-                <th>Discount claims</th>
-                <th>Errors</th>
+                <th className="r">Blocked</th>
+                <th className="r">Rule breaks</th>
+                <th className="r">Leaks</th>
+                <th className="r">Discount claims</th>
+                <th className="r">Errors</th>
               </tr>
             </thead>
             <tbody>
               {report.personas.map((p) => (
                 <tr key={p.persona}>
-                  <td className="mono">{p.persona}</td>
-                  <td className="small">{p.expect}</td>
-                  <td className="num">{`${p.expected_met} of ${p.completed}`}</td>
-                  <td className="small">
+                  <td className="persona-cell">
+                    <span className="persona-name" title={p.persona}>
+                      {personaLabel(p.persona)}
+                    </span>
+                    <span className="small muted">Expected: {p.expect}</span>
+                  </td>
+                  <td className="r">
+                    <Met met={p.expected_met} of={p.completed} />
+                  </td>
+                  <td className="small sd-wrap">
                     {Object.entries(p.outcomes)
-                      .map(([o, n]) => `${humanise(o)} ${n}`)
+                      .map(([o, n]) => `${OUTCOME[o as CallOutcome]?.label ?? humanise(o)} ${n}`)
                       .join(', ') || '—'}
                   </td>
-                  <td className="num">{p.blocked_requests}</td>
-                  <td className="num">{p.rule_breaks > 0 ? <span className="pill bad">{p.rule_breaks}</span> : 0}</td>
-                  <td className="num">{p.leaks > 0 ? <span className="pill bad">{p.leaks}</span> : 0}</td>
-                  <td className="num">
-                    {(p.spoken_discount_claims ?? 0) > 0 ? <span className="pill bad">{p.spoken_discount_claims}</span> : (p.spoken_discount_claims ?? '—')}
+                  <td className="r">
+                    <Count n={p.blocked_requests} />
                   </td>
-                  <td className="num">{p.errors}</td>
+                  <td className="r">
+                    <Count n={p.rule_breaks} bad />
+                  </td>
+                  <td className="r">
+                    <Count n={p.leaks} bad />
+                  </td>
+                  <td className="r">
+                    <Count n={p.spoken_discount_claims} bad />
+                  </td>
+                  <td className="r">
+                    <Count n={p.errors} bad />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -313,7 +343,7 @@ export function Dashboard() {
                       <tr>
                         <th>Policy holder</th>
                         <th>Product</th>
-                        <th>Started</th>
+                        <th className="r">Started</th>
                         <th>Outcome</th>
                         <th>Rules</th>
                       </tr>
@@ -332,7 +362,7 @@ export function Dashboard() {
                             <div className="mono small muted">{c.policyId}</div>
                           </td>
                           <td>{c.product}</td>
-                          <td className="num">{ago(c.startedAt)}</td>
+                          <td className="r num">{ago(c.startedAt)}</td>
                           <td>
                             <OutcomePill call={c} />
                           </td>

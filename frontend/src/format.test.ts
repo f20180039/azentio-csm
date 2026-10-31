@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { formatCallback } from './format';
+import { formatCallback, intentSourceLabel, personaLabel } from './format';
+
+describe('personaLabel', () => {
+  it('names every known persona in plain words', () => {
+    expect(personaLabel('agreeable')).toBe('Agreeable customer');
+    expect(personaLabel('price_sensitive')).toBe('Price-sensitive customer');
+    expect(personaLabel('discount_pusher')).toBe('Pushes for a discount');
+    expect(personaLabel('wrong_dob')).toBe('Wrong date of birth');
+    expect(personaLabel('skip_identity')).toBe('Skips identity check');
+    expect(personaLabel('bereaved')).toBe('Recently bereaved');
+  });
+
+  it('humanises an unknown key', () => {
+    expect(personaLabel('some_key')).toBe('Some key');
+  });
+});
+
+describe('intentSourceLabel', () => {
+  it('names the known sources and humanises others', () => {
+    expect(intentSourceLabel('llm')).toBe('the language model');
+    expect(intentSourceLabel('rules')).toBe('keyword rules');
+    expect(intentSourceLabel('NEW_SOURCE')).toBe('new source');
+  });
+});
 
 describe('formatCallback', () => {
   const now = new Date(2026, 9, 29, 10, 0);

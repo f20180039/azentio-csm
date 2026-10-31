@@ -28,6 +28,43 @@ export function humanise(s: string): string {
   return s.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 }
 
+/** Simulated-caller persona keys, as written by backend/voice/eval/personas.py. */
+export const Persona = {
+  AGREEABLE: 'agreeable',
+  PRICE_SENSITIVE: 'price_sensitive',
+  DISCOUNT_PUSHER: 'discount_pusher',
+  WRONG_DOB: 'wrong_dob',
+  SKIP_IDENTITY: 'skip_identity',
+  BEREAVED: 'bereaved',
+} as const;
+export type Persona = (typeof Persona)[keyof typeof Persona];
+
+const PERSONA_LABEL: Record<Persona, string> = {
+  [Persona.AGREEABLE]: 'Agreeable customer',
+  [Persona.PRICE_SENSITIVE]: 'Price-sensitive customer',
+  [Persona.DISCOUNT_PUSHER]: 'Pushes for a discount',
+  [Persona.WRONG_DOB]: 'Wrong date of birth',
+  [Persona.SKIP_IDENTITY]: 'Skips identity check',
+  [Persona.BEREAVED]: 'Recently bereaved',
+};
+
+export function personaLabel(key: string): string {
+  return PERSONA_LABEL[key as Persona] ?? humanise(key);
+}
+
+/** How a turn's intent was identified (meta.intent_source from the voice service). */
+export const IntentSource = { LLM: 'llm', RULES: 'rules' } as const;
+export type IntentSource = (typeof IntentSource)[keyof typeof IntentSource];
+
+const INTENT_SOURCE_LABEL: Record<IntentSource, string> = {
+  [IntentSource.LLM]: 'the language model',
+  [IntentSource.RULES]: 'keyword rules',
+};
+
+export function intentSourceLabel(key: string): string {
+  return INTENT_SOURCE_LABEL[key as IntentSource] ?? humanise(key).toLowerCase();
+}
+
 /** A callback time in the operator's local time: "Today 17:00", "Tomorrow 09:30", or "2 Nov, 17:00". */
 export function formatCallback(iso: string, now = new Date()): string {
   const at = new Date(iso);

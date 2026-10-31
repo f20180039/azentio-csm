@@ -1,5 +1,6 @@
 import { MOCK_MODE } from './client';
 import { ApiError } from './errors';
+import { sampleEvalReport } from './mockEval';
 import { VOICE_BASE } from './renewals';
 
 export interface EvalTotals {
@@ -44,7 +45,7 @@ export interface EvalReport {
 
 /** The latest simulated-customer run from the voice service, or null when none has been run. */
 export async function getEvalLatest(): Promise<EvalReport | null> {
-  if (MOCK_MODE) return null;
+  if (MOCK_MODE) return sampleEvalReport();
   let res: Response;
   try {
     res = await fetch(`${VOICE_BASE}/v1/eval/latest`);

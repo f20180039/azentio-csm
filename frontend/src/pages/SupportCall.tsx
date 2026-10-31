@@ -21,7 +21,7 @@ import {
 } from '../api/support';
 import type { VoiceSession } from '../api/voice';
 import { useToast } from '../components/Toasts';
-import { formatDateTime, formatInr, humanise } from '../format';
+import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
 import { CallStatusPill } from './SupportDesk';
 
 const POLL_MS = 1000;
@@ -192,7 +192,7 @@ function Turn({ t, audio }: { t: SupportTurn; audio?: string | null }) {
         {m.no_speech ? <p className="muted sc-nospeech">No speech detected</p> : <p>{t.text}</p>}
         <div className="row" style={{ gap: 6 }}>
           <IntentChips intents={m.intents ?? []} />
-          {m.intent_source && <span className="small muted">via {m.intent_source}</span>}
+          {m.intent_source && <span className="small muted">via {intentSourceLabel(m.intent_source)}</span>}
           {m.locked ? (
             <span className="pill bad">Locked</span>
           ) : (m.verify_failures ?? 0) > 0 && !m.verified ? (
@@ -382,8 +382,14 @@ function UploadPanel({ callId, disabled, onCallId, onResults, results }: UploadP
         onDragLeave={() => setDrag(false)}
         onDrop={onDrop}
       >
-        <strong>Drop audio files here, or choose them</strong>
+        <svg className="dropzone-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 18V6l10-2v12M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zm10-2a3 3 0 1 1-3-3 3 3 0 0 1 3 3z" />
+        </svg>
+        <strong>Drop audio files here</strong>
         <span className="small">One file per customer turn, sent in the order listed.</span>
+        <span className="btn sm dropzone-btn" aria-hidden="true">
+          Choose files
+        </span>
         <input
           ref={input}
           type="file"
