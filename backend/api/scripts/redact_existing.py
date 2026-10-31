@@ -1,6 +1,6 @@
-"""One-off: rewrite support transcripts and reviewer corrections stored before PII redaction existed.
+"""One-off: rewrite support transcripts, rating comments and reviewer corrections stored before PII redaction existed.
 
-Runs every turn's text and meta, and every turn_feedback correction, through the same `Redactor` the API uses,
+Runs every turn's text and meta, every call_ratings comment and every turn_feedback correction, through the same `Redactor` the API uses,
 so the calls database holds only `[KIND#n]` tokens and the values move to the PII vault. Safe to run again:
 already-redacted rows contain nothing to find and are left untouched.
 
@@ -23,8 +23,8 @@ from app.vocab import CallKind  # noqa: E402
 
 
 def redact_all(db: Database, vault: PiiVault, today: date) -> dict[str, int]:
-    """Returns how many calls, turns and corrections changed; a second run returns zeros."""
-    changed = {"calls": 0, "turns": 0, "feedback": 0}
+    """Returns how many calls, turns, rating comments and corrections changed; a second run returns zeros."""
+    changed = {"calls": 0, "turns": 0, "ratings": 0, "feedback": 0}
     with db.tx() as con:
         calls = con.execute("SELECT id, transcript FROM calls WHERE kind = ? ORDER BY rowid",
                             (CallKind.SUPPORT,)).fetchall()
@@ -43,6 +43,12 @@ def redact_all(db: Database, vault: PiiVault, today: date) -> dict[str, int]:
                 con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (dumps(turns), c["id"]))
                 changed["calls"] += 1
                 changed["turns"] += touched
+            rating = con.execute("SELECT comment FROM call_ratings WHERE call_id = ?", (c["id"],)).fetchone()
+            if rating is not None and isinstance(rating["comment"], str):
+                redacted = redactor.redact(rating["comment"])
+                if redacted != rating["comment"]:
+                    con.execute("UPDATE call_ratings SET comment = ? WHERE call_id = ?", (redacted, c["id"]))
+                    changed["ratings"] += 1
             for f in con.execute("SELECT seq, author, correction FROM turn_feedback WHERE call_id = ?",
                                  (c["id"],)).fetchall():
                 if not isinstance(f["correction"], str):
@@ -62,7 +68,8 @@ def main() -> None:
         print("PII_VAULT_KEY is not set: values will be tokenised but not kept in the vault", file=sys.stderr)
     vault = PiiVault(settings.pii_vault_path, settings.pii_vault_key, clock.instant)
     result = redact_all(Database(settings.db_path), vault, clock.today())
-    print(f"redacted {result['turns']} turn(s) across {result['calls']} call(s) and {result['feedback']} correction(s)")
+    print(f"redacted {result['turns']} turn(s) across {result['calls']} call(s), {result['ratings']} rating comment(s)"
+          f" and {result['feedback']} correction(s)")
 
 
 if __name__ == "__main__":

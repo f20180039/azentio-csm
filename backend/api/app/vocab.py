@@ -87,6 +87,24 @@ class PiiKind(StrEnum):
     NAME = "NAME"
 
 
+class RefPrefix(StrEnum):
+    """Bank reference prefixes (simulator and voice records); `PREFIX-digits` is never treated as PII."""
+    SERVICE_REQUEST = "SR"
+    COMPLAINT = "CMP"
+    ROUTED = "RQ"
+    ESCALATION = "ESC"
+    PERSONAL_LOAN = "PL"
+    VEHICLE_LOAN = "VL"
+    HOME_LOAN = "HL"
+    LOAN_APPLICATION = "LA"
+    HOME_PRODUCT = "HP"
+    MORTGAGE_PRODUCT = "MP"
+    CLAIM = "CLM"
+    TRANSACTION = "TXN"
+    CUSTOMER = "CUST"
+    ACCOUNT = "ACC"
+
+
 class CaseStatus(StrEnum):
     RECEIVED = "RECEIVED"
     PROCESSING = "PROCESSING"

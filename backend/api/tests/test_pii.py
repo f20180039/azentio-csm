@@ -91,9 +91,21 @@ def test_turn_text_and_meta_are_stored_redacted(client):
     ("due on 2026-11-05", "due on 2026-11-05"),
     ("••• ••• 4012", "••• ••• 4012"),
     ("call 1800 210 4455", "call 1800 210 4455"),
+    ("born 3rd of November 1985", "born [DOB#1]"),
+    ("mobile-9876500002", "mobile-[MOBILE#1]"),  # only the bank reference prefixes are exempt
+    ("Mob-98765 00002", "Mob-[MOBILE#1]"),
+    ("CUST-1002", "CUST-1002"),
+    ("PL-31002", "PL-31002"),
+    ("ACC-20002", "ACC-20002"),
 ])
 def test_redaction_catches_spoken_and_spaced_forms_and_keeps_bank_references(text, expected):
     assert redact_text(text, TODAY)[0] == expected
+
+
+def test_only_known_reference_prefixes_exempt_a_number():
+    kept = "SR-40102 TXN-88213 CUST-1002 PL-31002 ACC-20002 CMP-1 RQ-2 ESC-3 VL-4 HL-5 LA-6 HP-7 MP-8 CLM-9"
+    assert redact_text(kept, TODAY)[0] == kept
+    assert redact_text("ACC-123456789012 but XSR-9876500002", TODAY)[0] == "ACC-123456789012 but XSR-[MOBILE#1]"
 
 
 def test_redact_text_reports_kinds_and_canonical_values():
@@ -164,6 +176,21 @@ def test_patch_meta_and_feedback_corrections_are_redacted(client):
     assert MOBILE not in stored_transcript(client, cid)
 
 
+def test_voice_rating_comment_is_redacted(client):
+    cid = start(client)
+    turn(client, cid, "customer", "Hello")
+    r = client.post(f"{BASE}/{cid}/rating", json={"score": 4, "comment": f"Good, but call me on {MOBILE} next time",
+                                                   "source": "VOICE"}, headers=VOICE)
+    assert r.status_code == 201, r.text
+    assert r.json()["comment"] == "Good, but call me on [MOBILE#1] next time"
+    with client.services.db.read() as con:
+        stored = con.execute("SELECT comment FROM call_ratings WHERE call_id = ?", (cid,)).fetchone()["comment"]
+    assert stored == "Good, but call me on [MOBILE#1] next time"
+    assert MOBILE not in json.dumps(audit(client, cid))
+    assert client.get(f"{BASE}/{cid}", headers=ANALYST).json()["rating"]["comment"] == stored
+    assert client.get(f"{BASE}/{cid}/pii", headers=ADMIN).json()["tokens"]["[MOBILE#1]"]["value"] == MOBILE
+
+
 def test_no_vault_key_still_redacts(make_client, caplog):
     with caplog.at_level(logging.WARNING):
         client = make_client(keyed=False)
@@ -215,14 +242,19 @@ def test_redact_existing_is_idempotent(client, tmp_path):
         con.execute("UPDATE calls SET transcript = ? WHERE id = ?", (json.dumps(raw_turns), cid))
         con.execute("INSERT INTO turn_feedback (call_id, seq, author, verdict, correction, at)"
                     " VALUES (?, 2, 'reviewer', 'BAD', ?, '2026-10-31T06:00:03Z')", (cid, f"Call {MOBILE} back"))
+        con.execute("INSERT INTO call_ratings (call_id, score, comment, source, author, at)"
+                    " VALUES (?, 3, ?, 'VOICE', 'voice', '2026-10-31T06:00:04Z')", (cid, f"My number is {MOBILE}"))
     vault = client.services.vault
     first = redact_all(client.services.db, vault, TODAY)
-    assert first == {"calls": 1, "turns": 2, "feedback": 1}
+    assert first == {"calls": 1, "turns": 2, "ratings": 1, "feedback": 1}
     after_first = stored_transcript(client, cid)
     assert MOBILE not in after_first and NAME not in after_first
     assert json.loads(after_first)[1]["text"] == "Noted, I will call [MOBILE#1] back."
     assert stored_correction(client, cid, 2) == "Call [MOBILE#1] back"
+    with client.services.db.read() as con:
+        assert con.execute("SELECT comment FROM call_ratings WHERE call_id = ?", (cid,)).fetchone()["comment"] \
+            == "My number is [MOBILE#1]"
     second = redact_all(client.services.db, vault, TODAY)
-    assert second == {"calls": 0, "turns": 0, "feedback": 0}
+    assert second == {"calls": 0, "turns": 0, "ratings": 0, "feedback": 0}
     assert stored_transcript(client, cid) == after_first
     assert vault.get_all(cid)["[MOBILE#1]"]["value"] == MOBILE

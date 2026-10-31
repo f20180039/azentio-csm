@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any, Iterable
 
 from app.pii_vault import PiiVault, token_for
-from app.vocab import PiiKind
+from app.vocab import PiiKind, RefPrefix
 
 DOB_MIN_AGE_YEARS = 16
 NAME_KEYS = frozenset({"first_name", "last_name", "name"})
@@ -53,7 +53,9 @@ DATE_D_MONTH_Y_RE = re.compile(rf"(?<!\w)(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)
                                re.IGNORECASE)
 DATE_MONTH_D_Y_RE = re.compile(rf"(?<!\w)({_MONTH_RE})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})(?!\d)",
                                re.IGNORECASE)
-REFERENCE_PREFIX_RE = re.compile(r"[A-Za-z]{2,}-$")  # SR-40102, TXN-88213, CMP-…: kept as they are
+# SR-40102, TXN-88213, CUST-1002: digits right after a known bank reference prefix are kept. Only these
+# uppercase prefixes qualify, so "mobile-9876500002" or "Mob-98765 00002" are still redacted.
+REFERENCE_PREFIX_RE = re.compile(r"(?<![A-Za-z])(?:" + "|".join(p.value for p in RefPrefix) + r")-$")
 TOKEN_RE = re.compile(r"^\[(?:" + "|".join(k.value for k in PiiKind) + r")#\d+\]$")  # already redacted
 
 

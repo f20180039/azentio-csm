@@ -71,6 +71,8 @@ class ReviewService:
                 find_call(con, call_id)
             except ApiError:
                 raise ApiError.bad_request(f"Support call {call_id} not found") from None
+            if comment is not None:  # a VOICE comment is the caller's spoken feedback: stored as tokens
+                comment = Redactor(self.vault, call_id, self.clock.today()).redact(comment)
             con.execute(
                 "INSERT INTO call_ratings (call_id, score, comment, source, author, at) VALUES (?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (call_id) DO UPDATE SET score = excluded.score, comment = excluded.comment,"
