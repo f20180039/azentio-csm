@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import analytics, audit, auth, cbs, chat, flows
+from app.routers import analytics, audit, auth, caseintel, cbs, chat, flows
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.add_middleware(
 )
 
 # Mount Modular Routers
+app.include_router(caseintel.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(cbs.router, prefix="/api")
