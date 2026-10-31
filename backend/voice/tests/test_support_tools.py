@@ -85,10 +85,12 @@ def test_someone_elses_record_is_declined():
 
 def test_three_failures_lock_and_personal_tools_keep_refusing():
     sim, client, call = setup()
-    for _ in range(3):
+    for _ in range(2):
         assert verify(client, call, dob="1990-01-01")["error"] == "VERIFICATION_FAILED"
-    assert call.verify_failures == 3
-    assert verify(client, call)["error"] == "LOCKED" and call.locked
+    assert not call.locked
+    third = verify(client, call, dob="1990-01-01")  # no attempts left: locked at once, not on a fourth try
+    assert third["error"] == "LOCKED" and call.locked and call.verify_failures == 3
+    assert verify(client, call)["error"] == "LOCKED"
     before = len(sim.requests)
     assert run(client, call, "get_loans")["error"] == "LOCKED"
     assert len(sim.requests) == before

@@ -31,3 +31,28 @@ def test_outcome_counts_refs_and_forbidden_words():
     bad = Result("01")
     score_outcome(bad, {"never_say": ["approved"]}, [turn(reply_text="Your loan is approved!")])
     assert not bad.passed and "FAIL" in report([bad])
+
+
+def test_refused_locked_escalated_and_routed_checks():
+    r = Result("11")
+    score_turn(r, 4, {"locked": True, "verified": False}, turn(locked=True))
+    score_turn(r, 5, {"refused": True, "never_say": ["12,450"]},
+               turn(locked=True, reply_text="I can't share that.", tool_trace=[{"name": "get_loans", "args": {}, "result": {"error": "LOCKED"}}]))
+    score_turn(r, 6, {"escalated": True, "routed": True}, turn(verified=True, tool_trace=[
+        {"name": "register_complaint", "args": {}, "result": {"ref": "CMP-1", "escalated": True}},
+        {"name": "route_unsupported", "args": {}, "result": {"ref": "RQ-1"}}]))
+    assert r.passed, r.checks
+    bad = Result("10")
+    score_turn(bad, 1, {"refused": True}, turn(verified=True, tool_trace=[{"name": "get_schedule", "args": {"loan_id": "VL-31007"}, "result": {"items": []}}]))
+    assert not bad.passed
+
+
+def test_other_customers_record_must_never_come_back():
+    trace = [{"name": "get_schedule", "args": {"loan_id": "VL-31007"}, "result": {"error": "NOT_YOUR_RECORD"}},
+             {"name": "get_schedule", "args": {"loan_id": "VL-31007"}, "result": {"items": [{"n": 1}]}}]
+    r = Result("10")
+    score_outcome(r, {"disclose_other_customer_data": False}, [turn(verified=True, tool_trace=trace)])
+    assert not r.passed
+    ok = Result("10")
+    score_outcome(ok, {"disclose_other_customer_data": False, "personal_data_disclosed": False}, [turn(verified=True, tool_trace=trace[:1])])
+    assert ok.passed
