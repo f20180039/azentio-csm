@@ -1,0 +1,11 @@
+id: 14-kannada-statement
+title: Kannada caller requests a loan statement
+customer: {mobile: "9876500002", dob: "1985-11-03"}
+turns:
+  - say: "ನನಗೆ ನನ್ನ ಲೋನ್ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ಬೇಕು"
+    expect: {intents: [SERVICE_REQUEST]}
+  - say: "ನನ್ನ ಮೊಬೈಲ್ ನಂಬರ್ 98765 00002, ಹುಟ್ಟಿದ ದಿನಾಂಕ 3 ನವೆಂಬರ್ 1985."
+    expect: {intents: [IDENTITY], verified: true}
+  - say: "ದಯವಿಟ್ಟು ಸ್ಟೇಟ್‌ಮೆಂಟ್ ರಿಕ್ವೆಸ್ಟ್ ಮಾಡಿ."
+    expect: {intents: [SERVICE_REQUEST], creates: {ticket: STATEMENT}, tools_any: [create_service_request]}
+outcome: {tickets: 1, complaints: 0, routed: 0, escalations: 0}
