@@ -77,6 +77,9 @@ class SimulatorClient:
     async def ticket(self, session: str, ref: str) -> dict:
         return await self._send("GET", f"{SimPath.CSM_TICKETS}/{ref}", session)
 
+    async def complaint_status(self, session: str, ref: str) -> dict:
+        return await self._send("GET", f"{SimPath.CSM_COMPLAINTS}/{ref}", session)
+
     async def create_ticket(self, session: str, category: str, summary: str, details: dict, call_id: str) -> dict:
         body = {"category": category, "summary": summary, "details": details, "call_id": call_id}
         return await self._send("POST", SimPath.CSM_TICKETS, session, body=body)

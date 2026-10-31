@@ -46,6 +46,11 @@ class FakeSimulator:
             return httpx.Response(403, json={"error": "NOT_YOUR_RECORD"})
         if path == "/csm/complaints" and request.method == "POST":
             return httpx.Response(201, json={"ref": "CMP-50200", "status": "OPEN"})
+        if path == "/csm/complaints/CMP-50011" and request.method == "GET":
+            return httpx.Response(200, json={"ref": "CMP-50011", "category": "INCORRECT_CHARGE", "status": "OPEN"})
+        if path == "/csm/tickets/SR-40200" and request.method == "GET":
+            return httpx.Response(200, json={"ref": "SR-40200", "category": "REPAYMENT_SCHEDULE", "status": "OPEN",
+                                             "details": {"loan_id": "VL-31003"}})
         if path == "/csm/tickets" and request.method == "POST":
             return httpx.Response(201, json={"ref": "SR-40200", "status": "OPEN", "eta_days": 2})
         return httpx.Response(404, json={"error": "NOT_FOUND"})
@@ -204,3 +209,24 @@ def test_asking_for_a_person_after_an_escalation_gets_the_same_reference_not_ask
     again = run(client, call, "escalate_to_human", {"trigger": "CUSTOMER_REQUEST", "reason": "wants a person", "summary": "s"})
     assert first["ref"] == again["ref"] == "ESC-70200" and again["escalated"] is True and "error" not in again
     assert call.refs == ["ESC-70200"] and sum(r.url.path == "/v1/csm/escalations" for r in sim.requests) == 1
+
+
+def test_a_complaint_reference_is_looked_up_as_a_complaint_and_a_request_shows_its_loan():
+    sim, client, call = setup()
+    verify(client, call)
+    complaint = run(client, call, "get_ticket", {"ref": " cmp-50011 "})
+    assert complaint["ref"] == "CMP-50011" and complaint["status"] == "OPEN"
+    assert sim.requests[-1].url.path == "/v1/csm/complaints/CMP-50011"
+    request = run(client, call, "get_ticket", {"ref": "SR-40200"})
+    assert request["details"]["loan_id"] == "VL-31003"
+    assert sim.requests[-1].url.path == "/v1/csm/tickets/SR-40200"
+    loan = run(client, call, "get_loans", {"loan_id": request["details"]["loan_id"]})
+    assert [l["loan_id"] for l in loan["items"]] == ["VL-31003"]
+
+
+def test_prompt_lists_every_record_and_follows_a_reference_to_its_loan():
+    from app.support_prompt import support_prompt
+    p = support_prompt()
+    assert "SEVERAL RECORDS" in p and "how many there are" in p
+    assert "get_ticket" in p and "loan_id" in p and "CMP-50011" in p
+    assert "only when the caller says they have nothing else" in p
