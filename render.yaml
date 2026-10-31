@@ -1,5 +1,5 @@
 # Render blueprint for the CSM voice agent: core API, bank simulator, voice service and operator panel.
-# Create it from the Render dashboard: New > Blueprint > this repo (branch main). Secrets marked `sync: false`
+# Create it from the Render dashboard: New > Blueprint > this repo. Every service deploys from `main` only (branch: main). Secrets marked `sync: false`
 # are asked for once in the dashboard and never stored in git.
 #
 # State that must survive restarts and deploys (calls, transcripts, audit, tickets, complaints) lives in SQLite on a
@@ -11,6 +11,7 @@
 services:
   - type: web
     name: azentio-csm-api
+    branch: main
     runtime: docker
     rootDir: backend/api
     dockerfilePath: ./Dockerfile
@@ -38,6 +39,7 @@ services:
 
   - type: web
     name: azentio-csm-sim
+    branch: main
     runtime: docker
     rootDir: backend/simulator
     dockerfilePath: ./Dockerfile
@@ -58,6 +60,7 @@ services:
 
   - type: web
     name: azentio-csm-voice
+    branch: main
     runtime: docker
     rootDir: backend/voice
     dockerfilePath: ./Dockerfile
@@ -93,6 +96,7 @@ services:
 
   - type: web
     name: azentio-csm-web
+    branch: main
     runtime: docker
     rootDir: frontend
     dockerfilePath: ./Dockerfile
