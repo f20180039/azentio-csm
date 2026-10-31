@@ -113,6 +113,43 @@ Status markers: `[ ]` todo · `[~]` in progress (add your name and the branch) �
   - "what documents do I need for a vehicle loan" puts the vehicle-loan documents entry first;
   - "how do I stop auto debit" matches the NACH entry;
   - "what's the weather today" returns `items: []`. This is the **unsupported** signal, so use a minimum score threshold.
-- [ ] Step 2: Implement `GET /v1/faq/search` with SQLite FTS5 (bm25) over the question, answer and tags, built at start-up. Return `score` as a positive float, and drop results below the threshold.
+- [ ] Step 2: Implement `GET /v1/faq/search` with SQLite FTS5 (bm25, `tokenize='porter'` so "prepay" matches "prepayment") over the question, answer and tags, built at start-up. Pavan's 30 entries are already merged in `faq.json`. Return `score` as a positive float, and drop results below the threshold.
 - [ ] Step 3: `grep -rniE "compliant|RBI|DPDP|PCI|zero hallucination|production-grade" backend/simulator` returns nothing. No hard-coded statistics remain anywhere in the simulator.
 - [ ] Step 4: Commit: `feat(simulator): FAQ search with an approved-answer threshold`.
+
+- [ ] **C7: Docker Compose works end to end** (needs: C6 merged, or run it alongside)
+
+**Files:** `docker-compose.yml`, the Dockerfiles in `backend/api`, `backend/simulator`, `backend/voice` and `frontend`, and the README's "With Docker" section. Don't touch application code.
+
+- [ ] Step 1: `docker compose up --build` starts these services, each with a health check:
+
+  | Service | Port | Notes |
+  |---|---|---|
+  | `api` (Python + SQLite) | 8080 | volume for `API_DB_PATH`; `ENFORCE_CALLING_HOURS` from `.env`, default false for demos |
+  | `simulator` | 8090 | volume for its SQLite |
+  | `voice` | 7861 | `RENEWALS_API_BASE=http://api:8080/api/v1`, `SIMULATOR_BASE=http://simulator:8090/v1`, `.env` for the Groq key |
+  | `web` | 5173 | built with `VITE_API_BASE`, `VITE_VOICE_BASE`, `VITE_SIMULATOR_BASE` pointing at localhost ports |
+
+- [ ] Step 2: Remove the `postgres` service and the `pgdata` volume if nothing uses them any more (`grep -rn "postgres\|DB_URL" backend frontend`). Remove the `agent` service only if no remaining code calls it; `/cases` no longer uses it.
+- [ ] Step 3: Every container runs as a non-root user, and the images are slim (`python:3.12-slim`, multi-stage for the web app).
+- [ ] Step 4: Run it for real. Check that `curl localhost:8080/api/v1/renewals/queue -u analyst:analyst`, `curl localhost:8090/health`, `curl localhost:7861/health` and `http://localhost:5173` all work, and that a typed support call (`POST localhost:7861/support/text-call`) is recorded in the API.
+- [ ] Step 5: In the README's "With Docker" section, write what you actually ran, including the note that browser microphone calls on macOS need the voice service run natively (WebRTC from Docker Desktop). Delete stale lines (Swagger, Postgres).
+- [ ] Step 6: Commit: `chore(docker): compose runs the Python API, simulator, voice and web end to end`.
+
+- [ ] **C8 (stretch): Hindi and Hinglish callers** (needs: C6; check with Anshuman before starting, because this touches the voice service)
+
+**Files:** `backend/voice/app/speech.py`, `backend/voice/app/speech_file.py`, `backend/voice/app/support_prompt.py`, the TTS voice choice in `backend/voice/app/support_pipeline.py` and `main.py` (`spoken_reply`), `backend/voice/app/config.py`. Add scenarios under `backend/voice/eval/scenarios/` and tests under `backend/voice/tests/`.
+
+- [ ] Step 1: **Language setting.**
+  - Add `VOICE_LANGUAGES` (default `en`; demo value `en,hi`).
+  - When it includes `hi`, don't pin English for speech-to-text: let Whisper detect the language.
+  - Keep the English domain prompt for English, and add a short Hindi/Hinglish one (EMI, किस्त, स्टेटमेंट, लोन).
+  - `docs/stt-benchmark.md` shows pinning English helps English accuracy, so keep `en` as the default.
+- [ ] Step 2: **Replies in the caller's language.** The support prompt says: reply in the language the caller used (English or Hindi; Hinglish is fine), keep amounts in digits plus the `*_spoken` form, and keep tool calls and arguments in English.
+- [ ] Step 3: **Voice.** If the reply is mostly Devanagari or the call's detected language is Hindi, speak it with `hi-IN-SwaraNeural`; otherwise use the existing English voice.
+- [ ] Step 4: **Tests:**
+  - offline unit tests for the language choice;
+  - a reply in Devanagari selects the Hindi voice;
+  - the prompt contains the language rule.
+- [ ] Step 5: **Scenarios.** Write 2 Hindi or Hinglish scenarios (e.g. "मेरी अगली EMI कब है?" from Rahul, and a statement request). Render them with `python -m eval.audio.render --source scenarios --accents in --conditions clean`; the renderer needs a Hindi voice mapping (`hi`), so add one. Run them with `python -m eval.run_scenarios --audio --accent hi --only <ids>`.
+- [ ] Step 6: Commit: `feat(voice): Hindi and Hinglish callers (detected language, Hindi voice)`.

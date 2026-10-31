@@ -75,6 +75,7 @@ describe('SupportCall', () => {
       h.getCall.mockResolvedValue({ ...live, endedAt: new Date().toISOString(), outcome: 'ROUTED' });
       await vi.advanceTimersByTimeAsync(1100);
       await waitFor(() => expect(screen.getByText('Routed')).toBeInTheDocument());
+      await vi.advanceTimersByTimeAsync(1100); // let a poll already in flight when the call ended finish before counting
       const settled = h.getCall.mock.calls.length;
       await vi.advanceTimersByTimeAsync(3000);
       expect(h.getCall.mock.calls.length).toBe(settled);

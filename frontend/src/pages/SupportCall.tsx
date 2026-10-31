@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { SpeakingBubble, speechStatus, useLiveSpeech } from '../components/LiveSpeech';
 import { ApiError } from '../api/errors';
@@ -22,9 +22,11 @@ import {
   type ToolTrace,
 } from '../api/support';
 import type { VoiceSession } from '../api/voice';
+import { NoResults, SearchBox, useUrlQuery } from '../components/SearchBox';
 import { useToast } from '../components/Toasts';
 import { formatDateTime, formatInr, humanise, intentSourceLabel } from '../format';
 import { Route } from '../routes';
+import { Highlight, matches } from '../search';
 import { TurnRole, Verification } from '../vocab';
 import { CallStatusPill } from './SupportDesk';
 
@@ -52,14 +54,14 @@ export function VerificationBadge({ call }: { call: Pick<SupportCallRecord, 'tur
   );
 }
 
-function IntentChips({ intents }: { intents: string[] }) {
+function IntentChips({ intents, query = '' }: { intents: string[]; query?: string }) {
   if (!intents.length) return null;
   return (
     <ul className="sc-chips" aria-label="Identified intents">
       {intents.map((i) => (
         <li key={i}>
           <span className={`pill ${intentTone(i)}`} title={i}>
-            {intentLabel(i)}
+            <Highlight text={intentLabel(i)} query={query} />
           </span>
         </li>
       ))}
@@ -168,33 +170,49 @@ export function RetrievedCard({ trace, retrieved, refs }: { trace: ToolTrace[]; 
   );
 }
 
-function RefPills({ refs }: { refs: string[] }) {
+function RefPills({ refs, query = '' }: { refs: string[]; query?: string }) {
   if (!refs.length) return null;
   return (
     <ul className="sc-chips" aria-label="References">
       {refs.map((r) => (
         <li key={r}>
-          <span className="ref-pill">{r}</span>
+          <span className="ref-pill">
+            <Highlight text={r} query={query} />
+          </span>
         </li>
       ))}
     </ul>
   );
 }
 
-function Turn({ t, audio }: { t: SupportTurn; audio?: string | null }) {
+function turnMatches(q: string, t: SupportTurn): boolean {
+  const intents = t.meta.intents ?? [];
+  return matches(q, t.text, intents, intents.map(intentLabel), t.meta.refs);
+}
+
+type TurnMark = 'hit' | 'dim' | undefined;
+
+function Turn({ t, audio, query = '', mark }: { t: SupportTurn; audio?: string | null; query?: string; mark?: TurnMark }) {
   const m = t.meta;
+  const markClass = mark ? ` is-${mark}` : '';
   if (t.role === TurnRole.CUSTOMER) {
     return (
-      <li className="sc-turn customer">
+      <li className={`sc-turn customer${markClass}`} data-search={mark}>
         <div className="sc-turn-head">
           <span className="who">Customer</span>
           <time className="small muted" dateTime={t.at}>
             {formatDateTime(t.at)}
           </time>
         </div>
-        {m.no_speech ? <p className="muted sc-nospeech">No speech detected</p> : <p>{t.text}</p>}
+        {m.no_speech ? (
+          <p className="muted sc-nospeech">No speech detected</p>
+        ) : (
+          <p>
+            <Highlight text={t.text} query={query} />
+          </p>
+        )}
         <div className="row" style={{ gap: 6 }}>
-          <IntentChips intents={m.intents ?? []} />
+          <IntentChips intents={m.intents ?? []} query={query} />
           {m.intent_source && <span className="small muted">via {intentSourceLabel(m.intent_source)}</span>}
           {m.locked ? (
             <span className="pill bad">Locked</span>
@@ -208,15 +226,17 @@ function Turn({ t, audio }: { t: SupportTurn; audio?: string | null }) {
     );
   }
   return (
-    <li className="sc-turn agent">
+    <li className={`sc-turn agent${markClass}`} data-search={mark}>
       <div className="sc-turn-head">
         <span className="who">Agent</span>
         <time className="small muted" dateTime={t.at}>
           {formatDateTime(t.at)}
         </time>
       </div>
-      <p>{t.text}</p>
-      <RefPills refs={m.refs ?? []} />
+      <p>
+        <Highlight text={t.text} query={query} />
+      </p>
+      <RefPills refs={m.refs ?? []} query={query} />
       {audio && <audio controls src={audioDataUrl(audio)} aria-label="Agent reply audio" className="sc-audio" />}
       <RetrievedCard trace={m.tool_trace ?? []} retrieved={m.retrieved ?? {}} refs={m.refs ?? []} />
     </li>
@@ -548,6 +568,13 @@ export function SupportCall() {
     endRef.current?.scrollIntoView?.({ block: 'end' });
   }, [turns.length, speaking]);
 
+  const [query, setQuery] = useUrlQuery();
+  const searching = query.trim() !== '';
+  const hits = useMemo(() => new Set(searching ? turns.filter((t) => turnMatches(query, t)) : []), [turns, query, searching]);
+  useEffect(() => {
+    if (searching) timelineRef.current?.querySelector('[data-search="hit"]')?.scrollIntoView?.({ block: 'nearest' });
+  }, [query, searching]);
+
   const audioByReply = new Map(results.filter((r) => r.reply_text && r.reply_audio_b64).map((r) => [r.reply_text!, r.reply_audio_b64!]));
 
   async function startMic() {
@@ -661,9 +688,28 @@ export function SupportCall() {
           <h2 id="timeline-title" className="panel-title">
             Conversation
           </h2>
+          {turns.length > 0 && (
+            <div className="search-bar">
+              <SearchBox
+                value={query}
+                onChange={setQuery}
+                label="Search the conversation"
+                placeholder="Search the transcript, intents or references"
+                shown={hits.size}
+                total={turns.length}
+              />
+            </div>
+          )}
+          {searching && turns.length > 0 && hits.size === 0 && <NoResults query={query} onClear={() => setQuery('')} />}
           <ol ref={timelineRef} className="sc-timeline" role="log" aria-live="polite" aria-label="Conversation history">
             {turns.map((t) => (
-              <Turn key={`${t.role}-${t.seq}`} t={t} audio={t.role === TurnRole.AGENT ? audioByReply.get(t.text) : null} />
+              <Turn
+                key={`${t.role}-${t.seq}`}
+                t={t}
+                audio={t.role === TurnRole.AGENT ? audioByReply.get(t.text) : null}
+                query={query}
+                mark={searching ? (hits.has(t) ? 'hit' : 'dim') : undefined}
+              />
             ))}
             {speaking && <SpeakingBubble who={speaking} />}
           </ol>

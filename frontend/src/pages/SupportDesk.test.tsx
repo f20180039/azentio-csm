@@ -62,6 +62,36 @@ describe('SupportDesk', () => {
     expect(screen.getByRole('button', { name: 'Routed' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('searches the tickets tab by reference, highlights the hit and counts every tab', async () => {
+    mount();
+    const panel = () => screen.getByRole('tabpanel');
+    expect(await within(panel()).findByText('SR-40102')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search bank records' }), { target: { value: 'SR-40200' } });
+    await waitFor(() => expect(within(panel()).getAllByRole('row')).toHaveLength(2));
+    const hit = within(panel()).getByText('SR-40200');
+    expect(hit.tagName).toBe('MARK');
+    expect(within(panel()).queryByText('SR-40102')).not.toBeInTheDocument();
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Complaints 0' })).toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: 'Tickets 1' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search bank records' }), { target: { value: 'xyz' } });
+    expect(await screen.findByText('No results for ‘xyz’')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    await waitFor(() => expect(within(panel()).getByText('SR-40102')).toBeInTheDocument());
+  });
+
+  it('searches calls by intent label', async () => {
+    mount();
+    expect(await screen.findAllByText('Ticket created')).not.toHaveLength(0);
+    const callsTable = () => screen.getAllByRole('table')[0];
+    const before = within(callsTable()).getAllByRole('row').length;
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search calls' }), { target: { value: 'ticket created' } });
+    await waitFor(() => expect(within(callsTable()).getAllByRole('row').length).toBeLessThan(before));
+    expect(screen.getByText(`1 of ${before - 1}`)).toBeInTheDocument();
+  });
+
   it('shows an error with Retry when the simulator is down', async () => {
     h.listRecords.mockRejectedValueOnce(new Error('Cannot reach the bank simulator'));
     mount();
