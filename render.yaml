@@ -1,4 +1,11 @@
-# Render blueprint for the CSM voice agent: core API, bank simulator, voice service and operator panel.
+# Render blueprint for the CSM voice agent: core API, bank simulator and operator panel.
+# The voice service is NOT on Render: it needs WebRTC (UDP) for browser mic calls and its local-only guard refuses
+# proxied requests. It runs on the demo laptop. Point it at the hosted API and simulator so every call lands in the
+# shared, persistent database — in the laptop's .env:
+#   RENEWALS_API_BASE=https://azentio-csm-api.onrender.com/api/v1
+#   SIMULATOR_BASE=https://azentio-csm-sim.onrender.com/v1
+#   CORS_ORIGINS=http://localhost:5173,https://azentio-csm-web.onrender.com
+# The hosted panel calls the voice service at http://localhost:7861, so open the panel in a browser on that laptop.
 # Create it from the Render dashboard: New > Blueprint > this repo. Every service deploys from `main` only (branch: main). Secrets marked `sync: false`
 # are asked for once in the dashboard and never stored in git.
 #
@@ -29,7 +36,7 @@ services:
       - key: CORS_ORIGINS
         value: https://azentio-csm-web.onrender.com
       - key: VOICE_URL
-        value: https://azentio-csm-voice.onrender.com
+        value: http://localhost:7861
       - key: GROQ_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -59,42 +66,6 @@ services:
         value: '["https://azentio-csm-web.onrender.com"]'
 
   - type: web
-    name: azentio-csm-voice
-    branch: main
-    runtime: docker
-    rootDir: backend/voice
-    dockerfilePath: ./Dockerfile
-    plan: starter
-    healthCheckPath: /health
-    envVars:
-      - key: PORT
-        value: "7861"
-      - key: RENEWALS_API_BASE
-        value: https://azentio-csm-api.onrender.com/api/v1
-      - key: SIMULATOR_BASE
-        value: https://azentio-csm-sim.onrender.com/v1
-      - key: CORS_ORIGINS
-        value: https://azentio-csm-web.onrender.com
-      - key: PUBLIC_BASE_URL
-        value: https://azentio-csm-voice.onrender.com
-      - key: VOICE_LANGUAGES
-        value: en,kn,hi
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: MISTRAL_API_KEY
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_FROM
-        sync: false
-      - key: TWILIO_ALLOWED_TO
-        sync: false
-
-  - type: web
     name: azentio-csm-web
     branch: main
     runtime: docker
@@ -109,7 +80,8 @@ services:
         value: https://azentio-csm-api.onrender.com/api/v1
       - key: VITE_SIMULATOR_BASE
         value: https://azentio-csm-sim.onrender.com/v1
+      # the voice service runs on the demo laptop (see the header)
       - key: VITE_VOICE_BASE
-        value: https://azentio-csm-voice.onrender.com
+        value: http://localhost:7861
       - key: VITE_MOCK
         value: "0"
